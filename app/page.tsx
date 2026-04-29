@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useEffect, useMemo, createContext, useContext, useRef, type ReactNode } from "react";
-import { Scanner as QrScannerLib } from "@yudiel/react-qr-scanner";
 
 // ------------------------------
 // Types
@@ -220,112 +219,7 @@ const Modal = ({
   </div>
 );
 
-// ------------------------------
-// Scanner Component
-// ------------------------------
-const Scanner = ({
-  onCode,
-  onClose,
-}: {
-  onCode: (code: string) => void;
-  onClose: () => void;
-}) => {
-  const [manualCode, setManualCode] = useState("");
-  const [error, setError] = useState<string | null>(null);
 
-  const handleDecode = (result: string) => {
-    const code = result;
-    if (code && code.length >= 4) {
-      if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
-      onCode(code);
-      onClose();
-    } else {
-      setError("Codigo no valido. Intente de nuevo.");
-    }
-  };
-
-  const handleError = (err: Error) => {
-    console.error(err);
-    setError("Error con la camara. Verifica los permisos.");
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/55 z-50 flex items-end justify-center">
-      <div className="bg-card rounded-t-3xl p-5 pb-8 w-full max-w-[480px] max-h-[88svh] overflow-y-auto">
-        <div className="w-10 h-1 bg-border rounded-full mx-auto mb-3.5" />
-        <div className="flex items-center justify-between mb-3.5">
-          <span className="text-base font-bold text-card-foreground">
-            Escanear codigo de barras
-          </span>
-          <button
-            onClick={onClose}
-            className="bg-transparent border-none text-xl cursor-pointer text-muted-foreground"
-          >
-            X
-          </button>
-        </div>
-
-        <div className="bg-black rounded-2xl overflow-hidden mb-3">
-          <QrScannerLib
-            onScan={(result) => {
-              if (result && result.length > 0) {
-                handleDecode(result[0].rawValue);
-              }
-            }}
-            onError={handleError}
-            constraints={{ facingMode: "environment" }}
-            scanDelay={300}
-            styles={{ container: { width: "100%", height: 300 } }}
-          />
-        </div>
-
-        {error && (
-          <div className="text-center text-sm text-destructive mb-3">
-            {error}
-          </div>
-        )}
-
-        <div className="border-t border-border pt-3">
-          <div className="text-sm font-semibold text-muted-foreground mb-2">
-            O escribe el codigo manualmente
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="Ej. 7503000123401"
-              inputMode="numeric"
-              value={manualCode}
-              onChange={(e) => setManualCode(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && manualCode) {
-                  onCode(manualCode);
-                  onClose();
-                }
-              }}
-              className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            />
-            <button
-              onClick={() => {
-                if (manualCode) onCode(manualCode);
-                onClose();
-              }}
-              className="shrink-0 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
-            >
-              OK
-            </button>
-          </div>
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full mt-3 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
-        >
-          Cancelar
-        </button>
-      </div>
-    </div>
-  );
-};
 
 // ------------------------------
 // Data Context
@@ -1206,7 +1100,6 @@ const Inventario = () => {
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [foto, setFoto] = useState<string | null>(null);
-  const [scanner, setScanner] = useState(false);
   const [form, setForm] = useState({
     nom: "",
     sku: "",
@@ -1403,19 +1296,11 @@ const Inventario = () => {
             )}
           </Field>
           <Field label="Codigo de barras">
-            <div className="flex gap-2">
-              <input
-                value={form.barcode}
-                onChange={(e) => setForm({ ...form, barcode: e.target.value })}
-                className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-              <button
-                onClick={() => setScanner(true)}
-                className="shrink-0 px-3.5 py-2.5 rounded-xl bg-primary text-primary-foreground text-lg"
-              >
-                📷
-              </button>
-            </div>
+            <input
+              value={form.barcode}
+              onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
           </Field>
           <Field label="Nombre *">
             <input
@@ -1506,15 +1391,7 @@ const Inventario = () => {
           </div>
         </Modal>
       )}
-      {scanner && (
-        <Scanner
-          onCode={(code) => {
-            setForm({ ...form, barcode: code });
-            setScanner(false);
-          }}
-          onClose={() => setScanner(false)}
-        />
-      )}
+      
     </div>
   );
 };
@@ -1525,7 +1402,6 @@ const Inventario = () => {
 const Ordenes = () => {
   const { ordenes, clientes, productos, addOrden, updateOrden } = useData();
   const [show, setShow] = useState(false);
-  const [scanner, setScanner] = useState<boolean | "picking">(false);
   const [picking, setPicking] = useState<Orden | null>(null);
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
     []
@@ -1704,12 +1580,6 @@ const Ordenes = () => {
           <div className="text-sm font-semibold text-muted-foreground mb-2">
             Productos
           </div>
-          <button
-            onClick={() => setScanner(true)}
-            className="w-full px-4 py-2.5 rounded-xl bg-card border border-primary text-secondary-foreground font-medium text-sm mb-2.5"
-          >
-            📷 Escanear codigo
-          </button>
           {lineas.map((l, i) => (
             <div
               key={i}
@@ -1782,22 +1652,7 @@ const Ordenes = () => {
         </Modal>
       )}
 
-      {scanner === true && (
-        <Scanner
-          onCode={(code) => {
-            const prod = productos.find(
-              (p) => p.barcode === code || p.sku === code
-            );
-            if (prod) {
-              setLineas((l) => [...l, { prodId: prod.id, qty: 1 }]);
-            } else {
-              alert("Codigo no encontrado.");
-            }
-            setScanner(false);
-          }}
-          onClose={() => setScanner(false)}
-        />
-      )}
+      
 
       {picking && (
         <div className="fixed inset-0 bg-background z-40 flex flex-col max-w-[480px] mx-auto">
@@ -1874,12 +1729,6 @@ const Ordenes = () => {
                   OK
                 </button>
               </div>
-              <button
-                onClick={() => setScanner("picking")}
-                className="w-full px-4 py-2.5 rounded-xl bg-card border border-primary text-secondary-foreground font-medium text-sm"
-              >
-                📷 Usar camara
-              </button>
             </div>
             <div className="flex gap-2.5">
               <button
@@ -1899,15 +1748,7 @@ const Ordenes = () => {
         </div>
       )}
 
-      {scanner === "picking" && (
-        <Scanner
-          onCode={(code) => {
-            processPick(code);
-            setScanner(false);
-          }}
-          onClose={() => setScanner(false)}
-        />
-      )}
+      
     </div>
   );
 };
