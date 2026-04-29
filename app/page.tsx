@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, createContext, useContext, useRef, type ReactNode } from "react";
-import { Scanner } from "@yudiel/react-qr-scanner";
+import { Scanner as QrScannerLib } from "@yudiel/react-qr-scanner";
 
 // ------------------------------
 // Types
@@ -266,7 +266,7 @@ const Scanner = ({
         </div>
 
         <div className="bg-black rounded-2xl overflow-hidden mb-3">
-          <Scanner
+          <QrScannerLib
             onScan={(result) => {
               if (result && result.length > 0) {
                 handleDecode(result[0].rawValue);
