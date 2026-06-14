@@ -1430,15 +1430,15 @@ const Inventario = () => {
             return (
               <div
                 key={p.id}
-                className="bg-card border border-border rounded-2xl p-3 relative"
+                className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full"
               >
                 <button
                   onClick={() => openEdit(p)}
-                  className="absolute top-2 right-2 bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold cursor-pointer text-secondary-foreground"
+                  className="absolute top-2 right-2 bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold cursor-pointer text-secondary-foreground z-[1]"
                 >
                   Editar
                 </button>
-                <div className="w-full h-20 rounded-lg overflow-hidden bg-muted flex items-center justify-center text-2xl mb-2">
+                <div className="w-full h-20 rounded-lg overflow-hidden bg-muted flex items-center justify-center text-2xl mb-2 shrink-0">
                   {p.foto ? (
                     <img
                       src={p.foto}
@@ -1449,14 +1449,14 @@ const Inventario = () => {
                     p.icon || "📦"
                   )}
                 </div>
-                <div className="text-xs font-bold mb-0.5 truncate text-card-foreground">
+                <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words text-pretty pr-12 min-h-[2.25rem]">
                   {p.nom}
                 </div>
-                <div className="text-xs text-muted-foreground font-mono mb-0.5">
+                <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
                   {p.sku}
                 </div>
                 {p.barcode && (
-                  <div className="text-xs text-muted-foreground font-mono mb-0.5">
+                  <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
                     CB: {p.barcode}
                   </div>
                 )}
@@ -1477,12 +1477,14 @@ const Inventario = () => {
                     )}
                   </div>
                 )}
-                <Badge e={estado} />
-                <div className="text-sm font-bold text-secondary-foreground mt-0.5">
-                  {fmt(p.precio)}
-                </div>
-                <div className="text-xs text-muted-foreground mt-0.5">
-                  Stock: {stock} uds.
+                <div className="mt-auto pt-1.5">
+                  <Badge e={estado} />
+                  <div className="text-sm font-bold text-secondary-foreground mt-1">
+                    {fmt(p.precio)}
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Stock: {stock} uds.
+                  </div>
                 </div>
               </div>
             );
