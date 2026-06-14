@@ -2286,6 +2286,60 @@ const PRIORIDADES = ["Alta", "Media", "Baja"];
 const ESTADOS_MEJORA = ["Pendiente", "En progreso", "Completada"];
 const PRIO_ORDER: Record<string, number> = { Alta: 0, Media: 1, Baja: 2 };
 
+// Game-style "upgrade" icon: a stocked shelving rack (trameria) with a
+// plus badge in the corner, or a check badge when the improvement is done.
+const UpgradeIcon = ({ done = false }: { done?: boolean }) => (
+  <div
+    aria-hidden="true"
+    className={`relative shrink-0 w-12 h-12 rounded-xl border flex items-center justify-center ${
+      done
+        ? "bg-green-100 border-green-200 text-green-700"
+        : "bg-secondary border-border text-secondary-foreground"
+    }`}
+  >
+    <svg
+      width={26}
+      height={26}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.7}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      {/* uprights */}
+      <path d="M5 4v16M19 4v16" />
+      {/* shelves */}
+      <path d="M5 4h14M5 10h14M5 16h14" />
+      {/* boxes on shelves */}
+      <rect x="7.5" y="5.5" width="3" height="3" rx="0.4" />
+      <rect x="13.5" y="11.5" width="3" height="3" rx="0.4" />
+    </svg>
+    <span
+      className={`absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full flex items-center justify-center text-primary-foreground shadow ${
+        done ? "bg-green-600" : "bg-primary"
+      }`}
+    >
+      <svg
+        width={12}
+        height={12}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={3.5}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        {done ? (
+          <polyline points="20 6 9 17 4 12" />
+        ) : (
+          <path d="M12 5v14M5 12h14" />
+        )}
+      </svg>
+    </span>
+  </div>
+);
+
 const Mejoras = () => {
   const { mejoras, addMejora, updateMejora, deleteMejora } = useData();
   const [show, setShow] = useState(false);
@@ -2372,14 +2426,17 @@ const Mejoras = () => {
       key={m.id}
       className="bg-card border border-border rounded-2xl p-3.5 mb-2.5"
     >
-      <div className="flex items-start justify-between gap-2.5 mb-1.5">
-        <div className="text-sm font-bold text-card-foreground text-pretty break-words flex-1">
-          {m.titulo}
+      <div className="flex items-start justify-between gap-3 mb-1.5">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-card-foreground text-pretty break-words mb-1.5">
+            {m.titulo}
+          </div>
+          <div className="flex flex-wrap gap-1">
+            <Badge e={m.prioridad} />
+            <Badge e={m.estado} />
+          </div>
         </div>
-        <div className="flex gap-1 shrink-0">
-          <Badge e={m.prioridad} />
-          <Badge e={m.estado} />
-        </div>
+        <UpgradeIcon done={m.estado === "Completada"} />
       </div>
       {m.descripcion && (
         <div className="text-xs text-muted-foreground leading-relaxed break-words mb-2">
