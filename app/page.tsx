@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, createContext, useContext, useRef, type R
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
+import Fuse from "fuse.js";
 
 // ------------------------------
 // Types
@@ -23,7 +24,7 @@ interface Producto {
   nom: string;
   sku?: string;
   barcode?: string;
-  cat?: string;
+  etiquetas: string[];
   precio: number;
   costo: number;
   cajas: number;
@@ -254,7 +255,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       supabase.from("empleados").select("*").order("created_at", { ascending: false }),
     ]);
     if (c.data) setClientes(c.data as Cliente[]);
-    if (p.data) setProductos(p.data as Producto[]);
+    if (p.data) setProductos((p.data as Producto[]).map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
     if (f.data) setFacturas(f.data as Factura[]);
     if (o.data) setOrdenes((o.data as Orden[]).map((row) => ({ ...row, lineas: row.lineas || [] })));
     if (e.data) setNomina(e.data as Empleado[]);
@@ -298,6 +299,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       cajas: Math.max(0, Number(prod.cajas) || 0),
       stock: Math.max(0, Number(prod.stock) || 0),
       min: Math.max(0, Number(prod.min) || 5),
+      etiquetas: Array.isArray(prod.etiquetas)
+        ? Array.from(new Set(prod.etiquetas.map((t) => t.trim()).filter(Boolean)))
+        : [],
     };
     delete (validated as { icon?: string }).icon;
     return validated;
@@ -1034,6 +1038,28 @@ type BulkRow = {
   _error?: string;
 };
 
+// Normalize text for typo/accent tolerant matching:
+// lowercases, strips accents, and collapses common Spanish spelling variants
+// (e.g. "risos" -> "rizos", "kabello" -> "cabello").
+const normTag = (s: string) =>
+  String(s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove accents
+    .replace(/[^a-z0-9ñ ]/g, "")
+    .trim()
+    .replace(/\s+/g, " ")
+    // phonetic-ish folding for common DR/ES misspellings
+    .replace(/z/g, "s") // rizos / risos
+    .replace(/c([ei])/g, "s$1") // celular / selular
+    .replace(/qu/g, "k")
+    .replace(/c/g, "k") // cabello / kabello
+    .replace(/v/g, "b") // vello / bello
+    .replace(/h/g, "") // hair / air (silent h)
+    .replace(/y/g, "i")
+    .replace(/ll/g, "i")
+    .replace(/(.)\1+/g, "$1"); // collapse doubled letters
+
 const Inventario = () => {
   const { productos, addProducto, addProductosBulk, updateProducto, deleteProducto } = useData();
   const [q, setQ] = useState("");
@@ -1045,10 +1071,12 @@ const Inventario = () => {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const [bulkErr, setBulkErr] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [etqInput, setEtqInput] = useState("");
+  const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [form, setForm] = useState({
     nom: "",
     sku: "",
-    cat: "",
+    etiquetas: [] as string[],
     precio: "",
     costo: "",
     cajas: "",
@@ -1058,22 +1086,92 @@ const Inventario = () => {
     barcode: "",
   });
 
-  const filtered = q
-    ? productos.filter(
-        (p) =>
-          p.nom.toLowerCase().includes(q.toLowerCase()) ||
-          p.sku?.toLowerCase().includes(q.toLowerCase()) ||
-          (p.barcode || "").includes(q)
-      )
-    : productos;
+  // All unique tags across products, for the filter row
+  const allTags = useMemo(() => {
+    const set = new Set<string>();
+    productos.forEach((p) => (p.etiquetas || []).forEach((t) => set.add(t)));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+  }, [productos]);
+
+  // Fuzzy search index over name, sku, barcode, and normalized tags
+  const fuse = useMemo(
+    () =>
+      new Fuse(
+        productos.map((p) => ({
+          ...p,
+          _tags: (p.etiquetas || []).join(" "),
+          _normTags: (p.etiquetas || []).map(normTag).join(" "),
+          _normNom: normTag(p.nom),
+        })),
+        {
+          includeScore: true,
+          threshold: 0.45, // tolerant of typos
+          ignoreLocation: true,
+          keys: [
+            { name: "nom", weight: 2 },
+            { name: "_normNom", weight: 2 },
+            { name: "sku", weight: 1 },
+            { name: "barcode", weight: 1 },
+            { name: "_tags", weight: 2 },
+            { name: "_normTags", weight: 2 },
+          ],
+        }
+      ),
+    [productos]
+  );
+
+  const filtered = useMemo(() => {
+    let list = productos;
+
+    // Text search (fuzzy, typo tolerant). Search both the raw query and its
+    // normalized form so "risos" matches "rizos".
+    if (q.trim()) {
+      const ids = new Set<string>();
+      [q, normTag(q)].forEach((term) => {
+        if (!term.trim()) return;
+        fuse.search(term).forEach((r) => ids.add(r.item.id));
+      });
+      list = list.filter((p) => ids.has(p.id));
+    }
+
+    // Tag filter (product must contain ALL selected tags)
+    if (tagFilter.length) {
+      list = list.filter((p) => {
+        const pNorm = (p.etiquetas || []).map(normTag);
+        return tagFilter.every((t) => pNorm.includes(normTag(t)));
+      });
+    }
+
+    return list;
+  }, [productos, q, tagFilter, fuse]);
+
+  const addTag = (raw: string) => {
+    const t = raw.trim().toLowerCase();
+    if (!t) return;
+    if (form.etiquetas.some((e) => normTag(e) === normTag(t))) {
+      setEtqInput("");
+      return;
+    }
+    setForm((f) => ({ ...f, etiquetas: [...f.etiquetas, t] }));
+    setEtqInput("");
+  };
+
+  const removeTag = (t: string) =>
+    setForm((f) => ({ ...f, etiquetas: f.etiquetas.filter((e) => e !== t) }));
+
+  const toggleTagFilter = (t: string) =>
+    setTagFilter((prev) =>
+      prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t]
+    );
 
   const openNew = () => {
     setEditId(null);
     setFoto(null);
+    setEtqInput("");
     setForm({
       nom: "",
       sku: "",
-      cat: "",
+      etiquetas: [],
       precio: "",
       costo: "",
       cajas: "",
@@ -1089,10 +1187,11 @@ const Inventario = () => {
   const openEdit = (p: Producto) => {
     setEditId(p.id);
     setFoto(p.foto || null);
+    setEtqInput("");
     setForm({
       nom: p.nom || "",
       sku: p.sku || "",
-      cat: p.cat || "",
+      etiquetas: p.etiquetas || [],
       precio: String(p.precio),
       costo: String(p.costo ?? ""),
       cajas: String(p.cajas ?? ""),
@@ -1109,10 +1208,16 @@ const Inventario = () => {
       alert("Ingresa el nombre");
       return;
     }
+    // Fold any pending tag still in the input box into the list
+    const etiquetas = etqInput.trim()
+      ? form.etiquetas.some((e) => normTag(e) === normTag(etqInput))
+        ? form.etiquetas
+        : [...form.etiquetas, etqInput.trim().toLowerCase()]
+      : form.etiquetas;
     const productData = {
       nom: form.nom,
       sku: form.sku,
-      cat: form.cat,
+      etiquetas,
       precio: Number(form.precio),
       costo: Number(form.costo),
       cajas: Number(form.cajas),
@@ -1259,7 +1364,7 @@ const Inventario = () => {
         valid.map((r) => ({
           nom: r.nom,
           sku: r.sku,
-          cat: "",
+          etiquetas: [],
           barcode: r.barcode,
           precio: r.precio,
           costo: r.costo,
@@ -1284,9 +1389,37 @@ const Inventario = () => {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar producto o codigo..."
+        placeholder="Buscar por nombre, codigo o etiqueta..."
         className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
       />
+      {allTags.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+          {tagFilter.length > 0 && (
+            <button
+              onClick={() => setTagFilter([])}
+              className="shrink-0 text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground"
+            >
+              Limpiar
+            </button>
+          )}
+          {allTags.map((t) => {
+            const active = tagFilter.includes(t);
+            return (
+              <button
+                key={t}
+                onClick={() => toggleTagFilter(t)}
+                className={`shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  active
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-secondary-foreground border-border"
+                }`}
+              >
+                {t}
+              </button>
+            );
+          })}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-2.5 mb-3">
         {filtered.length ? (
           filtered.map((p) => {
@@ -1325,6 +1458,23 @@ const Inventario = () => {
                 {p.barcode && (
                   <div className="text-xs text-muted-foreground font-mono mb-0.5">
                     CB: {p.barcode}
+                  </div>
+                )}
+                {(p.etiquetas || []).length > 0 && (
+                  <div className="flex flex-wrap gap-1 mb-1">
+                    {p.etiquetas.slice(0, 4).map((t) => (
+                      <span
+                        key={t}
+                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground"
+                      >
+                        {t}
+                      </span>
+                    ))}
+                    {p.etiquetas.length > 4 && (
+                      <span className="text-[10px] px-1 py-0.5 text-muted-foreground">
+                        +{p.etiquetas.length - 4}
+                      </span>
+                    )}
                   </div>
                 )}
                 <Badge e={estado} />
@@ -1538,22 +1688,52 @@ const Inventario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Row2>
-            <Field label="SKU">
+          <Field label="SKU">
+            <input
+              value={form.sku}
+              onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <Field label="Etiquetas">
+            <div className="w-full px-2 py-2 rounded-xl border border-input bg-card focus-within:ring-2 focus-within:ring-ring">
+              {form.etiquetas.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-1.5">
+                  {form.etiquetas.map((t) => (
+                    <span
+                      key={t}
+                      className="flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-secondary text-secondary-foreground"
+                    >
+                      {t}
+                      <button
+                        type="button"
+                        onClick={() => removeTag(t)}
+                        aria-label={`Quitar ${t}`}
+                        className="text-secondary-foreground/70 hover:text-secondary-foreground leading-none"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
               <input
-                value={form.sku}
-                onChange={(e) => setForm({ ...form, sku: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                value={etqInput}
+                onChange={(e) => setEtqInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === ",") {
+                    e.preventDefault();
+                    addTag(etqInput);
+                  } else if (e.key === "Backspace" && !etqInput && form.etiquetas.length) {
+                    removeTag(form.etiquetas[form.etiquetas.length - 1]);
+                  }
+                }}
+                onBlur={() => etqInput.trim() && addTag(etqInput)}
+                placeholder="Escribe y presiona Enter (ej. aceite, rizos, hair)"
+                className="w-full px-1 py-1 bg-transparent text-card-foreground text-base outline-none"
               />
-            </Field>
-            <Field label="Categoria">
-              <input
-                value={form.cat}
-                onChange={(e) => setForm({ ...form, cat: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-          </Row2>
+            </div>
+          </Field>
           <Row2>
             <Field label="Precio ($)">
               <input
