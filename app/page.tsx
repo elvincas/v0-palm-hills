@@ -24,6 +24,7 @@ interface Producto {
   nom: string;
   sku?: string;
   barcode?: string;
+  fabricante?: string;
   etiquetas: string[];
   precio: number;
   costo: number;
@@ -302,6 +303,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       etiquetas: Array.isArray(prod.etiquetas)
         ? Array.from(new Set(prod.etiquetas.map((t) => t.trim()).filter(Boolean)))
         : [],
+      fabricante: (prod.fabricante || "").trim(),
     };
     delete (validated as { icon?: string }).icon;
     return validated;
@@ -1029,6 +1031,7 @@ const Clientes = () => {
 type BulkRow = {
   sku: string;
   nom: string;
+  fabricante: string;
   stock: number;
   cajas: number;
   barcode: string;
@@ -1037,6 +1040,17 @@ type BulkRow = {
   min: number;
   _error?: string;
 };
+
+type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku";
+
+const SORT_OPTIONS: { key: SortKey; label: string }[] = [
+  { key: "nom", label: "A-Z Descripcion" },
+  { key: "precio", label: "Precio" },
+  { key: "stock", label: "Inventario Actual" },
+  { key: "fabricante", label: "Fabricante" },
+  { key: "barcode", label: "Codigo de Barras" },
+  { key: "sku", label: "SKU" },
+];
 
 // Normalize text for typo/accent tolerant matching:
 // lowercases, strips accents, and collapses common Spanish spelling variants
@@ -1073,9 +1087,11 @@ const Inventario = () => {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [etqInput, setEtqInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [sortBy, setSortBy] = useState<SortKey>("nom");
   const [form, setForm] = useState({
     nom: "",
     sku: "",
+    fabricante: "",
     etiquetas: [] as string[],
     precio: "",
     costo: "",
@@ -1142,8 +1158,44 @@ const Inventario = () => {
       });
     }
 
-    return list;
-  }, [productos, q, tagFilter, fuse]);
+    // Sorting. Numeric fields sort descending (highest first); text fields
+    // sort A-Z using a locale-aware, accent-insensitive comparison so "Ácido"
+    // and "Acido" order naturally and empty values fall to the end.
+    const sorted = [...list];
+    const textCmp = (a: string, b: string) =>
+      (a || "").localeCompare(b || "", "es", { sensitivity: "base", numeric: true });
+    const blankLast = (v: string) => (v && v.trim() ? 0 : 1);
+
+    if (sortBy === "precio") {
+      sorted.sort((a, b) => (b.precio || 0) - (a.precio || 0));
+    } else if (sortBy === "stock") {
+      sorted.sort((a, b) => (b.stock || 0) - (a.stock || 0));
+    } else if (sortBy === "fabricante") {
+      sorted.sort(
+        (a, b) =>
+          blankLast(a.fabricante || "") - blankLast(b.fabricante || "") ||
+          textCmp(a.fabricante || "", b.fabricante || "") ||
+          textCmp(a.nom, b.nom)
+      );
+    } else if (sortBy === "barcode") {
+      sorted.sort(
+        (a, b) =>
+          blankLast(a.barcode || "") - blankLast(b.barcode || "") ||
+          textCmp(a.barcode || "", b.barcode || "")
+      );
+    } else if (sortBy === "sku") {
+      sorted.sort(
+        (a, b) =>
+          blankLast(a.sku || "") - blankLast(b.sku || "") ||
+          textCmp(a.sku || "", b.sku || "")
+      );
+    } else {
+      // Default: A-Z by description
+      sorted.sort((a, b) => textCmp(a.nom, b.nom));
+    }
+
+    return sorted;
+  }, [productos, q, tagFilter, fuse, sortBy]);
 
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase();
@@ -1171,6 +1223,7 @@ const Inventario = () => {
     setForm({
       nom: "",
       sku: "",
+      fabricante: "",
       etiquetas: [],
       precio: "",
       costo: "",
@@ -1191,6 +1244,7 @@ const Inventario = () => {
     setForm({
       nom: p.nom || "",
       sku: p.sku || "",
+      fabricante: p.fabricante || "",
       etiquetas: p.etiquetas || [],
       precio: String(p.precio),
       costo: String(p.costo ?? ""),
@@ -1217,6 +1271,7 @@ const Inventario = () => {
     const productData = {
       nom: form.nom,
       sku: form.sku,
+      fabricante: form.fabricante,
       etiquetas,
       precio: Number(form.precio),
       costo: Number(form.costo),
@@ -1260,6 +1315,7 @@ const Inventario = () => {
   const COLS: Record<keyof Omit<BulkRow, "_error">, string[]> = {
     sku: ["sku"],
     nom: ["descripcion", "descripcionn", "nombre", "producto"],
+    fabricante: ["fabricante", "marca", "proveedor", "manufacturer"],
     stock: ["inventarioactual", "inventario", "stock", "existencia"],
     cajas: ["cantidadporcajas", "cantidadcajas", "cajas", "porcaja", "unidadesporcaja"],
     barcode: ["codigodebarras", "codigobarras", "barcode", "cb"],
@@ -1294,6 +1350,7 @@ const Inventario = () => {
       const keyMap = {
         sku: findKey(headers, COLS.sku),
         nom: findKey(headers, COLS.nom),
+        fabricante: findKey(headers, COLS.fabricante),
         stock: findKey(headers, COLS.stock),
         cajas: findKey(headers, COLS.cajas),
         barcode: findKey(headers, COLS.barcode),
@@ -1317,6 +1374,7 @@ const Inventario = () => {
         return {
           sku: String(keyMap.sku ? r[keyMap.sku] : "").trim(),
           nom,
+          fabricante: String(keyMap.fabricante ? r[keyMap.fabricante] : "").trim(),
           stock: keyMap.stock ? num(r[keyMap.stock]) : 0,
           cajas: keyMap.cajas ? num(r[keyMap.cajas]) : 0,
           barcode: String(keyMap.barcode ? r[keyMap.barcode] : "").trim(),
@@ -1338,6 +1396,7 @@ const Inventario = () => {
       [
         "SKU",
         "Descripcion",
+        "Fabricante",
         "Inventario Actual",
         "Cantidad por cajas",
         "Codigo de Barras",
@@ -1345,7 +1404,7 @@ const Inventario = () => {
         "Costo",
         "Inventario minimo",
       ],
-      ["SHP-001", "Shampoo Hidratante Pro", 45, 12, "7503000123401", 850, 520, 10],
+      ["SHP-001", "Shampoo Hidratante Pro", "Acromona", 45, 12, "7503000123401", 850, 520, 10],
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Productos");
@@ -1364,6 +1423,7 @@ const Inventario = () => {
         valid.map((r) => ({
           nom: r.nom,
           sku: r.sku,
+          fabricante: r.fabricante,
           etiquetas: [],
           barcode: r.barcode,
           precio: r.precio,
@@ -1390,8 +1450,31 @@ const Inventario = () => {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Buscar por nombre, codigo o etiqueta..."
-        className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
+        className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-2.5 outline-none focus:ring-2 focus:ring-ring"
       />
+      <div className="flex items-center gap-2 mb-3">
+        <label
+          htmlFor="sortBy"
+          className="text-xs text-muted-foreground shrink-0"
+        >
+          Ordenar por
+        </label>
+        <select
+          id="sortBy"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as SortKey)}
+          className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+        >
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.key} value={o.key}>
+              {o.label}
+            </option>
+          ))}
+        </select>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {filtered.length} prod.
+        </span>
+      </div>
       {allTags.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
           {tagFilter.length > 0 && (
@@ -1455,6 +1538,11 @@ const Inventario = () => {
                 <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
                   {p.sku}
                 </div>
+                {p.fabricante && (
+                  <div className="text-xs text-muted-foreground mb-0.5 break-words">
+                    {p.fabricante}
+                  </div>
+                )}
                 {p.barcode && (
                   <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
                     CB: {p.barcode}
@@ -1535,8 +1623,8 @@ const Inventario = () => {
           <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
             Sube un archivo Excel (.xlsx) con estas columnas:{" "}
             <span className="font-medium text-card-foreground">
-              SKU, Descripcion, Inventario Actual, Cantidad por cajas, Codigo de Barras,
-              Precio, Costo, Inventario minimo
+              SKU, Descripcion, Fabricante, Inventario Actual, Cantidad por cajas,
+              Codigo de Barras, Precio, Costo, Inventario minimo
             </span>
             .
           </div>
@@ -1694,6 +1782,13 @@ const Inventario = () => {
             <input
               value={form.sku}
               onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <Field label="Fabricante">
+            <input
+              value={form.fabricante}
+              onChange={(e) => setForm({ ...form, fabricante: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
