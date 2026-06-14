@@ -64,16 +64,14 @@ interface Orden {
   lineas?: LineaOrden[];
 }
 
-interface Empleado {
+interface Mejora {
   id: string;
-  nom: string;
-  puesto?: string;
-  dept?: string;
-  sal: number;
-  ded: number;
-  fecha?: string;
+  titulo: string;
+  descripcion: string;
+  costo: number;
+  prioridad: string;
   estado: string;
-  email?: string;
+  created_at?: string;
 }
 
 interface LogEntry {
@@ -118,6 +116,11 @@ const BM: Record<string, string> = {
   "Sin stock": "bg-red-100 text-red-800",
   "Stock bajo": "bg-amber-100 text-amber-800",
   "En stock": "bg-green-100 text-green-800",
+  Alta: "bg-red-100 text-red-800",
+  Media: "bg-amber-100 text-amber-800",
+  Baja: "bg-blue-100 text-blue-800",
+  Completada: "bg-green-100 text-green-800",
+  "En progreso": "bg-blue-100 text-blue-800",
 };
 
 const Badge = ({ e }: { e: string }) => (
@@ -194,7 +197,7 @@ interface DataContextType {
   productos: Producto[];
   facturas: Factura[];
   ordenes: Orden[];
-  nomina: Empleado[];
+  mejoras: Mejora[];
   logs: LogEntry[];
   loading: boolean;
   addCliente: (c: Omit<Cliente, "id">) => void;
@@ -209,9 +212,9 @@ interface DataContextType {
   addOrden: (o: Omit<Orden, "id" | "num">) => void;
   deleteOrden: (id: string) => void;
   updateOrden: (id: string, o: Orden) => void;
-  addEmpleado: (e: Omit<Empleado, "id">) => void;
-  deleteEmpleado: (id: string) => void;
-  updateEmpleado: (id: string, e: Omit<Empleado, "id">) => void;
+  addMejora: (m: Omit<Mejora, "id">) => void;
+  deleteMejora: (id: string) => void;
+  updateMejora: (id: string, m: Omit<Mejora, "id">) => void;
   refreshLogs: () => void;
 }
 
@@ -229,7 +232,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [productos, setProductos] = useState<Producto[]>([]);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
-  const [nomina, setNomina] = useState<Empleado[]>([]);
+  const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -253,13 +256,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       supabase.from("productos").select("*").order("created_at", { ascending: false }),
       supabase.from("facturas").select("*").order("num", { ascending: false }),
       supabase.from("ordenes").select("*").order("num", { ascending: false }),
-      supabase.from("empleados").select("*").order("created_at", { ascending: false }),
+      supabase.from("mejoras").select("*").order("created_at", { ascending: false }),
     ]);
     if (c.data) setClientes(c.data as Cliente[]);
     if (p.data) setProductos((p.data as Producto[]).map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
     if (f.data) setFacturas(f.data as Factura[]);
     if (o.data) setOrdenes((o.data as Orden[]).map((row) => ({ ...row, lineas: row.lineas || [] })));
-    if (e.data) setNomina(e.data as Empleado[]);
+    if (e.data) setMejoras(e.data as Mejora[]);
     await refreshLogs();
     setLoading(false);
   };
@@ -372,33 +375,31 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Orden #${updated.num} actualizada`);
   };
 
-  // --- Empleados ---
-  const addEmpleado = async (emp: Omit<Empleado, "id">) => {
-    const validated = {
-      ...emp,
-      sal: Math.max(0, Number(emp.sal) || 0),
-      ded: Math.max(0, Number(emp.ded) || 0),
-    };
-    const { data } = await supabase.from("empleados").insert(validated).select().single();
-    if (data) setNomina((prev) => [data as Empleado, ...prev]);
-    await logAct(`Empleado agregado: ${emp.nom}`);
+  // --- Mejoras ---
+  const sanitizeMejora = (m: Omit<Mejora, "id">) => ({
+    titulo: (m.titulo || "").trim(),
+    descripcion: (m.descripcion || "").trim(),
+    costo: Math.max(0, Number(m.costo) || 0),
+    prioridad: m.prioridad || "Media",
+    estado: m.estado || "Pendiente",
+  });
+
+  const addMejora = async (m: Omit<Mejora, "id">) => {
+    const { data } = await supabase.from("mejoras").insert(sanitizeMejora(m)).select().single();
+    if (data) setMejoras((prev) => [data as Mejora, ...prev]);
+    await logAct(`Mejora agregada: ${m.titulo}`);
   };
 
-  const deleteEmpleado = async (id: string) => {
-    await supabase.from("empleados").delete().eq("id", id);
-    setNomina((prev) => prev.filter((e) => e.id !== id));
-    await logAct(`Empleado eliminado`);
+  const deleteMejora = async (id: string) => {
+    await supabase.from("mejoras").delete().eq("id", id);
+    setMejoras((prev) => prev.filter((e) => e.id !== id));
+    await logAct(`Mejora eliminada`);
   };
 
-  const updateEmpleado = async (id: string, emp: Omit<Empleado, "id">) => {
-    const validated = {
-      ...emp,
-      sal: Math.max(0, Number(emp.sal) || 0),
-      ded: Math.max(0, Number(emp.ded) || 0),
-    };
-    const { data } = await supabase.from("empleados").update(validated).eq("id", id).select().single();
-    if (data) setNomina((prev) => prev.map((e) => (e.id === id ? (data as Empleado) : e)));
-    await logAct(`Empleado actualizado: ${emp.nom}`);
+  const updateMejora = async (id: string, m: Omit<Mejora, "id">) => {
+    const { data } = await supabase.from("mejoras").update(sanitizeMejora(m)).eq("id", id).select().single();
+    if (data) setMejoras((prev) => prev.map((e) => (e.id === id ? (data as Mejora) : e)));
+    await logAct(`Mejora actualizada: ${m.titulo}`);
   };
 
   const value: DataContextType = {
@@ -406,7 +407,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     productos,
     facturas,
     ordenes,
-    nomina,
+    mejoras,
     logs,
     loading,
     addCliente,
@@ -421,9 +422,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addOrden,
     deleteOrden,
     updateOrden,
-    addEmpleado,
-    deleteEmpleado,
-    updateEmpleado,
+    addMejora,
+    deleteMejora,
+    updateMejora,
     refreshLogs,
   };
 
@@ -2279,168 +2280,220 @@ const Ordenes = () => {
 };
 
 // ------------------------------
-// Nomina
+// Mejoras
 // ------------------------------
-const Nomina = () => {
-  const { nomina, addEmpleado, deleteEmpleado } = useData();
+const PRIORIDADES = ["Alta", "Media", "Baja"];
+const ESTADOS_MEJORA = ["Pendiente", "En progreso", "Completada"];
+const PRIO_ORDER: Record<string, number> = { Alta: 0, Media: 1, Baja: 2 };
+
+const Mejoras = () => {
+  const { mejoras, addMejora, updateMejora, deleteMejora } = useData();
   const [show, setShow] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
-    nom: "",
-    puesto: "",
-    dept: "",
-    sal: "",
-    ded: "",
-    fecha: "",
-    estado: "Al corriente",
-    email: "",
+    titulo: "",
+    descripcion: "",
+    costo: "",
+    prioridad: "Media",
+    estado: "Pendiente",
   });
 
-  const totalBruto = useMemo(
-    () => nomina.reduce((sum, e) => sum + Number(e.sal), 0),
-    [nomina]
-  );
-  const totalNeto = useMemo(
+  // Pending improvements (not completed), sorted by priority
+  const pendientes = useMemo(
     () =>
-      nomina.reduce((sum, e) => sum + (Number(e.sal) - Number(e.ded || 0)), 0),
-    [nomina]
+      mejoras
+        .filter((m) => m.estado !== "Completada")
+        .sort(
+          (a, b) =>
+            (PRIO_ORDER[a.prioridad] ?? 1) - (PRIO_ORDER[b.prioridad] ?? 1)
+        ),
+    [mejoras]
+  );
+  const completadas = useMemo(
+    () => mejoras.filter((m) => m.estado === "Completada"),
+    [mejoras]
+  );
+  const costoTotal = useMemo(
+    () =>
+      mejoras
+        .filter((m) => m.estado !== "Completada")
+        .reduce((sum, m) => sum + Number(m.costo || 0), 0),
+    [mejoras]
   );
 
+  const reset = () => {
+    setForm({
+      titulo: "",
+      descripcion: "",
+      costo: "",
+      prioridad: "Media",
+      estado: "Pendiente",
+    });
+    setEditId(null);
+  };
+
+  const openNew = () => {
+    reset();
+    setShow(true);
+  };
+
+  const openEdit = (m: Mejora) => {
+    setEditId(m.id);
+    setForm({
+      titulo: m.titulo || "",
+      descripcion: m.descripcion || "",
+      costo: m.costo ? String(m.costo) : "",
+      prioridad: m.prioridad || "Media",
+      estado: m.estado || "Pendiente",
+    });
+    setShow(true);
+  };
+
   const handleSave = () => {
-    if (!form.nom.trim()) {
-      alert("Ingresa el nombre");
+    if (!form.titulo.trim()) {
+      alert("Ingresa el titulo de la mejora");
       return;
     }
-    addEmpleado({
-      nom: form.nom,
-      puesto: form.puesto,
-      dept: form.dept,
-      sal: Number(form.sal),
-      ded: Number(form.ded),
-      fecha: form.fecha,
+    const payload = {
+      titulo: form.titulo,
+      descripcion: form.descripcion,
+      costo: Number(form.costo),
+      prioridad: form.prioridad,
       estado: form.estado,
-      email: form.email,
-    });
-    setForm({
-      nom: "",
-      puesto: "",
-      dept: "",
-      sal: "",
-      ded: "",
-      fecha: "",
-      estado: "Al corriente",
-      email: "",
-    });
+    };
+    if (editId) updateMejora(editId, payload);
+    else addMejora(payload);
+    reset();
     setShow(false);
   };
+
+  const card = (m: Mejora) => (
+    <div
+      key={m.id}
+      className="bg-card border border-border rounded-2xl p-3.5 mb-2.5"
+    >
+      <div className="flex items-start justify-between gap-2.5 mb-1.5">
+        <div className="text-sm font-bold text-card-foreground text-pretty break-words flex-1">
+          {m.titulo}
+        </div>
+        <div className="flex gap-1 shrink-0">
+          <Badge e={m.prioridad} />
+          <Badge e={m.estado} />
+        </div>
+      </div>
+      {m.descripcion && (
+        <div className="text-xs text-muted-foreground leading-relaxed break-words mb-2">
+          {m.descripcion}
+        </div>
+      )}
+      <div className="flex items-center justify-between gap-2.5">
+        <div className="text-sm font-bold text-secondary-foreground">
+          {Number(m.costo) > 0 ? `Costo est.: ${fmt(Number(m.costo))}` : "Sin costo estimado"}
+        </div>
+        <div className="flex gap-1.5">
+          <button
+            className="px-2.5 py-1 rounded-lg bg-card border border-border text-secondary-foreground text-xs font-bold"
+            onClick={() => openEdit(m)}
+          >
+            Editar
+          </button>
+          <button
+            className="px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs font-bold"
+            onClick={() => {
+              if (confirm("Eliminar esta mejora?")) deleteMejora(m.id);
+            }}
+          >
+            Eliminar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <div>
       <div className="grid grid-cols-2 gap-2.5 mb-3.5">
         <div className="bg-card rounded-xl p-3.5 border border-border">
-          <div className="text-xs text-muted-foreground mb-1">Nomina bruta</div>
-          <div className="text-xl font-bold text-card-foreground">{fmt(totalBruto)}</div>
+          <div className="text-xs text-muted-foreground mb-1">Mejoras pendientes</div>
+          <div className="text-xl font-bold text-card-foreground">{pendientes.length}</div>
         </div>
         <div className="bg-card rounded-xl p-3.5 border border-border">
-          <div className="text-xs text-muted-foreground mb-1">Neto total</div>
-          <div className="text-xl font-bold text-card-foreground">{fmt(totalNeto)}</div>
+          <div className="text-xs text-muted-foreground mb-1">Inversion estimada</div>
+          <div className="text-xl font-bold text-card-foreground">{fmt(costoTotal)}</div>
         </div>
       </div>
-      <div className="bg-card rounded-2xl p-3.5 border border-border">
-        {nomina.length ? (
-          nomina.map((n) => (
-            <Li
-              key={n.id}
-              left={
-                <>
-                  <div className="text-sm font-semibold truncate text-card-foreground">
-                    {n.nom}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    {n.puesto || ""} - Neto:{" "}
-                    {fmt(Number(n.sal) - Number(n.ded || 0))}
-                  </div>
-                </>
-              }
-              right={
-                <>
-                  <Badge e={n.estado} />
-                  <br />
-                  <button
-                    className="mt-1.5 px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs"
-                    onClick={() => {
-                      if (confirm("Eliminar empleado?")) deleteEmpleado(n.id);
-                    }}
-                  >
-                    Eliminar
-                  </button>
-                </>
-              }
-            />
-          ))
-        ) : (
-          <Empty text="Sin empleados. Toca + para agregar." />
-        )}
-      </div>
+
+      {mejoras.length === 0 ? (
+        <div className="bg-card rounded-2xl p-3.5 border border-border">
+          <Empty text="Sin mejoras todavia. Toca + para agregar una idea para el negocio." />
+        </div>
+      ) : (
+        <>
+          {pendientes.map(card)}
+          {completadas.length > 0 && (
+            <>
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-4 mb-2">
+                Completadas
+              </div>
+              {completadas.map(card)}
+            </>
+          )}
+        </>
+      )}
+
       <button
         className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
-        onClick={() => setShow(true)}
+        onClick={openNew}
+        aria-label="Agregar mejora"
       >
         +
       </button>
 
       {show && (
-        <Modal title="Nuevo Empleado" onClose={() => setShow(false)}>
-          <Field label="Nombre *">
+        <Modal
+          title={editId ? "Editar Mejora" : "Nueva Mejora"}
+          onClose={() => {
+            reset();
+            setShow(false);
+          }}
+        >
+          <Field label="Mejora *">
             <input
-              value={form.nom}
-              onChange={(e) => setForm({ ...form, nom: e.target.value })}
+              value={form.titulo}
+              onChange={(e) => setForm({ ...form, titulo: e.target.value })}
+              placeholder="Ej. Adquirir una van"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <Field label="Descripcion / notas">
+            <textarea
+              value={form.descripcion}
+              onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
+              rows={3}
+              placeholder="Detalles, justificacion, proveedores, etc."
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring resize-none"
+            />
+          </Field>
+          <Field label="Costo estimado ($)">
+            <input
+              type="number"
+              step="0.01"
+              value={form.costo}
+              onChange={(e) => setForm({ ...form, costo: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
           <Row2>
-            <Field label="Puesto">
-              <input
-                value={form.puesto}
-                onChange={(e) => setForm({ ...form, puesto: e.target.value })}
+            <Field label="Prioridad">
+              <select
+                value={form.prioridad}
+                onChange={(e) => setForm({ ...form, prioridad: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-            <Field label="Departamento">
-              <input
-                value={form.dept}
-                onChange={(e) => setForm({ ...form, dept: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-          </Row2>
-          <Row2>
-            <Field label="Salario bruto ($)">
-              <input
-                type="number"
-                step="0.01"
-                value={form.sal}
-                onChange={(e) => setForm({ ...form, sal: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-            <Field label="Deducciones ($)">
-              <input
-                type="number"
-                step="0.01"
-                value={form.ded}
-                onChange={(e) => setForm({ ...form, ded: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-          </Row2>
-          <Row2>
-            <Field label="Fecha ingreso">
-              <input
-                type="date"
-                value={form.fecha}
-                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
+              >
+                {PRIORIDADES.map((p) => (
+                  <option key={p}>{p}</option>
+                ))}
+              </select>
             </Field>
             <Field label="Estado">
               <select
@@ -2448,23 +2501,18 @@ const Nomina = () => {
                 onChange={(e) => setForm({ ...form, estado: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               >
-                <option>Al corriente</option>
-                <option>Incidencia</option>
-                <option>Baja</option>
+                {ESTADOS_MEJORA.map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
               </select>
             </Field>
           </Row2>
-          <Field label="Email">
-            <input
-              type="email"
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            />
-          </Field>
           <div className="flex gap-2.5 mt-3.5">
             <button
-              onClick={() => setShow(false)}
+              onClick={() => {
+                reset();
+                setShow(false);
+              }}
               className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
             >
               Cancelar
@@ -2473,7 +2521,7 @@ const Nomina = () => {
               onClick={handleSave}
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
             >
-              Guardar Empleado
+              {editId ? "Guardar Cambios" : "Guardar Mejora"}
             </button>
           </div>
         </Modal>
@@ -2491,7 +2539,7 @@ const ICONS: Record<string, string> = {
   cli: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
   inv: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12",
   ord: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17M17 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM9 19a2 2 0 1 0 4 0 2 2 0 0 0-4 0z",
-  nom: "M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16",
+  mej: "M9 18h6 M10 22h4 M15.09 14c.18-.79.65-1.47 1.16-2.05A5 5 0 0 0 12 4a5 5 0 0 0-4.25 7.95c.51.58.98 1.26 1.16 2.05",
 };
 
 const TABS = [
@@ -2500,7 +2548,7 @@ const TABS = [
   { id: "cli", label: "Clientes" },
   { id: "inv", label: "Inventario" },
   { id: "ord", label: "Ordenes" },
-  { id: "nom", label: "Nomina" },
+  { id: "mej", label: "Mejoras" },
 ];
 
 const TITLES: Record<string, string> = {
@@ -2509,7 +2557,7 @@ const TITLES: Record<string, string> = {
   cli: "Clientes",
   inv: "Inventario",
   ord: "Ordenes",
-  nom: "Nomina",
+  mej: "Mejoras",
 };
 
 function AppContent() {
@@ -2534,7 +2582,7 @@ function AppContent() {
     cli: <Clientes />,
     inv: <Inventario />,
     ord: <Ordenes />,
-    nom: <Nomina />,
+    mej: <Mejoras />,
   };
 
   return (
