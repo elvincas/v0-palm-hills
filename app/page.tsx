@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, createContext, useContext, useRef, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import * as XLSX from "xlsx";
 
 // ------------------------------
 // Types
@@ -24,6 +25,8 @@ interface Producto {
   barcode?: string;
   cat?: string;
   precio: number;
+  costo: number;
+  cajas: number;
   stock: number;
   min: number;
   icon?: string;
@@ -196,6 +199,7 @@ interface DataContextType {
   deleteCliente: (id: string) => void;
   updateCliente: (id: string, c: Omit<Cliente, "id">) => void;
   addProducto: (p: Omit<Producto, "id">) => void;
+  addProductosBulk: (rows: Omit<Producto, "id">[]) => Promise<number>;
   updateProducto: (id: string, p: Omit<Producto, "id">) => void;
   deleteProducto: (id: string) => void;
   addFactura: (f: Omit<Factura, "id" | "num">) => void;
@@ -286,27 +290,36 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   // --- Productos ---
-  const addProducto = async (prod: Omit<Producto, "id">) => {
+  const sanitizeProducto = (prod: Omit<Producto, "id">) => {
     const validated = {
       ...prod,
       precio: Math.max(0, Number(prod.precio) || 0),
+      costo: Math.max(0, Number(prod.costo) || 0),
+      cajas: Math.max(0, Number(prod.cajas) || 0),
       stock: Math.max(0, Number(prod.stock) || 0),
       min: Math.max(0, Number(prod.min) || 5),
     };
     delete (validated as { icon?: string }).icon;
-    const { data } = await supabase.from("productos").insert(validated).select().single();
+    return validated;
+  };
+
+  const addProducto = async (prod: Omit<Producto, "id">) => {
+    const { data } = await supabase.from("productos").insert(sanitizeProducto(prod)).select().single();
     if (data) setProductos((prev) => [data as Producto, ...prev]);
     await logAct(`Nuevo producto: ${prod.nom}`);
   };
 
+  const addProductosBulk = async (rows: Omit<Producto, "id">[]) => {
+    const payload = rows.map(sanitizeProducto);
+    const { data, error } = await supabase.from("productos").insert(payload).select();
+    if (error) throw error;
+    if (data) setProductos((prev) => [...(data as Producto[]), ...prev]);
+    await logAct(`Carga masiva: ${data?.length || 0} productos`);
+    return data?.length || 0;
+  };
+
   const updateProducto = async (id: string, prod: Omit<Producto, "id">) => {
-    const validated = {
-      ...prod,
-      precio: Math.max(0, Number(prod.precio) || 0),
-      stock: Math.max(0, Number(prod.stock) || 0),
-      min: Math.max(0, Number(prod.min) || 5),
-    };
-    delete (validated as { icon?: string }).icon;
+    const validated = sanitizeProducto(prod);
     const { data } = await supabase.from("productos").update(validated).eq("id", id).select().single();
     if (data) setProductos((prev) => prev.map((p) => (p.id === id ? (data as Producto) : p)));
     await logAct(`Producto actualizado: ${prod.nom}`);
@@ -394,6 +407,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     deleteCliente,
     updateCliente,
     addProducto,
+    addProductosBulk,
     updateProducto,
     deleteProducto,
     addFactura,
@@ -1008,17 +1022,36 @@ const Clientes = () => {
 // ------------------------------
 // Inventario
 // ------------------------------
+type BulkRow = {
+  sku: string;
+  nom: string;
+  stock: number;
+  cajas: number;
+  barcode: string;
+  precio: number;
+  costo: number;
+  min: number;
+  _error?: string;
+};
+
 const Inventario = () => {
-  const { productos, addProducto, updateProducto, deleteProducto } = useData();
+  const { productos, addProducto, addProductosBulk, updateProducto, deleteProducto } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [foto, setFoto] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
+  const [bulkErr, setBulkErr] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [form, setForm] = useState({
     nom: "",
     sku: "",
     cat: "",
     precio: "",
+    costo: "",
+    cajas: "",
     stock: "",
     min: "5",
     icon: "",
@@ -1042,11 +1075,14 @@ const Inventario = () => {
       sku: "",
       cat: "",
       precio: "",
+      costo: "",
+      cajas: "",
       stock: "",
       min: "5",
       icon: "",
       barcode: "",
     });
+    setMenuOpen(false);
     setShow(true);
   };
 
@@ -1058,6 +1094,8 @@ const Inventario = () => {
       sku: p.sku || "",
       cat: p.cat || "",
       precio: String(p.precio),
+      costo: String(p.costo ?? ""),
+      cajas: String(p.cajas ?? ""),
       stock: String(p.stock),
       min: String(p.min),
       icon: p.icon || "",
@@ -1076,6 +1114,8 @@ const Inventario = () => {
       sku: form.sku,
       cat: form.cat,
       precio: Number(form.precio),
+      costo: Number(form.costo),
+      cajas: Number(form.cajas),
       stock: Number(form.stock),
       min: Number(form.min),
       icon: form.icon,
@@ -1095,6 +1135,148 @@ const Inventario = () => {
     const reader = new FileReader();
     reader.onload = (e) => setFoto(e.target?.result as string);
     reader.readAsDataURL(file);
+  };
+
+  const openBulk = () => {
+    setMenuOpen(false);
+    setBulkRows([]);
+    setBulkErr("");
+    setShowBulk(true);
+  };
+
+  // Normalize a header to match it loosely (ignore case, accents, spaces)
+  const norm = (s: string) =>
+    String(s || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]/g, "");
+
+  const COLS: Record<keyof Omit<BulkRow, "_error">, string[]> = {
+    sku: ["sku"],
+    nom: ["descripcion", "descripcionn", "nombre", "producto"],
+    stock: ["inventarioactual", "inventario", "stock", "existencia"],
+    cajas: ["cantidadporcajas", "cantidadcajas", "cajas", "porcaja", "unidadesporcaja"],
+    barcode: ["codigodebarras", "codigobarras", "barcode", "cb"],
+    precio: ["precio", "precioventa", "venta"],
+    costo: ["costo", "preciocosto"],
+    min: ["inventariominimo", "minimo", "stockminimo", "min"],
+  };
+
+  const findKey = (headers: string[], aliases: string[]) => {
+    const normalized = headers.map(norm);
+    for (const a of aliases) {
+      const idx = normalized.indexOf(a);
+      if (idx !== -1) return headers[idx];
+    }
+    return null;
+  };
+
+  const handleExcelUpload = async (file: File | undefined) => {
+    if (!file) return;
+    setBulkErr("");
+    try {
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+      if (!json.length) {
+        setBulkErr("El archivo esta vacio o no tiene filas de datos.");
+        setBulkRows([]);
+        return;
+      }
+      const headers = Object.keys(json[0]);
+      const keyMap = {
+        sku: findKey(headers, COLS.sku),
+        nom: findKey(headers, COLS.nom),
+        stock: findKey(headers, COLS.stock),
+        cajas: findKey(headers, COLS.cajas),
+        barcode: findKey(headers, COLS.barcode),
+        precio: findKey(headers, COLS.precio),
+        costo: findKey(headers, COLS.costo),
+        min: findKey(headers, COLS.min),
+      };
+      if (!keyMap.nom) {
+        setBulkErr(
+          "No se encontro la columna 'Descripcion'. Verifica los encabezados o descarga la plantilla."
+        );
+        setBulkRows([]);
+        return;
+      }
+      const num = (v: unknown) => {
+        const n = Number(String(v).replace(/[^0-9.-]/g, ""));
+        return isNaN(n) ? 0 : n;
+      };
+      const rows: BulkRow[] = json.map((r) => {
+        const nom = String(keyMap.nom ? r[keyMap.nom] : "").trim();
+        return {
+          sku: String(keyMap.sku ? r[keyMap.sku] : "").trim(),
+          nom,
+          stock: keyMap.stock ? num(r[keyMap.stock]) : 0,
+          cajas: keyMap.cajas ? num(r[keyMap.cajas]) : 0,
+          barcode: String(keyMap.barcode ? r[keyMap.barcode] : "").trim(),
+          precio: keyMap.precio ? num(r[keyMap.precio]) : 0,
+          costo: keyMap.costo ? num(r[keyMap.costo]) : 0,
+          min: keyMap.min ? num(r[keyMap.min]) : 5,
+          _error: nom ? undefined : "Falta descripcion",
+        };
+      });
+      setBulkRows(rows);
+    } catch {
+      setBulkErr("No se pudo leer el archivo. Asegurate de que sea un Excel valido (.xlsx).");
+      setBulkRows([]);
+    }
+  };
+
+  const downloadTemplate = () => {
+    const ws = XLSX.utils.aoa_to_sheet([
+      [
+        "SKU",
+        "Descripcion",
+        "Inventario Actual",
+        "Cantidad por cajas",
+        "Codigo de Barras",
+        "Precio",
+        "Costo",
+        "Inventario minimo",
+      ],
+      ["SHP-001", "Shampoo Hidratante Pro", 45, 12, "7503000123401", 850, 520, 10],
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Productos");
+    XLSX.writeFile(wb, "plantilla_inventario.xlsx");
+  };
+
+  const confirmBulk = async () => {
+    const valid = bulkRows.filter((r) => !r._error);
+    if (!valid.length) {
+      setBulkErr("No hay filas validas para importar.");
+      return;
+    }
+    setBulkSaving(true);
+    try {
+      const count = await addProductosBulk(
+        valid.map((r) => ({
+          nom: r.nom,
+          sku: r.sku,
+          cat: "",
+          barcode: r.barcode,
+          precio: r.precio,
+          costo: r.costo,
+          cajas: r.cajas,
+          stock: r.stock,
+          min: r.min,
+          foto: null,
+        }))
+      );
+      alert(`Se importaron ${count} productos correctamente.`);
+      setShowBulk(false);
+      setBulkRows([]);
+    } catch {
+      setBulkErr("Ocurrio un error al guardar. Intenta de nuevo.");
+    } finally {
+      setBulkSaving(false);
+    }
   };
 
   return (
@@ -1161,12 +1343,145 @@ const Inventario = () => {
           </div>
         )}
       </div>
-      <button
-        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
-        onClick={openNew}
-      >
-        +
-      </button>
+      {menuOpen && (
+        <div
+          className="fixed inset-0 z-[6]"
+          onClick={() => setMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
+        {menuOpen && (
+          <div className="flex flex-col gap-2 mb-1">
+            <button
+              onClick={openNew}
+              className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+            >
+              <span className="text-base" aria-hidden="true">✏️</span>
+              Agregar Manualmente
+            </button>
+            <button
+              onClick={openBulk}
+              className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+            >
+              <span className="text-base" aria-hidden="true">📄</span>
+              Subir A Granel
+            </button>
+          </div>
+        )}
+        <button
+          aria-label="Agregar producto"
+          className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
+          onClick={() => setMenuOpen((o) => !o)}
+        >
+          +
+        </button>
+      </div>
+
+      {showBulk && (
+        <Modal title="Subir Inventario A Granel" onClose={() => setShowBulk(false)}>
+          <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
+            Sube un archivo Excel (.xlsx) con estas columnas:{" "}
+            <span className="font-medium text-card-foreground">
+              SKU, Descripcion, Inventario Actual, Cantidad por cajas, Codigo de Barras,
+              Precio, Costo, Inventario minimo
+            </span>
+            .
+          </div>
+          <button
+            onClick={downloadTemplate}
+            className="w-full px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-medium text-sm mb-3"
+          >
+            Descargar plantilla de ejemplo
+          </button>
+          <div
+            onClick={() => document.getElementById("excelInput")?.click()}
+            className="w-full h-28 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer bg-muted mb-3"
+          >
+            <div className="text-2xl">📊</div>
+            <div className="text-sm text-muted-foreground mt-1">
+              Toca para seleccionar archivo Excel
+            </div>
+          </div>
+          <input
+            id="excelInput"
+            type="file"
+            accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            className="hidden"
+            onChange={(e) => handleExcelUpload(e.target.files?.[0])}
+          />
+
+          {bulkErr && (
+            <div className="text-sm text-destructive mb-3 bg-red-50 rounded-lg px-3 py-2">
+              {bulkErr}
+            </div>
+          )}
+
+          {bulkRows.length > 0 && (
+            <>
+              <div className="text-sm font-semibold text-card-foreground mb-2">
+                Vista previa ({bulkRows.filter((r) => !r._error).length} de{" "}
+                {bulkRows.length} validos)
+              </div>
+              <div className="max-h-60 overflow-auto rounded-xl border border-border mb-3">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted sticky top-0">
+                    <tr className="text-left text-muted-foreground">
+                      <th className="px-2 py-1.5 font-medium">Descripcion</th>
+                      <th className="px-2 py-1.5 font-medium">SKU</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Inv.</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Precio</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkRows.map((r, i) => (
+                      <tr
+                        key={i}
+                        className={`border-t border-border ${r._error ? "bg-red-50" : ""}`}
+                      >
+                        <td className="px-2 py-1.5 text-card-foreground">
+                          {r.nom || (
+                            <span className="text-destructive">{r._error}</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-muted-foreground font-mono">
+                          {r.sku}
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-card-foreground">
+                          {r.stock}
+                        </td>
+                        <td className="px-2 py-1.5 text-right text-card-foreground">
+                          {fmt(r.precio)}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-2.5 mt-1">
+            <button
+              onClick={() => setShowBulk(false)}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={confirmBulk}
+              disabled={
+                bulkSaving || !bulkRows.some((r) => !r._error)
+              }
+              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+            >
+              {bulkSaving
+                ? "Importando..."
+                : `Importar ${bulkRows.filter((r) => !r._error).length}`}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {show && (
         <Modal
@@ -1249,11 +1564,30 @@ const Inventario = () => {
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
-            <Field label="Stock">
+            <Field label="Costo ($)">
+              <input
+                type="number"
+                step="0.01"
+                value={form.costo}
+                onChange={(e) => setForm({ ...form, costo: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+          </Row2>
+          <Row2>
+            <Field label="Stock (Inv. actual)">
               <input
                 type="number"
                 value={form.stock}
                 onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="Cantidad por cajas">
+              <input
+                type="number"
+                value={form.cajas}
+                onChange={(e) => setForm({ ...form, cajas: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
