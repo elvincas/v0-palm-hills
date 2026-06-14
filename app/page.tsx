@@ -1,6 +1,8 @@
 "use client";
 
 import { useState, useEffect, useMemo, createContext, useContext, useRef, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
 
 // ------------------------------
 // Types
@@ -75,37 +77,8 @@ interface LogEntry {
 }
 
 // ------------------------------
-// LocalStorage helpers & utilities
+// Formatting utilities
 // ------------------------------
-const K = {
-  cli: "ph_cli",
-  prod: "ph_prod",
-  fact: "ph_fact",
-  ord: "ph_ord",
-  nom: "ph_nom",
-  log: "ph_log",
-};
-
-const ld = <T,>(k: string): T[] => {
-  if (typeof window === "undefined") return [];
-  try {
-    return JSON.parse(localStorage.getItem(k) || "[]");
-  } catch {
-    return [];
-  }
-};
-
-const sv = <T,>(k: string, d: T[]) => {
-  if (typeof window === "undefined") return;
-  localStorage.setItem(k, JSON.stringify(d));
-};
-
-const uid = () => {
-  if (typeof window !== "undefined" && window.crypto && window.crypto.randomUUID)
-    return crypto.randomUUID();
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 5);
-};
-
 const fmt = (n: number) =>
   "$" +
   Number(n).toLocaleString("es-MX", {
@@ -119,19 +92,6 @@ const fdate = (s: string) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
   return `${d}/${m}/${y}`;
-};
-
-const logAct = (msg: string) => {
-  const l = ld<LogEntry>(K.log);
-  l.unshift({
-    msg,
-    ts: new Date().toLocaleTimeString("es-MX", {
-      hour: "2-digit",
-      minute: "2-digit",
-    }),
-  });
-  if (l.length > 30) l.pop();
-  sv(K.log, l);
 };
 
 // ------------------------------
@@ -231,15 +191,16 @@ interface DataContextType {
   ordenes: Orden[];
   nomina: Empleado[];
   logs: LogEntry[];
+  loading: boolean;
   addCliente: (c: Omit<Cliente, "id">) => void;
   deleteCliente: (id: string) => void;
   updateCliente: (id: string, c: Omit<Cliente, "id">) => void;
   addProducto: (p: Omit<Producto, "id">) => void;
   updateProducto: (id: string, p: Omit<Producto, "id">) => void;
   deleteProducto: (id: string) => void;
-  addFactura: (f: Omit<Factura, "id" | "num">) => number;
+  addFactura: (f: Omit<Factura, "id" | "num">) => void;
   deleteFactura: (id: string) => void;
-  addOrden: (o: Omit<Orden, "id" | "num">) => number;
+  addOrden: (o: Omit<Orden, "id" | "num">) => void;
   deleteOrden: (id: string) => void;
   updateOrden: (id: string, o: Orden) => void;
   addEmpleado: (e: Omit<Empleado, "id">) => void;
@@ -250,168 +211,175 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
+const fmtTime = (iso: string) =>
+  new Date(iso).toLocaleTimeString("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 const DataProvider = ({ children }: { children: ReactNode }) => {
+  const supabase = useMemo(() => createClient(), []);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [nomina, setNomina] = useState<Empleado[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const refreshLogs = async () => {
+    const { data } = await supabase
+      .from("actividad")
+      .select("msg, created_at")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    setLogs((data || []).map((r) => ({ msg: r.msg, ts: fmtTime(r.created_at) })));
+  };
+
+  const logAct = async (msg: string) => {
+    await supabase.from("actividad").insert({ msg });
+    await refreshLogs();
+  };
+
+  const loadAll = async () => {
+    const [c, p, f, o, e] = await Promise.all([
+      supabase.from("clientes").select("*").order("created_at", { ascending: false }),
+      supabase.from("productos").select("*").order("created_at", { ascending: false }),
+      supabase.from("facturas").select("*").order("num", { ascending: false }),
+      supabase.from("ordenes").select("*").order("num", { ascending: false }),
+      supabase.from("empleados").select("*").order("created_at", { ascending: false }),
+    ]);
+    if (c.data) setClientes(c.data as Cliente[]);
+    if (p.data) setProductos(p.data as Producto[]);
+    if (f.data) setFacturas(f.data as Factura[]);
+    if (o.data) setOrdenes((o.data as Orden[]).map((row) => ({ ...row, lineas: row.lineas || [] })));
+    if (e.data) setNomina(e.data as Empleado[]);
+    await refreshLogs();
+    setLoading(false);
+  };
 
   useEffect(() => {
-    setClientes(ld<Cliente>(K.cli));
-    setProductos(ld<Producto>(K.prod));
-    setFacturas(ld<Factura>(K.fact));
-    setOrdenes(ld<Orden>(K.ord));
-    setNomina(ld<Empleado>(K.nom));
-    setLogs(ld<LogEntry>(K.log));
+    loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const refreshLogs = () => setLogs(ld<LogEntry>(K.log));
+  const nextNum = (rows: { num: number }[], start: number) =>
+    Math.max(start - 1, ...rows.map((r) => r.num)) + 1;
 
-  const updateAndPersist = <T,>(
-    key: string,
-    newData: T[],
-    setter: React.Dispatch<React.SetStateAction<T[]>>
-  ) => {
-    sv(key, newData);
-    setter(newData);
+  // --- Clientes ---
+  const addCliente = async (cliente: Omit<Cliente, "id">) => {
+    const { data } = await supabase.from("clientes").insert(cliente).select().single();
+    if (data) setClientes((prev) => [data as Cliente, ...prev]);
+    await logAct(`Nuevo cliente: ${cliente.nom}`);
   };
 
-  const addCliente = (cliente: Omit<Cliente, "id">) => {
-    const newList = [{ ...cliente, id: uid() } as Cliente, ...clientes];
-    updateAndPersist(K.cli, newList, setClientes);
-    logAct(`Nuevo cliente: ${cliente.nom}`);
-    refreshLogs();
+  const deleteCliente = async (id: string) => {
+    await supabase.from("clientes").delete().eq("id", id);
+    setClientes((prev) => prev.filter((c) => c.id !== id));
+    await logAct(`Cliente eliminado`);
   };
 
-  const deleteCliente = (id: string) => {
-    const newList = clientes.filter((c) => c.id !== id);
-    updateAndPersist(K.cli, newList, setClientes);
-    logAct(`Cliente eliminado: ${id}`);
-    refreshLogs();
+  const updateCliente = async (id: string, updated: Omit<Cliente, "id">) => {
+    const { data } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
+    if (data) setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
+    await logAct(`Cliente actualizado: ${updated.nom}`);
   };
 
-  const updateCliente = (id: string, updated: Omit<Cliente, "id">) => {
-    const newList = clientes.map((c) =>
-      c.id === id ? ({ ...updated, id } as Cliente) : c
-    );
-    updateAndPersist(K.cli, newList, setClientes);
-    logAct(`Cliente actualizado: ${updated.nom}`);
-    refreshLogs();
-  };
-
-  const addProducto = (prod: Omit<Producto, "id">) => {
+  // --- Productos ---
+  const addProducto = async (prod: Omit<Producto, "id">) => {
     const validated = {
       ...prod,
       precio: Math.max(0, Number(prod.precio) || 0),
       stock: Math.max(0, Number(prod.stock) || 0),
       min: Math.max(0, Number(prod.min) || 5),
     };
-    const newList = [{ ...validated, id: uid() } as Producto, ...productos];
-    updateAndPersist(K.prod, newList, setProductos);
-    logAct(`Nuevo producto: ${prod.nom}`);
-    refreshLogs();
+    delete (validated as { icon?: string }).icon;
+    const { data } = await supabase.from("productos").insert(validated).select().single();
+    if (data) setProductos((prev) => [data as Producto, ...prev]);
+    await logAct(`Nuevo producto: ${prod.nom}`);
   };
 
-  const updateProducto = (id: string, prod: Omit<Producto, "id">) => {
+  const updateProducto = async (id: string, prod: Omit<Producto, "id">) => {
     const validated = {
       ...prod,
       precio: Math.max(0, Number(prod.precio) || 0),
       stock: Math.max(0, Number(prod.stock) || 0),
       min: Math.max(0, Number(prod.min) || 5),
     };
-    const newList = productos.map((p) =>
-      p.id === id ? ({ ...validated, id } as Producto) : p
-    );
-    updateAndPersist(K.prod, newList, setProductos);
-    logAct(`Producto actualizado: ${prod.nom}`);
-    refreshLogs();
+    delete (validated as { icon?: string }).icon;
+    const { data } = await supabase.from("productos").update(validated).eq("id", id).select().single();
+    if (data) setProductos((prev) => prev.map((p) => (p.id === id ? (data as Producto) : p)));
+    await logAct(`Producto actualizado: ${prod.nom}`);
   };
 
-  const deleteProducto = (id: string) => {
-    const newList = productos.filter((p) => p.id !== id);
-    updateAndPersist(K.prod, newList, setProductos);
-    logAct(`Producto eliminado: ${id}`);
-    refreshLogs();
+  const deleteProducto = async (id: string) => {
+    await supabase.from("productos").delete().eq("id", id);
+    setProductos((prev) => prev.filter((p) => p.id !== id));
+    await logAct(`Producto eliminado`);
   };
 
-  const addFactura = (factura: Omit<Factura, "id" | "num">) => {
-    const current = [...facturas];
-    const maxNum = Math.max(0, ...current.map((f) => f.num));
-    const newNum = maxNum + 1;
-    const newFact = { ...factura, id: uid(), num: newNum } as Factura;
-    const newList = [newFact, ...current];
-    updateAndPersist(K.fact, newList, setFacturas);
-    logAct(`Factura #${newNum} → ${factura.cli}`);
-    refreshLogs();
-    return newNum;
+  // --- Facturas ---
+  const addFactura = async (factura: Omit<Factura, "id" | "num">) => {
+    const num = nextNum(facturas, 1001);
+    const { data } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
+    if (data) setFacturas((prev) => [data as Factura, ...prev]);
+    await logAct(`Factura #${num} → ${factura.cli}`);
   };
 
-  const deleteFactura = (id: string) => {
-    const newList = facturas.filter((f) => f.id !== id);
-    updateAndPersist(K.fact, newList, setFacturas);
-    logAct(`Factura eliminada: ${id}`);
-    refreshLogs();
+  const deleteFactura = async (id: string) => {
+    await supabase.from("facturas").delete().eq("id", id);
+    setFacturas((prev) => prev.filter((f) => f.id !== id));
+    await logAct(`Factura eliminada`);
   };
 
-  const addOrden = (orden: Omit<Orden, "id" | "num">) => {
-    const current = [...ordenes];
-    const maxNum = Math.max(0, ...current.map((o) => o.num));
-    const newNum = maxNum + 1;
-    const newOrden = { ...orden, id: uid(), num: newNum } as Orden;
-    const newList = [newOrden, ...current];
-    updateAndPersist(K.ord, newList, setOrdenes);
-    logAct(`Orden #${newNum} → ${orden.cli}`);
-    refreshLogs();
-    return newNum;
+  // --- Ordenes ---
+  const addOrden = async (orden: Omit<Orden, "id" | "num">) => {
+    const num = nextNum(ordenes, 1);
+    const { data } = await supabase.from("ordenes").insert({ ...orden, num }).select().single();
+    if (data) setOrdenes((prev) => [{ ...(data as Orden), lineas: (data as Orden).lineas || [] }, ...prev]);
+    await logAct(`Orden #${num} → ${orden.cli}`);
   };
 
-  const deleteOrden = (id: string) => {
-    const newList = ordenes.filter((o) => o.id !== id);
-    updateAndPersist(K.ord, newList, setOrdenes);
-    logAct(`Orden eliminada: ${id}`);
-    refreshLogs();
+  const deleteOrden = async (id: string) => {
+    await supabase.from("ordenes").delete().eq("id", id);
+    setOrdenes((prev) => prev.filter((o) => o.id !== id));
+    await logAct(`Orden eliminada`);
   };
 
-  const updateOrden = (id: string, updated: Orden) => {
-    const newList = ordenes.map((o) => (o.id === id ? { ...updated, id } : o));
-    updateAndPersist(K.ord, newList, setOrdenes);
-    logAct(`Orden #${updated.num} actualizada`);
-    refreshLogs();
+  const updateOrden = async (id: string, updated: Orden) => {
+    const { id: _omit, ...payload } = updated;
+    const { data } = await supabase.from("ordenes").update(payload).eq("id", id).select().single();
+    if (data) setOrdenes((prev) => prev.map((o) => (o.id === id ? { ...(data as Orden), lineas: (data as Orden).lineas || [] } : o)));
+    await logAct(`Orden #${updated.num} actualizada`);
   };
 
-  const addEmpleado = (emp: Omit<Empleado, "id">) => {
+  // --- Empleados ---
+  const addEmpleado = async (emp: Omit<Empleado, "id">) => {
     const validated = {
       ...emp,
       sal: Math.max(0, Number(emp.sal) || 0),
       ded: Math.max(0, Number(emp.ded) || 0),
     };
-    const newList = [{ ...validated, id: uid() } as Empleado, ...nomina];
-    updateAndPersist(K.nom, newList, setNomina);
-    logAct(`Empleado agregado: ${emp.nom}`);
-    refreshLogs();
+    const { data } = await supabase.from("empleados").insert(validated).select().single();
+    if (data) setNomina((prev) => [data as Empleado, ...prev]);
+    await logAct(`Empleado agregado: ${emp.nom}`);
   };
 
-  const deleteEmpleado = (id: string) => {
-    const newList = nomina.filter((e) => e.id !== id);
-    updateAndPersist(K.nom, newList, setNomina);
-    logAct(`Empleado eliminado: ${id}`);
-    refreshLogs();
+  const deleteEmpleado = async (id: string) => {
+    await supabase.from("empleados").delete().eq("id", id);
+    setNomina((prev) => prev.filter((e) => e.id !== id));
+    await logAct(`Empleado eliminado`);
   };
 
-  const updateEmpleado = (id: string, emp: Omit<Empleado, "id">) => {
+  const updateEmpleado = async (id: string, emp: Omit<Empleado, "id">) => {
     const validated = {
       ...emp,
       sal: Math.max(0, Number(emp.sal) || 0),
       ded: Math.max(0, Number(emp.ded) || 0),
     };
-    const newList = nomina.map((e) =>
-      e.id === id ? ({ ...validated, id } as Empleado) : e
-    );
-    updateAndPersist(K.nom, newList, setNomina);
-    logAct(`Empleado actualizado: ${emp.nom}`);
-    refreshLogs();
+    const { data } = await supabase.from("empleados").update(validated).eq("id", id).select().single();
+    if (data) setNomina((prev) => prev.map((e) => (e.id === id ? (data as Empleado) : e)));
+    await logAct(`Empleado actualizado: ${emp.nom}`);
   };
 
   const value: DataContextType = {
@@ -421,6 +389,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     ordenes,
     nomina,
     logs,
+    loading,
     addCliente,
     deleteCliente,
     updateCliente,
@@ -447,61 +416,6 @@ const useData = () => {
   return ctx;
 };
 
-// ------------------------------
-// Seed demo data
-// ------------------------------
-const seedIfEmpty = () => {
-  if (typeof window === "undefined") return;
-  if (ld(K.cli).length > 0) return;
-
-  const mkDate = (n: number) => {
-    const d = new Date();
-    d.setDate(d.getDate() - n);
-    return d.toISOString().slice(0, 10);
-  };
-
-  sv(K.cli, [
-    { id: "c01", nom: "Maria Gonzalez", rfc: "GOGM850312", tel: "809-555-0101", email: "maria.g@gmail.com", dir: "Calle Las Flores 12, Santiago", estado: "Activo" },
-    { id: "c02", nom: "Ana Rodriguez", rfc: "ROAA900415", tel: "809-555-0102", email: "ana.rod@hotmail.com", dir: "Av. Duarte 45, Santo Domingo", estado: "Activo" },
-    { id: "c03", nom: "Carmen Jimenez", rfc: "JICA780920", tel: "809-555-0103", email: "carmen.j@gmail.com", dir: "Calle Principal 88, La Vega", estado: "Activo" },
-    { id: "c04", nom: "Luisa Martinez", rfc: "MALL950101", tel: "809-555-0104", email: "luisa.m@yahoo.com", dir: "Res. Los Jardines, Boca Chica", estado: "Activo" },
-    { id: "c05", nom: "Salon Bella Vista", rfc: "BV-2021-001", tel: "809-555-0201", email: "bellvista@salon.do", dir: "Plaza Central L-5, Santiago", estado: "Activo" },
-    { id: "c06", nom: "Spa Naturaleza", rfc: "SN-2019-045", tel: "809-555-0202", email: "info@spanaturaleza.com", dir: "Av. Independencia 203, SD", estado: "Activo" },
-    { id: "c07", nom: "Farmacia El Progreso", rfc: "FP-2015-112", tel: "809-555-0301", email: "farmprogreso@gmail.com", dir: "Calle 27 de Febrero, Higuey", estado: "Activo" },
-    { id: "c08", nom: "Rosa Fernandez", rfc: "FERR820614", tel: "809-555-0105", email: "rosa.f@gmail.com", dir: "Urb. Los Pinos, San Pedro", estado: "Activo" },
-  ]);
-
-  sv(K.prod, [
-    { id: "p01", nom: "Shampoo Hidratante Pro", sku: "SHP-001", barcode: "7503000123401", cat: "Cabello", precio: 850, stock: 45, min: 10, icon: "", foto: null },
-    { id: "p02", nom: "Conditioner Reparador", sku: "CDN-001", barcode: "7503000123402", cat: "Cabello", precio: 920, stock: 38, min: 10, icon: "", foto: null },
-    { id: "p03", nom: "Leave-in Brillo Extremo", sku: "LVN-001", barcode: "7503000123403", cat: "Cabello", precio: 680, stock: 52, min: 8, icon: "", foto: null },
-    { id: "p04", nom: "Ampollas Keratina 12un", sku: "AMP-001", barcode: "7503000123404", cat: "Tratamiento", precio: 1250, stock: 30, min: 5, icon: "", foto: null },
-    { id: "p05", nom: "Ampollas Vitamina E 6un", sku: "AMP-002", barcode: "7503000123405", cat: "Tratamiento", precio: 780, stock: 24, min: 5, icon: "", foto: null },
-    { id: "p06", nom: "Jarabe para la Tos Pediatrico", sku: "JRP-001", barcode: "7503000123406", cat: "Farmacia", precio: 320, stock: 60, min: 15, icon: "", foto: null },
-    { id: "p07", nom: "Jabon Artesanal Lavanda", sku: "JAB-001", barcode: "7503000123408", cat: "Cuidado", precio: 180, stock: 90, min: 20, icon: "", foto: null },
-    { id: "p08", nom: "Serum Facial Vitamina C", sku: "SRM-001", barcode: "7503000123412", cat: "Facial", precio: 1450, stock: 15, min: 5, icon: "", foto: null },
-  ]);
-
-  sv(K.fact, [
-    { id: "f01", num: 1001, cli: "Salon Bella Vista", fecha: mkDate(2), estado: "Pagada", total: 9947.6 },
-    { id: "f02", num: 1002, cli: "Ana Rodriguez", fecha: mkDate(4), estado: "Pagada", total: 3364 },
-    { id: "f03", num: 1003, cli: "Spa Naturaleza", fecha: mkDate(8), estado: "Pagada", total: 12180 },
-    { id: "f04", num: 1004, cli: "Maria Gonzalez", fecha: mkDate(10), estado: "Pagada", total: 2784 },
-    { id: "f05", num: 1005, cli: "Carmen Jimenez", fecha: mkDate(14), estado: "Pendiente", total: 4524 },
-    { id: "f06", num: 1006, cli: "Luisa Martinez", fecha: mkDate(21), estado: "En revision", total: 1856 },
-  ]);
-
-  sv(K.nom, [
-    { id: "e01", nom: "Paola Reyes", puesto: "Vendedora", dept: "Ventas", sal: 28000, ded: 5040, fecha: "2022-03-01", estado: "Al corriente", email: "paola.r@palmhills.do" },
-    { id: "e02", nom: "Carlos Mendez", puesto: "Almacenista", dept: "Logistica", sal: 22000, ded: 3960, fecha: "2021-06-15", estado: "Al corriente", email: "carlos.m@palmhills.do" },
-    { id: "e03", nom: "Sofia Urena", puesto: "Contadora", dept: "Administracion", sal: 35000, ded: 6300, fecha: "2020-01-10", estado: "Al corriente", email: "sofia.u@palmhills.do" },
-    { id: "e04", nom: "Diego Familia", puesto: "Repartidor", dept: "Logistica", sal: 18000, ded: 3240, fecha: "2023-08-01", estado: "Al corriente", email: "diego.f@palmhills.do" },
-    { id: "e05", nom: "Luisa Batista", puesto: "Atencion al Cliente", dept: "Ventas", sal: 24000, ded: 4320, fecha: "2022-11-01", estado: "Incidencia", email: "luisa.b@palmhills.do" },
-  ]);
-
-  logAct("Sistema iniciado");
-  if (!localStorage.getItem("ph_meta")) localStorage.setItem("ph_meta", "150000");
-};
 
 // ------------------------------
 // Dashboard
@@ -1989,10 +1903,19 @@ const TITLES: Record<string, string> = {
 
 function AppContent() {
   const [tab, setTab] = useState("dash");
+  const { loading } = useData();
+  const router = useRouter();
+  const supabase = useMemo(() => createClient(), []);
+  const [email, setEmail] = useState("");
 
   useEffect(() => {
-    seedIfEmpty();
-  }, []);
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ""));
+  }, [supabase]);
+
+  const signOut = async () => {
+    await supabase.auth.signOut();
+    router.replace("/auth/login");
+  };
 
   const panels: Record<string, ReactNode> = {
     dash: <Dashboard />,
@@ -2019,10 +1942,35 @@ function AppContent() {
             </div>
           </div>
         </div>
-        <div className="text-xs text-muted-foreground font-medium">
-          {TITLES[tab]}
+        <div className="flex items-center gap-3">
+          <div className="text-right hidden xs:block">
+            <div className="text-xs text-muted-foreground font-medium">
+              {TITLES[tab]}
+            </div>
+            {email && (
+              <div className="text-[10px] text-muted-foreground/70 truncate max-w-[120px]">
+                {email}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={signOut}
+            aria-label="Cerrar sesion"
+            className="shrink-0 w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground"
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+              <polyline points="16 17 21 12 16 7" />
+              <line x1="21" y1="12" x2="9" y2="12" />
+            </svg>
+          </button>
         </div>
       </header>
+      {loading && (
+        <div className="bg-secondary text-secondary-foreground text-center text-xs py-1.5">
+          Cargando datos...
+        </div>
+      )}
       <main className="flex-1 p-3 pb-20 overflow-y-auto">{panels[tab]}</main>
       <nav className="bg-card border-t border-border flex fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[5]">
         {TABS.map((t) => (
