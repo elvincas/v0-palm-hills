@@ -2828,7 +2828,7 @@ const GestionarUsuarios = () => {
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm("¿Eliminar este usuario?")) return;
+    if (!confirm("¿Estás seguro que deseas eliminar este usuario de forma permanente?")) return;
     
     try {
       const res = await fetch("/api/admin/users", {
