@@ -47,9 +47,28 @@ export async function POST(request: Request) {
     }
 
     if (action === 'resetPassword') {
-      // Reset user password
+      // Reset user password - need to get user ID first by listing users
+      const { data: allUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      
+      if (listError) {
+        return NextResponse.json(
+          { error: listError.message },
+          { status: 400 }
+        )
+      }
+
+      // Find user by email
+      const userToUpdate = allUsers.users.find((u) => u.email === email)
+      if (!userToUpdate) {
+        return NextResponse.json(
+          { error: 'Usuario no encontrado' },
+          { status: 404 }
+        )
+      }
+
+      // Reset password by user ID
       const { error } = await supabaseAdmin.auth.admin.updateUserById(
-        email, // This should be user ID, but we'll use email lookup
+        userToUpdate.id,
         { password }
       )
 
