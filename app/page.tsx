@@ -1293,8 +1293,39 @@ const Inventario = () => {
 
   const handleFotoUpload = (file: File | undefined) => {
     if (!file) return;
+    
     const reader = new FileReader();
-    reader.onload = (e) => setFoto(e.target?.result as string);
+    reader.onload = (e) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        // Create a square canvas (use the smaller dimension to avoid stretching)
+        const size = Math.min(img.width, img.height);
+        const canvas = document.createElement("canvas");
+        canvas.width = 512;  // Fixed size for consistency
+        canvas.height = 512;
+        
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        
+        // Draw on a white background first
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 512, 512);
+        
+        // Calculate crop coordinates to center the image
+        const srcX = (img.width - size) / 2;
+        const srcY = (img.height - size) / 2;
+        
+        // Draw the cropped, centered image to fill the canvas
+        ctx.drawImage(img, srcX, srcY, size, size, 0, 0, 512, 512);
+        
+        // Convert to WebP with quality optimization, fallback to JPEG
+        const optimized = canvas.toDataURL("image/webp", 0.85) || 
+                         canvas.toDataURL("image/jpeg", 0.85);
+        setFoto(optimized);
+      };
+      img.src = e.target?.result as string;
+    };
     reader.readAsDataURL(file);
   };
 
@@ -1522,7 +1553,7 @@ const Inventario = () => {
                 >
                   Editar
                 </button>
-                <div className="w-full h-20 rounded-lg overflow-hidden bg-muted flex items-center justify-center text-2xl mb-2 shrink-0">
+                <div className="w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center text-2xl mb-2 shrink-0">
                   {p.foto ? (
                     <img
                       src={p.foto}
@@ -1732,7 +1763,7 @@ const Inventario = () => {
           <Field label="Foto">
             <div
               onClick={() => document.getElementById("fotoInput")?.click()}
-              className="w-full h-32 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer overflow-hidden bg-muted mb-1"
+              className="w-32 h-32 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer overflow-hidden bg-muted mb-1"
             >
               {foto ? (
                 <img
@@ -1743,8 +1774,8 @@ const Inventario = () => {
               ) : (
                 <>
                   <div className="text-2xl">📷</div>
-                  <div className="text-sm text-muted-foreground mt-1">
-                    Toca para agregar foto
+                  <div className="text-xs text-muted-foreground mt-1 text-center px-1">
+                    Toca
                   </div>
                 </>
               )}
