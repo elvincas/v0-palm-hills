@@ -1574,7 +1574,7 @@ const Inventario = () => {
                     <img
                       src={p.foto}
                       alt={p.nom}
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                     />
                   ) : (
                     p.icon || "📦"
@@ -1785,7 +1785,7 @@ const Inventario = () => {
                 <img
                   src={foto}
                   alt="Preview"
-                  className="w-full h-full object-cover"
+                  className="w-full h-full object-contain"
                 />
               ) : (
                 <>
