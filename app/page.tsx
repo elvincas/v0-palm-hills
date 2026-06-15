@@ -2644,6 +2644,7 @@ const ICONS: Record<string, string> = {
   inv: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12",
   ord: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17M17 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM9 19a2 2 0 1 0 4 0 2 2 0 0 0-4 0z",
   mej: "M9 18h6 M10 22h4 M15.09 14c.18-.79.65-1.47 1.16-2.05A5 5 0 0 0 12 4a5 5 0 0 0-4.25 7.95c.51.58.98 1.26 1.16 2.05",
+  usr: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 7a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
 };
 
 const TABS = [
@@ -2653,6 +2654,7 @@ const TABS = [
   { id: "inv", label: "Inventario" },
   { id: "ord", label: "Ordenes" },
   { id: "mej", label: "Mejoras" },
+  { id: "usr", label: "Usuarios" },
 ];
 
 const TITLES: Record<string, string> = {
@@ -2662,6 +2664,173 @@ const TITLES: Record<string, string> = {
   inv: "Inventario",
   ord: "Ordenes",
   mej: "Mejoras",
+  usr: "Gestionar Usuarios",
+};
+
+// Gestionar Usuarios component
+const GestionarUsuarios = () => {
+  const [users, setUsers] = useState<Array<{ id: string; email: string; created_at: string; last_sign_in_at: string | null }>>([]);
+  const [show, setShow] = useState(false);
+  const [form, setForm] = useState({ email: "", password: "" });
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  // Fetch users on mount
+  useEffect(() => {
+    fetchUsers();
+  }, []);
+
+  const fetchUsers = async () => {
+    try {
+      const res = await fetch("/api/admin/users");
+      const data = await res.json();
+      if (data.users) setUsers(data.users);
+    } catch (e) {
+      console.error("[v0] Error fetching users:", e);
+    }
+  };
+
+  const handleCreateUser = async () => {
+    if (!form.email.trim() || !form.password.trim()) {
+      alert("Correo y contraseña son requeridos");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: form.email, password: form.password, action: "create" }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error creating user");
+
+      setMessage(`✓ Usuario creado: ${form.email}`);
+      setForm({ email: "", password: "" });
+      setShow(false);
+      await fetchUsers();
+    } catch (e) {
+      setMessage(`✗ ${e instanceof Error ? e.message : "Error"}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async (userId: string) => {
+    if (!confirm("¿Eliminar este usuario?")) return;
+    
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: userId, action: "delete" }),
+      });
+
+      if (!res.ok) throw new Error("Error deleting user");
+      await fetchUsers();
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Error");
+    }
+  };
+
+  return (
+    <div>
+      <div className="grid grid-cols-1 gap-2.5 mb-3.5">
+        <div className="bg-card rounded-xl p-3.5 border border-border">
+          <div className="text-xs text-muted-foreground mb-1">Usuarios activos</div>
+          <div className="text-2xl font-bold text-card-foreground">{users.length}</div>
+        </div>
+      </div>
+
+      <div className="bg-card rounded-2xl p-3.5 border border-border mb-20">
+        {users.length === 0 ? (
+          <Empty text="No hay usuarios. Crea uno tocando el botón +." />
+        ) : (
+          users.map((u) => (
+            <div key={u.id} className="bg-background rounded-xl p-2.5 mb-2.5 flex items-center justify-between gap-2">
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-bold text-card-foreground truncate">{u.email}</div>
+                <div className="text-xs text-muted-foreground">
+                  Creado: {new Date(u.created_at).toLocaleDateString("es-ES")}
+                </div>
+              </div>
+              <button
+                onClick={() => handleDeleteUser(u.id)}
+                className="px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs font-bold shrink-0"
+              >
+                Eliminar
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+
+      <button
+        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
+        onClick={() => setShow(true)}
+        aria-label="Crear usuario"
+      >
+        +
+      </button>
+
+      {show && (
+        <Modal
+          title="Crear Nuevo Usuario"
+          onClose={() => {
+            setShow(false);
+            setForm({ email: "", password: "" });
+            setMessage("");
+          }}
+        >
+          <Field label="Correo electrónico *">
+            <input
+              type="email"
+              value={form.email}
+              onChange={(e) => setForm({ ...form, email: e.target.value })}
+              placeholder="usuario@ejemplo.com"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <Field label="Contraseña *">
+            <input
+              type="password"
+              value={form.password}
+              onChange={(e) => setForm({ ...form, password: e.target.value })}
+              placeholder="Contraseña fuerte"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          {message && (
+            <div className={`text-sm ${message.startsWith("✓") ? "text-green-600" : "text-destructive"}`}>
+              {message}
+            </div>
+          )}
+          <div className="flex gap-2.5 mt-3.5">
+            <button
+              onClick={() => {
+                setShow(false);
+                setForm({ email: "", password: "" });
+                setMessage("");
+              }}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={handleCreateUser}
+              disabled={loading}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+            >
+              {loading ? "Creando..." : "Crear Usuario"}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
 };
 
 function AppContent() {
@@ -2687,6 +2856,7 @@ function AppContent() {
     inv: <Inventario />,
     ord: <Ordenes />,
     mej: <Mejoras />,
+    usr: <GestionarUsuarios />,
   };
 
   return (
