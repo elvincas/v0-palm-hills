@@ -1074,7 +1074,7 @@ const Clientes = () => {
             />
           </Field>
           <Row2>
-            <Field label="RFC/ID">
+            <Field label="ID Cliente">
               <input
                 value={form.rfc}
                 onChange={(e) => setForm({ ...form, rfc: e.target.value })}
