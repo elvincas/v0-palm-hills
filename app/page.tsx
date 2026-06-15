@@ -1569,7 +1569,7 @@ const Inventario = () => {
                 >
                   Editar
                 </button>
-                <div className="w-full aspect-square rounded-lg overflow-hidden bg-muted flex items-center justify-center text-2xl mb-2 shrink-0">
+                <div className="w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
                   {p.foto ? (
                     <img
                       src={p.foto}
@@ -1779,7 +1779,7 @@ const Inventario = () => {
           <Field label="Foto">
             <div
               onClick={() => document.getElementById("fotoInput")?.click()}
-              className="w-32 h-32 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer overflow-hidden bg-muted mb-1"
+              className="w-32 h-32 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer bg-white mb-1"
             >
               {foto ? (
                 <img
