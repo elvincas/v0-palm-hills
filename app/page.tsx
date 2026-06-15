@@ -1299,29 +1299,45 @@ const Inventario = () => {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
-        // Create a square canvas (use the smaller dimension to avoid stretching)
-        const size = Math.min(img.width, img.height);
+        // Create a larger canvas for better quality (1024x1024)
+        const CANVAS_SIZE = 1024;
         const canvas = document.createElement("canvas");
-        canvas.width = 512;  // Fixed size for consistency
-        canvas.height = 512;
+        canvas.width = CANVAS_SIZE;
+        canvas.height = CANVAS_SIZE;
         
         const ctx = canvas.getContext("2d");
         if (!ctx) return;
         
-        // Draw on a white background first
+        // Draw white background
         ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, 512, 512);
+        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
         
-        // Calculate crop coordinates to center the image
-        const srcX = (img.width - size) / 2;
-        const srcY = (img.height - size) / 2;
+        // Calculate scaling to fit the entire image inside the square
+        // while maintaining aspect ratio
+        const imgAspect = img.width / img.height;
+        const canvasAspect = 1; // square
         
-        // Draw the cropped, centered image to fill the canvas
-        ctx.drawImage(img, srcX, srcY, size, size, 0, 0, 512, 512);
+        let scaledWidth: number, scaledHeight: number;
+        if (imgAspect > canvasAspect) {
+          // Image is wider than tall - fit to height
+          scaledHeight = CANVAS_SIZE;
+          scaledWidth = CANVAS_SIZE * imgAspect;
+        } else {
+          // Image is taller than wide - fit to width
+          scaledWidth = CANVAS_SIZE;
+          scaledHeight = CANVAS_SIZE / imgAspect;
+        }
         
-        // Convert to WebP with quality optimization, fallback to JPEG
-        const optimized = canvas.toDataURL("image/webp", 0.85) || 
-                         canvas.toDataURL("image/jpeg", 0.85);
+        // Center the image
+        const x = (CANVAS_SIZE - scaledWidth) / 2;
+        const y = (CANVAS_SIZE - scaledHeight) / 2;
+        
+        // Draw the complete, scaled image centered
+        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+        
+        // Convert to WebP with high quality, fallback to JPEG
+        const optimized = canvas.toDataURL("image/webp", 0.9) || 
+                         canvas.toDataURL("image/jpeg", 0.9);
         setFoto(optimized);
       };
       img.src = e.target?.result as string;
