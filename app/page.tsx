@@ -873,130 +873,14 @@ const Facturas = () => {
   );
 };
 
-// Cliente Detail Modal
-const ClienteDetail = ({
-  cliente,
-  facturas,
-  ordenes,
-  onClose,
-}: {
-  cliente: Cliente;
-  facturas: Factura[];
-  ordenes: Orden[];
-  onClose: () => void;
-}) => {
-  const pendingFacturas = facturas.filter((f) => f.estado === "Pendiente");
-  const paidFacturas = facturas.filter((f) => f.estado === "Pagada");
-  const totalPending = pendingFacturas.reduce((sum, f) => sum + (f.total || 0), 0);
-  const pendingOrdenes = ordenes.filter((o) => o.estado !== "Completada");
-
-  return (
-    <Modal title={cliente.nom} onClose={onClose}>
-      <div className="w-full h-24 bg-gradient-to-r from-secondary to-secondary-foreground rounded-xl flex items-center justify-center mb-3.5 overflow-hidden">
-        {cliente.foto_local ? (
-          <img src={cliente.foto_local} alt={cliente.nom} className="w-full h-full object-cover" />
-        ) : (
-          <div className="text-4xl">🏪</div>
-        )}
-      </div>
-
-      <div className="bg-background rounded-xl p-2.5 mb-2.5 space-y-1">
-        <div className="text-xs text-muted-foreground">ID Cliente</div>
-        <div className="text-sm font-bold text-card-foreground">{cliente.rfc || "Sin código"}</div>
-        {cliente.email && (
-          <>
-            <div className="text-xs text-muted-foreground mt-2">Email</div>
-            <div className="text-sm text-card-foreground">{cliente.email}</div>
-          </>
-        )}
-        {cliente.tel && (
-          <>
-            <div className="text-xs text-muted-foreground mt-2">Teléfono</div>
-            <div className="text-sm text-card-foreground">{cliente.tel}</div>
-          </>
-        )}
-        {cliente.dir && (
-          <>
-            <div className="text-xs text-muted-foreground mt-2">Dirección</div>
-            <div className="text-sm text-card-foreground">{cliente.dir}</div>
-          </>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2.5 mb-2.5">
-        <div className="bg-background rounded-xl p-2.5">
-          <div className="text-xs text-muted-foreground">Facturas Pendientes</div>
-          <div className="text-lg font-bold text-card-foreground">{pendingFacturas.length}</div>
-        </div>
-        <div className="bg-red-50 rounded-xl p-2.5">
-          <div className="text-xs text-red-700">Balance Pendiente</div>
-          <div className="text-lg font-bold text-red-700">${totalPending.toLocaleString()}</div>
-        </div>
-        <div className="bg-background rounded-xl p-2.5">
-          <div className="text-xs text-muted-foreground">Órdenes Pendientes</div>
-          <div className="text-lg font-bold text-card-foreground">{pendingOrdenes.length}</div>
-        </div>
-        <div className="bg-green-50 rounded-xl p-2.5">
-          <div className="text-xs text-green-700">Facturas Pagadas</div>
-          <div className="text-lg font-bold text-green-700">{paidFacturas.length}</div>
-        </div>
-      </div>
-
-      {pendingFacturas.length > 0 && (
-        <>
-          <div className="text-xs font-bold text-card-foreground uppercase mb-1.5">Facturas Pendientes</div>
-          <div className="space-y-1 mb-2.5 max-h-24 overflow-y-auto">
-            {pendingFacturas.map((f) => (
-              <div key={f.id} className="bg-background rounded-lg p-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="font-bold">{f.num_fact}</span>
-                  <span className="text-red-600">${f.total?.toLocaleString()}</span>
-                </div>
-                {f.fecha && <div className="text-muted-foreground">{new Date(f.fecha).toLocaleDateString("es-ES")}</div>}
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      {pendingOrdenes.length > 0 && (
-        <>
-          <div className="text-xs font-bold text-card-foreground uppercase mb-1.5">Órdenes Pendientes</div>
-          <div className="space-y-1 mb-2.5 max-h-24 overflow-y-auto">
-            {pendingOrdenes.map((o) => (
-              <div key={o.id} className="bg-background rounded-lg p-2 text-xs">
-                <div className="flex justify-between">
-                  <span className="font-bold">{o.num_ord}</span>
-                  <Badge e={o.estado} />
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
-      <div className="flex gap-2.5 mt-3.5">
-        <button
-          onClick={onClose}
-          className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
-        >
-          Cerrar
-        </button>
-      </div>
-    </Modal>
-  );
-};
-
-
 // ------------------------------
 // Clientes
 const Clientes = () => {
-  const { clientes, addCliente, deleteCliente, updateCliente, facturas, ordenes } = useData();
+  const { clientes, addCliente, deleteCliente, updateCliente } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [fotoLocal, setFotoLocal] = useState("");
-  const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
   const [form, setForm] = useState({
     nom: "",
     rfc: "",
@@ -1095,7 +979,7 @@ const Clientes = () => {
       <div className="space-y-2.5">
         {filtered.length ? (
           filtered.map((c) => (
-            <div key={c.id} onClick={() => setSelectedClient(c)} className="bg-card rounded-2xl border border-border overflow-hidden cursor-pointer hover:shadow-md transition-shadow">
+            <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
               {/* Banner */}
               <div className="w-full h-32 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden">
                 {c.foto_local ? (
@@ -1143,18 +1027,9 @@ const Clientes = () => {
           ))
         ) : (
           <div className="bg-card rounded-2xl p-3.5 border border-border">
-      )}
-
-      {selectedClient && (
-        <ClienteDetail
-          cliente={selectedClient}
-          facturas={facturas.filter((f) => f.cliente_id === selectedClient.id)}
-          ordenes={ordenes.filter((o) => o.cliente_id === selectedClient.id)}
-          onClose={() => setSelectedClient(null)}
-        />
-      )}
-    </div>
-  );
+            <Empty text="Sin clientes. Toca + para agregar." />
+          </div>
+        )}
       </div>
       <button
         className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
@@ -3172,4 +3047,3 @@ export default function App() {
     </DataProvider>
   );
 }
-// rebuild
