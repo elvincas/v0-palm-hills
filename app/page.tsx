@@ -17,6 +17,7 @@ interface Cliente {
   email?: string;
   dir?: string;
   estado: string;
+  foto_local?: string;
 }
 
 interface Producto {
@@ -874,11 +875,12 @@ const Facturas = () => {
 
 // ------------------------------
 // Clientes
-// ------------------------------
 const Clientes = () => {
-  const { clientes, addCliente, deleteCliente } = useData();
+  const { clientes, addCliente, deleteCliente, updateCliente } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [fotoLocal, setFotoLocal] = useState("");
   const [form, setForm] = useState({
     nom: "",
     rfc: "",
@@ -886,6 +888,7 @@ const Clientes = () => {
     email: "",
     dir: "",
     estado: "Activo",
+    foto_local: "",
   });
 
   const filtered = q
@@ -896,13 +899,72 @@ const Clientes = () => {
       )
     : clientes;
 
+  const handleFotoUpload = (file: File | undefined) => {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 1024;
+        canvas.height = 512; // 2:1 aspect for banner
+        
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
+        
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, 1024, 512);
+        
+        const imgAspect = img.width / img.height;
+        const canvasAspect = 1024 / 512;
+        
+        let scaledWidth: number, scaledHeight: number;
+        if (imgAspect > canvasAspect) {
+          scaledHeight = 512;
+          scaledWidth = 512 * imgAspect;
+        } else {
+          scaledWidth = 1024;
+          scaledHeight = 1024 / imgAspect;
+        }
+        
+        const x = (1024 - scaledWidth) / 2;
+        const y = (512 - scaledHeight) / 2;
+        
+        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
+        const optimized = canvas.toDataURL("image/webp", 0.9) || canvas.toDataURL("image/jpeg", 0.9);
+        setFotoLocal(optimized);
+        setForm({ ...form, foto_local: optimized });
+      };
+      img.src = e.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const reset = () => {
+    setForm({ nom: "", rfc: "", tel: "", email: "", dir: "", estado: "Activo", foto_local: "" });
+    setFotoLocal("");
+    setEditId(null);
+  };
+
+  const openEdit = (c: Cliente) => {
+    setEditId(c.id);
+    setForm({ ...c, foto_local: c.foto_local || "" });
+    setFotoLocal(c.foto_local || "");
+    setShow(true);
+  };
+
   const handleSave = () => {
     if (!form.nom.trim()) {
       alert("Ingresa el nombre");
       return;
     }
-    addCliente(form);
-    setForm({ nom: "", rfc: "", tel: "", email: "", dir: "", estado: "Activo" });
+    if (editId) {
+      updateCliente(editId, form);
+    } else {
+      addCliente(form);
+    }
+    reset();
     setShow(false);
   };
 
@@ -914,39 +976,59 @@ const Clientes = () => {
         placeholder="Buscar cliente..."
         className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
       />
-      <div className="bg-card rounded-2xl p-3.5 border border-border">
+      <div className="space-y-2.5">
         {filtered.length ? (
           filtered.map((c) => (
-            <Li
-              key={c.id}
-              left={
-                <>
-                  <div className="text-sm font-semibold truncate text-card-foreground">
-                    {c.nom}
+            <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
+              {/* Banner */}
+              <div className="w-full h-32 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden">
+                {c.foto_local ? (
+                  <img
+                    src={c.foto_local}
+                    alt={c.nom}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-4xl">🏪</div>
+                )}
+              </div>
+              {/* Content */}
+              <div className="p-3.5">
+                <div className="flex items-start justify-between gap-2.5 mb-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-card-foreground">{c.nom}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {c.email || c.tel || c.rfc || "Sin contacto"}
+                    </div>
                   </div>
-                  <div className="text-xs text-muted-foreground">
-                    {c.email || c.tel || c.rfc || "Sin contacto"}
-                  </div>
-                </>
-              }
-              right={
-                <>
                   <Badge e={c.estado} />
-                  <br />
+                </div>
+                {c.dir && (
+                  <div className="text-xs text-muted-foreground mb-2.5">📍 {c.dir}</div>
+                )}
+                <div className="flex gap-1.5">
                   <button
-                    className="mt-1.5 px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs"
+                    onClick={() => openEdit(c)}
+                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold"
+                  >
+                    Editar
+                  </button>
+                  <button
                     onClick={() => {
                       if (confirm("Eliminar cliente?")) deleteCliente(c.id);
                     }}
+                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-destructive text-xs font-bold"
                   >
                     Eliminar
                   </button>
-                </>
-              }
-            />
+                </div>
+              </div>
+            </div>
           ))
         ) : (
-          <Empty text="Sin clientes. Toca + para agregar." />
+          <div className="bg-card rounded-2xl p-3.5 border border-border">
+            <Empty text="Sin clientes. Toca + para agregar." />
+          </div>
         )}
       </div>
       <button
@@ -957,7 +1039,33 @@ const Clientes = () => {
       </button>
 
       {show && (
-        <Modal title="Nuevo Cliente" onClose={() => setShow(false)}>
+        <Modal title={editId ? "Editar Cliente" : "Nuevo Cliente"} onClose={() => { reset(); setShow(false); }}>
+          <Field label="Foto del local">
+            <div
+              onClick={() => document.getElementById("fotoClienteInput")?.click()}
+              className="w-full h-24 rounded-xl border-2 border-dashed border-border flex items-center justify-center cursor-pointer bg-white mb-1"
+            >
+              {fotoLocal ? (
+                <img
+                  src={fotoLocal}
+                  alt="Preview"
+                  className="w-full h-full object-cover rounded-lg"
+                />
+              ) : (
+                <div className="text-center">
+                  <div className="text-2xl">📸</div>
+                  <div className="text-xs text-muted-foreground mt-1">Toca para agregar foto</div>
+                </div>
+              )}
+            </div>
+            <input
+              id="fotoClienteInput"
+              type="file"
+              accept="image/*"
+              onChange={(e) => handleFotoUpload(e.target.files?.[0])}
+              className="hidden"
+            />
+          </Field>
           <Field label="Nombre *">
             <input
               value={form.nom}
@@ -1008,7 +1116,7 @@ const Clientes = () => {
           </Field>
           <div className="flex gap-2.5 mt-3.5">
             <button
-              onClick={() => setShow(false)}
+              onClick={() => { reset(); setShow(false); }}
               className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
             >
               Cancelar
@@ -1017,7 +1125,7 @@ const Clientes = () => {
               onClick={handleSave}
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
             >
-              Guardar Cliente
+              {editId ? "Guardar Cambios" : "Guardar Cliente"}
             </button>
           </div>
         </Modal>
