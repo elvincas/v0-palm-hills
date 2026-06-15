@@ -876,6 +876,7 @@ const Facturas = () => {
 // ------------------------------
 // Clientes
 const Clientes = () => {
+  const router = useRouter();
   const { clientes, addCliente, deleteCliente, updateCliente } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
@@ -980,8 +981,11 @@ const Clientes = () => {
         {filtered.length ? (
           filtered.map((c) => (
             <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
-              {/* Banner */}
-              <div className="w-full h-32 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden">
+              {/* Banner - clickeable */}
+              <div 
+                onClick={() => router.push(`/clientes/${c.id}`)}
+                className="w-full h-32 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+              >
                 {c.foto_local ? (
                   <img
                     src={c.foto_local}
@@ -994,7 +998,10 @@ const Clientes = () => {
               </div>
               {/* Content */}
               <div className="p-3.5">
-                <div className="flex items-start justify-between gap-2.5 mb-2">
+                <div 
+                  onClick={() => router.push(`/clientes/${c.id}`)}
+                  className="flex items-start justify-between gap-2.5 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                >
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-card-foreground">{c.nom}</div>
                     <div className="text-xs text-muted-foreground">
