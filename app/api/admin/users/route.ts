@@ -67,8 +67,27 @@ export async function POST(request: Request) {
     }
 
     if (action === 'delete') {
-      // Delete user
-      const { error } = await supabaseAdmin.auth.admin.deleteUser(email)
+      // Delete user - need to get user ID first by listing users
+      const { data: allUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      
+      if (listError) {
+        return NextResponse.json(
+          { error: listError.message },
+          { status: 400 }
+        )
+      }
+
+      // Find user by email
+      const userToDelete = allUsers.users.find((u) => u.email === email)
+      if (!userToDelete) {
+        return NextResponse.json(
+          { error: 'Usuario no encontrado' },
+          { status: 404 }
+        )
+      }
+
+      // Delete user by ID
+      const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.id)
 
       if (error) {
         return NextResponse.json(
