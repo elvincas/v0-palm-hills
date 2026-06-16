@@ -964,60 +964,69 @@ const Clientes = () => {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => {
-      const canvas = document.createElement("canvas");
-      const pixelRatio = window.devicePixelRatio || 1;
-      
-      canvas.width = croppedAreaPixels.width * pixelRatio;
-      canvas.height = croppedAreaPixels.height * pixelRatio;
-      
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
+      try {
+        const canvas = document.createElement("canvas");
+        const pixelRatio = window.devicePixelRatio || 1;
+        
+        canvas.width = croppedAreaPixels.width * pixelRatio;
+        canvas.height = croppedAreaPixels.height * pixelRatio;
+        
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
-      ctx.drawImage(
-        img,
-        croppedAreaPixels.x * pixelRatio,
-        croppedAreaPixels.y * pixelRatio,
-        croppedAreaPixels.width * pixelRatio,
-        croppedAreaPixels.height * pixelRatio,
-        0,
-        0,
-        croppedAreaPixels.width * pixelRatio,
-        croppedAreaPixels.height * pixelRatio
-      );
+        ctx.drawImage(
+          img,
+          croppedAreaPixels.x * pixelRatio,
+          croppedAreaPixels.y * pixelRatio,
+          croppedAreaPixels.width * pixelRatio,
+          croppedAreaPixels.height * pixelRatio,
+          0,
+          0,
+          croppedAreaPixels.width * pixelRatio,
+          croppedAreaPixels.height * pixelRatio
+        );
 
-      // Redimensionar a 1024x512 manteniendo aspecto
-      const finalCanvas = document.createElement("canvas");
-      finalCanvas.width = 1024;
-      finalCanvas.height = 512;
-      
-      const finalCtx = finalCanvas.getContext("2d");
-      if (!finalCtx) return;
+        // Redimensionar a 1024x512 manteniendo aspecto
+        const finalCanvas = document.createElement("canvas");
+        finalCanvas.width = 1024;
+        finalCanvas.height = 512;
+        
+        const finalCtx = finalCanvas.getContext("2d");
+        if (!finalCtx) return;
 
-      finalCtx.fillStyle = "#ffffff";
-      finalCtx.fillRect(0, 0, 1024, 512);
+        finalCtx.fillStyle = "#ffffff";
+        finalCtx.fillRect(0, 0, 1024, 512);
 
-      const aspectRatio = canvas.width / canvas.height;
-      const canvasAspect = 1024 / 512;
-      
-      let scaledWidth: number, scaledHeight: number;
-      if (aspectRatio > canvasAspect) {
-        scaledHeight = 512;
-        scaledWidth = 512 * aspectRatio;
-      } else {
-        scaledWidth = 1024;
-        scaledHeight = 1024 / aspectRatio;
+        const aspectRatio = canvas.width / canvas.height;
+        const canvasAspect = 1024 / 512;
+        
+        let scaledWidth: number, scaledHeight: number;
+        if (aspectRatio > canvasAspect) {
+          scaledHeight = 512;
+          scaledWidth = 512 * aspectRatio;
+        } else {
+          scaledWidth = 1024;
+          scaledHeight = 1024 / aspectRatio;
+        }
+
+        const x = (1024 - scaledWidth) / 2;
+        const y = (512 - scaledHeight) / 2;
+
+        finalCtx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
+        const optimized = finalCanvas.toDataURL("image/webp", 0.9) || finalCanvas.toDataURL("image/jpeg", 0.9);
+        
+        setFotoLocal(optimized);
+        setForm({ ...form, foto_local: optimized });
+        setShowCropModal(false);
+        setCropImage("");
+      } catch (error) {
+        console.error("[v0] Error processing cropped image:", error);
+        alert("Error al procesar la imagen. Por favor intenta de nuevo.");
       }
-
-      const x = (1024 - scaledWidth) / 2;
-      const y = (512 - scaledHeight) / 2;
-
-      finalCtx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
-      const optimized = finalCanvas.toDataURL("image/webp", 0.9) || finalCanvas.toDataURL("image/jpeg", 0.9);
-      
-      setFotoLocal(optimized);
-      setForm({ ...form, foto_local: optimized });
-      setShowCropModal(false);
-      setCropImage("");
+    };
+    img.onerror = () => {
+      console.error("[v0] Error loading image for crop");
+      alert("No se pudo cargar la imagen. Intenta con otra foto.");
     };
     img.src = cropImage;
   };
@@ -1026,6 +1035,8 @@ const Clientes = () => {
     setForm({ nom: "", rfc: "", tel: "", email: "", dir: "", estado: "Activo", foto_local: "" });
     setFotoLocal("");
     setEditId(null);
+    setShowCropModal(false);
+    setCropImage("");
   };
 
   const openEdit = (c: Cliente) => {
@@ -1217,7 +1228,7 @@ const Clientes = () => {
           </div>
         </Modal>
       )}
-      {showCropModal && (
+      {showCropModal && cropImage && (
         <Modal onClose={() => setShowCropModal(false)}>
           <div className="p-4 bg-card rounded-xl">
             <h2 className="text-xl font-bold mb-4">Ajusta tu foto</h2>
