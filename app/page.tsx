@@ -1579,7 +1579,7 @@ const Inventario = () => {
         let warning: string | undefined;
         
         if (!nom) {
-          error = "Falta descripción";
+          error = "Falta descripci��n";
         } else if (costo < 0) {
           error = "Costo inválido";
         } else if (stock < 0) {
@@ -3070,6 +3070,17 @@ function AppContent() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
+
+  // Leer parámetro de URL para establecer el tab
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab");
+      if (tabParam === "cli" || tabParam === "inv") {
+        setTab(tabParam);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ""));
