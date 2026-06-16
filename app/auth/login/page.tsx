@@ -19,25 +19,62 @@ export default function LoginPage() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     console.log("[v0] Login attempt with:", email)
-    const supabase = createClient()
-    console.log("[v0] Supabase client created:", supabase ? "OK" : "FAILED")
+    
+    if (!email || !password) {
+      setError("Por favor completa todos los campos")
+      return
+    }
+
     setIsLoading(true)
     setError(null)
 
     try {
-      console.log("[v0] Attempting signInWithPassword...")
-      const { error } = await supabase.auth.signInWithPassword({
+      console.log("[v0] Creating Supabase client...")
+      const supabase = createClient()
+      console.log("[v0] Supabase client created successfully")
+      
+      console.log("[v0] Attempting signInWithPassword with email:", email)
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password,
       })
-      console.log("[v0] SignIn response error:", error)
-      if (error) throw error
+      
+      console.log("[v0] SignIn response:", { data, error })
+      
+      if (error) {
+        console.error("[v0] Auth error:", error.message, error.status)
+        throw error
+      }
+      
+      if (!data?.session) {
+        console.error("[v0] No session returned after login")
+        throw new Error("No se pudo crear la sesión. Por favor intenta de nuevo.")
+      }
+      
       console.log("[v0] Login successful, redirecting...")
       router.push("/")
       router.refresh()
     } catch (error: unknown) {
-      console.log("[v0] Login error caught:", error)
-      setError(error instanceof Error ? error.message : "Ocurrió un error")
+      console.error("[v0] Login error:", error)
+      
+      let errorMessage = "Ocurrió un error al iniciar sesión"
+      
+      if (error instanceof Error) {
+        errorMessage = error.message
+        
+        // Mensajes de error más específicos
+        if (error.message.includes("Invalid login credentials")) {
+          errorMessage = "Correo o contraseña incorrectos"
+        } else if (error.message.includes("Email not confirmed")) {
+          errorMessage = "Por favor confirma tu correo antes de iniciar sesión"
+        } else if (error.message.includes("User not found")) {
+          errorMessage = "Este correo no está registrado"
+        } else if (error.message.includes("Password")) {
+          errorMessage = "La contraseña es incorrecta"
+        }
+      }
+      
+      setError(errorMessage)
     } finally {
       setIsLoading(false)
     }
@@ -70,6 +107,12 @@ export default function LoginPage() {
             </div>
             <form onSubmit={handleLogin}>
               <div className="flex flex-col gap-5">
+                {error && (
+                  <div className="rounded-xl bg-red-50/80 backdrop-blur-sm border border-red-200/60 p-3.5 flex gap-3">
+                    <div className="text-red-600 font-bold text-lg flex-shrink-0">!</div>
+                    <p className="text-sm text-red-700 font-medium">{error}</p>
+                  </div>
+                )}
                 <div className="grid gap-2">
                   <Label htmlFor="email" className="text-sm font-medium text-foreground">Correo electrónico</Label>
                   <Input
@@ -93,7 +136,6 @@ export default function LoginPage() {
                     className="rounded-xl bg-white/50 backdrop-blur-sm border border-white/40 focus:border-primary/40 focus:bg-white/60 transition-all"
                   />
                 </div>
-                {error && <p className="text-sm text-destructive font-medium">{error}</p>}
                 <Button 
                   type="submit" 
                   className="w-full mt-2 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white font-semibold shadow-lg transition-all duration-300 h-11" 
