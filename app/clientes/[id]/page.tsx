@@ -190,7 +190,16 @@ export default function ClienteDetailPage() {
     <div className="min-h-screen bg-background">
       <div className="max-w-2xl mx-auto p-4 pb-20">
         {/* Botón volver */}
-        <button onClick={() => router.back()} className="text-primary text-sm font-medium mb-4">
+        <button
+          onClick={() => {
+            if (window.history.length > 1) {
+              router.back()
+            } else {
+              router.push("/")
+            }
+          }}
+          className="text-primary text-sm font-medium mb-4 cursor-pointer"
+        >
           ← Volver
         </button>
 
