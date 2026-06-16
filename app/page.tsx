@@ -1176,8 +1176,8 @@ const Clientes = () => {
                   alt="Preview"
                   className="w-full h-full object-cover rounded-lg"
                   onError={() => {
-                    console.log("[v0] Error loading photo preview");
-                    setFotoLocal("");
+                    console.log("[v0] Photo failed to load - may be corrupted or too large");
+                    // Don't clear it, just leave it as is and let user replace it
                   }}
                 />
               ) : (
