@@ -220,7 +220,8 @@ export default function ClienteDetailPage() {
 
   const filteredProducts = productos.filter(p =>
     p.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.cod.toLowerCase().includes(searchTerm.toLowerCase())
+    (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
+    (p.barcode && p.barcode.toLowerCase().includes(searchTerm.toLowerCase()))
   )
 
   const totalOrder = Object.entries(selectedProducts).reduce((sum, [productId, qty]) => {
@@ -376,7 +377,7 @@ export default function ClienteDetailPage() {
               />
 
               {/* Grid de Productos */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 mb-6">
+              <div className="grid grid-cols-3 gap-4 mb-6">
                 {filteredProducts.map((p) => {
                   const disponible = p.stock - p.reservado
                   const qty = selectedProducts[p.id] || 0
