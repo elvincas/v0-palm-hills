@@ -1191,6 +1191,7 @@ type BulkRow = {
   costo: number;
   min: number;
   _error?: string;
+  _warning?: string;
 };
 
 type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku";
@@ -1575,14 +1576,19 @@ const Inventario = () => {
         const stock = keyMap.stock ? num(r[keyMap.stock]) : 0;
 
         let error: string | undefined;
+        let warning: string | undefined;
+        
         if (!nom) {
           error = "Falta descripción";
-        } else if (precio <= 0) {
-          error = "Precio debe ser > 0";
         } else if (costo < 0) {
           error = "Costo inválido";
         } else if (stock < 0) {
           error = "Inventario no puede ser negativo";
+        }
+        
+        // Precio en 0 es advertencia, no error
+        if (precio === 0) {
+          warning = "Precio en 0";
         }
 
         return {
@@ -1596,6 +1602,7 @@ const Inventario = () => {
           costo,
           min: keyMap.min ? num(r[keyMap.min]) : 5,
           _error: error,
+          _warning: warning,
         };
       });
       setBulkRows(rows);
@@ -1910,13 +1917,17 @@ const Inventario = () => {
                         className={`border-t border-border ${
                           r._error
                             ? "bg-red-50 hover:bg-red-100"
+                            : r._warning
+                            ? "bg-yellow-50 hover:bg-yellow-100"
                             : "bg-green-50 hover:bg-green-100"
                         }`}
-                        title={r._error || "Válido para importar"}
+                        title={r._error || r._warning || "Válido para importar"}
                       >
                         <td className="px-2 py-1.5 font-medium whitespace-nowrap">
                           {r._error ? (
                             <span className="text-destructive">❌</span>
+                          ) : r._warning ? (
+                            <span className="text-yellow-600">!</span>
                           ) : (
                             <span className="text-green-600">✓</span>
                           )}
@@ -1928,6 +1939,11 @@ const Inventario = () => {
                           {r._error && (
                             <div className="text-xs text-destructive mt-0.5">
                               {r._error}
+                            </div>
+                          )}
+                          {r._warning && (
+                            <div className="text-xs text-yellow-600 mt-0.5">
+                              {r._warning}
                             </div>
                           )}
                         </td>
