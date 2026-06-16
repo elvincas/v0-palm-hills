@@ -24,6 +24,15 @@ interface Factura {
   total: number
 }
 
+interface LineaOrden {
+  prodId: string
+  prodNom: string
+  barcode: string
+  sku: string
+  precio: number
+  qty: number
+}
+
 interface Orden {
   id: string
   num: number
@@ -31,7 +40,18 @@ interface Orden {
   fecha: string
   estado: string
   total: number
+  lineas?: LineaOrden[]
 }
+
+interface Producto {
+  id: string
+  nom: string
+  sku?: string
+  barcode?: string
+  precio: number
+}
+
+const today = () => new Date().toISOString().slice(0, 10)
 
 export default function ClienteDetailPage() {
   const params = useParams()
@@ -41,27 +61,33 @@ export default function ClienteDetailPage() {
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [ordenes, setOrdenes] = useState<Orden[]>([])
+  const [productos, setProductos] = useState<Producto[]>([])
   const [loading, setLoading] = useState(true)
   const [balance, setBalance] = useState(0)
+
+  // Estado del modal de nueva orden
+  const [showOrden, setShowOrden] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [fecha, setFecha] = useState(today())
+  const [lineas, setLineas] = useState([{ prodId: '', qty: 1 }])
 
   useEffect(() => {
     const loadData = async () => {
       try {
         const supabase = createClient()
 
-        // Cargar cliente
         const { data: c } = await supabase.from('clientes').select('*').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
 
-        // Cargar facturas
         const { data: f } = await supabase.from('facturas').select('*').eq('cli', clienteId)
         if (f) setFacturas(f as Factura[])
 
-        // Cargar órdenes
         const { data: o } = await supabase.from('ordenes').select('*').eq('cli', clienteId)
         if (o) setOrdenes(o as Orden[])
 
-        // Calcular balance
+        const { data: p } = await supabase.from('productos').select('*')
+        if (p) setProductos(p as Producto[])
+
         if (f) {
           const total = f.reduce((sum, fac) => sum + (fac.total || 0), 0)
           const pagado = f.filter((fac) => fac.estado === 'Pagada').reduce((sum, fac) => sum + (fac.total || 0), 0)
@@ -76,6 +102,65 @@ export default function ClienteDetailPage() {
 
     loadData()
   }, [clienteId])
+
+  const totalOrden = lineas.reduce((acc, l) => {
+    const p = productos.find((x) => x.id === l.prodId)
+    return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0)
+  }, 0)
+
+  const handleSaveOrden = async () => {
+    const items = lineas.filter((l) => l.prodId)
+    if (items.length === 0) {
+      alert('Agrega al menos un producto')
+      return
+    }
+    setSaving(true)
+    try {
+      const supabase = createClient()
+      const lineasDetalle = items.map((l) => {
+        const p = productos.find((x) => x.id === l.prodId)!
+        return {
+          prodId: p.id,
+          prodNom: p.nom,
+          barcode: p.barcode || '',
+          sku: p.sku || '',
+          precio: Number(p.precio),
+          qty: Number(l.qty),
+        }
+      })
+
+      // Calcular siguiente número de orden global
+      const { data: allOrdenes } = await supabase.from('ordenes').select('num')
+      const maxNum = (allOrdenes || []).reduce((m, o) => Math.max(m, o.num || 0), 0)
+      const num = maxNum + 1
+
+      const { data } = await supabase
+        .from('ordenes')
+        .insert({
+          cli: clienteId,
+          fecha,
+          estado: 'Pendiente',
+          total: +totalOrden.toFixed(2),
+          lineas: lineasDetalle,
+          num,
+        })
+        .select()
+        .single()
+
+      if (data) {
+        setOrdenes((prev) => [data as Orden, ...prev])
+      }
+
+      setShowOrden(false)
+      setLineas([{ prodId: '', qty: 1 }])
+      setFecha(today())
+    } catch (error) {
+      console.log('[v0] Error creating orden:', error)
+      alert('Error al crear la orden')
+    } finally {
+      setSaving(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -112,7 +197,7 @@ export default function ClienteDetailPage() {
         {/* Header del Cliente */}
         <div className="bg-card rounded-2xl border border-border overflow-hidden mb-6">
           {cliente.foto_local && (
-            <img src={cliente.foto_local} alt={cliente.nom} className="w-full h-32 object-cover" />
+            <img src={cliente.foto_local || "/placeholder.svg"} alt={cliente.nom} className="w-full h-32 object-cover" />
           )}
 
           <div className="p-4">
@@ -214,6 +299,113 @@ export default function ClienteDetailPage() {
           )}
         </div>
       </div>
+
+      {/* Botón flotante para nueva orden */}
+      <button
+        onClick={() => setShowOrden(true)}
+        aria-label="Nueva orden"
+        className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-primary text-primary-foreground text-3xl flex items-center justify-center shadow-lg z-10"
+      >
+        +
+      </button>
+
+      {/* Modal de nueva orden */}
+      {showOrden && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-20 p-0 sm:p-4">
+          <div className="bg-card w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-border max-h-[90vh] overflow-y-auto">
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-card-foreground">Nueva Orden</h3>
+                <button onClick={() => setShowOrden(false)} className="text-muted-foreground text-2xl leading-none">
+                  ×
+                </button>
+              </div>
+
+              <p className="text-sm text-muted-foreground mb-3">Cliente: <span className="font-medium text-card-foreground">{cliente.nom}</span></p>
+
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Fecha</label>
+              <input
+                type="date"
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground mb-4"
+              />
+
+              <label className="block text-xs font-medium text-muted-foreground mb-2">Productos</label>
+              <div className="space-y-2 mb-3">
+                {lineas.map((l, i) => (
+                  <div key={i} className="flex gap-2">
+                    <select
+                      value={l.prodId}
+                      onChange={(e) => {
+                        const next = [...lineas]
+                        next[i] = { ...next[i], prodId: e.target.value }
+                        setLineas(next)
+                      }}
+                      className="flex-1 px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-sm"
+                    >
+                      <option value="">Selecciona producto</option>
+                      {productos.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.nom} - ${Number(p.precio).toFixed(2)}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min={1}
+                      value={l.qty}
+                      onChange={(e) => {
+                        const next = [...lineas]
+                        next[i] = { ...next[i], qty: Number(e.target.value) }
+                        setLineas(next)
+                      }}
+                      className="w-16 px-2 py-2 rounded-lg border border-input bg-background text-card-foreground text-sm"
+                    />
+                    {lineas.length > 1 && (
+                      <button
+                        onClick={() => setLineas(lineas.filter((_, idx) => idx !== i))}
+                        className="px-3 rounded-lg bg-red-50 text-destructive font-bold"
+                        aria-label="Quitar producto"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <button
+                onClick={() => setLineas([...lineas, { prodId: '', qty: 1 }])}
+                className="text-primary text-sm font-medium mb-4"
+              >
+                + Agregar otro producto
+              </button>
+
+              <div className="flex justify-between items-center mb-4 pt-3 border-t border-border">
+                <span className="text-sm text-muted-foreground">Total</span>
+                <span className="text-xl font-bold text-primary">${totalOrden.toFixed(2)}</span>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowOrden(false)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-bold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleSaveOrden}
+                  disabled={saving}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-60"
+                >
+                  {saving ? 'Guardando...' : 'Crear Orden'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
