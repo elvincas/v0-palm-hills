@@ -959,7 +959,11 @@ const Clientes = () => {
   };
 
   const processCroppedImage = async () => {
-    if (!cropImage || !croppedAreaPixels) return;
+    if (!cropImage || !croppedAreaPixels || croppedAreaPixels.width === 0 || croppedAreaPixels.height === 0) {
+      console.error("[v0] Invalid crop area");
+      alert("Por favor ajusta el área de recorte antes de guardar");
+      return;
+    }
 
     const img = new Image();
     img.crossOrigin = "anonymous";
@@ -1013,16 +1017,17 @@ const Clientes = () => {
         const y = (512 - scaledHeight) / 2;
 
         finalCtx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
+        
         // Comprimir agresivamente para evitar data URLs gigantes
         let optimized = finalCanvas.toDataURL("image/webp", 0.7);
         
         // Si WebP no está disponible, usar JPEG con baja calidad
-        if (!optimized || optimized.length > 500000) {
+        if (!optimized || optimized.length < 100 || optimized.length > 500000) {
           optimized = finalCanvas.toDataURL("image/jpeg", 0.6);
         }
         
-        // Si aún es muy grande, reducir más
-        if (optimized.length > 500000) {
+        // Si aún es muy grande o vacío, reducir más
+        if (!optimized || optimized.length < 100 || optimized.length > 500000) {
           const tmpCanvas = document.createElement("canvas");
           tmpCanvas.width = 800;
           tmpCanvas.height = 400;
@@ -1033,14 +1038,17 @@ const Clientes = () => {
           }
         }
         
-        console.log("[v0] Optimized image size:", Math.round(optimized.length / 1024) + "KB");
+        if (!optimized || optimized.length < 100) {
+          throw new Error("La imagen procesada está vacía");
+        }
+        
         setFotoLocal(optimized);
         setForm({ ...form, foto_local: optimized });
         setShowCropModal(false);
         setCropImage("");
       } catch (error) {
         console.error("[v0] Error processing cropped image:", error);
-        alert("Error al procesar la imagen. Por favor intenta de nuevo.");
+        alert("Error al procesar la imagen: " + (error instanceof Error ? error.message : String(error)));
       }
     };
     img.onerror = () => {
