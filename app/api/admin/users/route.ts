@@ -109,8 +109,21 @@ export async function POST(request: Request) {
       const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.id)
 
       if (error) {
+        console.error("[v0] Delete user error:", error)
+        // Proporcionar mensajes más descriptivos
+        let errorMessage = error.message || 'Error al eliminar usuario'
+        
+        // Errores específicos de Supabase
+        if (error.message?.includes('Cannot delete user with an active session')) {
+          errorMessage = 'No se puede eliminar un usuario con una sesión activa. Cierra su sesión primero o espera a que expire.'
+        } else if (error.message?.includes('Invalid user_id')) {
+          errorMessage = 'ID de usuario inválido'
+        } else if (error.message?.includes('Unauthorized')) {
+          errorMessage = 'No tienes permisos para eliminar este usuario'
+        }
+        
         return NextResponse.json(
-          { error: error.message },
+          { error: errorMessage, details: error.message },
           { status: 400 }
         )
       }

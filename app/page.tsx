@@ -1579,7 +1579,7 @@ const Inventario = () => {
         let warning: string | undefined;
         
         if (!nom) {
-          error = "Falta descripci��n";
+          error = "Falta descripci����n";
         } else if (costo < 0) {
           error = "Costo inválido";
         } else if (stock < 0) {
@@ -2954,16 +2954,29 @@ const GestionarUsuarios = () => {
     if (!confirm("¿Estás seguro que deseas eliminar este usuario de forma permanente?")) return;
     
     try {
+      console.log("[v0] Attempting to delete user:", userId);
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: userId, action: "delete" }),
       });
 
-      if (!res.ok) throw new Error("Error deleting user");
+      const data = await res.json();
+      console.log("[v0] Delete response:", { ok: res.ok, data });
+
+      if (!res.ok) {
+        const errorMessage = data.error || "Error deleting user";
+        console.error("[v0] Delete failed:", errorMessage);
+        throw new Error(errorMessage);
+      }
+      
+      console.log("[v0] User deleted successfully, refreshing list");
       await fetchUsers();
+      alert("Usuario eliminado correctamente");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Error");
+      const errorMessage = e instanceof Error ? e.message : "Error desconocido al eliminar usuario";
+      console.error("[v0] Delete user catch error:", errorMessage);
+      alert("❌ No se pudo eliminar el usuario:\n\n" + errorMessage);
     }
   };
 
