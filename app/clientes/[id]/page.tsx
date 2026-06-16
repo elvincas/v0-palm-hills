@@ -311,7 +311,7 @@ export default function ClienteDetailPage() {
 
       {/* Botón flotante para nueva orden */}
       <button
-        onClick={() => setShowOrden(true)}
+        onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
         aria-label="Nueva orden"
         className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-primary text-primary-foreground text-3xl flex items-center justify-center shadow-lg z-10"
       >
