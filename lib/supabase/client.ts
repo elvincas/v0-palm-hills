@@ -13,5 +13,13 @@ export function createClient() {
     throw new Error("Supabase credentials not configured")
   }
   
-  return createBrowserClient(url, key)
+  return createBrowserClient(url, key, {
+    auth: {
+      persistSession: true,
+      storageKey: 'ph-supabase-auth',
+      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  })
 }
