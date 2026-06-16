@@ -319,17 +319,45 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Nuevo producto: ${prod.nom}`);
   };
 
-  const addProductosBulk = async (rows: Omit<Producto, "id">[]) => {
+  const addProductosBulk = async (rows: Omit<Producto, "id">[], skipDuplicates = false) => {
     const payload = rows.map(sanitizeProducto);
+    
+    // Detectar duplicados por SKU
+    const skusToCheck = payload.filter(p => p.sku).map(p => p.sku);
+    let duplicados: Producto[] = [];
+    
+    if (skusToCheck.length > 0) {
+      const { data: existentes } = await supabase
+        .from("productos")
+        .select("*")
+        .in("sku", skusToCheck);
+      duplicados = (existentes || []) as Producto[];
+    }
+
+    // Si hay duplicados y no queremos saltarlos, retorna info sobre duplicados
+    if (duplicados.length > 0 && !skipDuplicates) {
+      throw new Error(`${duplicados.length} productos ya existen (por SKU). Verifica los SKU duplicados.`);
+    }
+
+    // Filtrar productos que ya existen si skipDuplicates es true
+    const skusDuplicados = new Set(duplicados.map(d => d.sku));
+    const payloadFiltrado = skipDuplicates 
+      ? payload.filter(p => !skusDuplicados.has(p.sku))
+      : payload;
+
+    if (payloadFiltrado.length === 0) {
+      throw new Error("Todos los productos ya existen en la base de datos.");
+    }
+
     try {
-      const { data, error } = await supabase.from("productos").insert(payload).select();
+      const { data, error } = await supabase.from("productos").insert(payloadFiltrado).select();
       if (error) {
         console.error("[v0] Bulk insert error:", error.message, error.details, error.hint);
         throw new Error(`Error de Supabase: ${error.message}${error.details ? ` - ${error.details}` : ""}`);
       }
       if (data) setProductos((prev) => [...(data as Producto[]), ...prev]);
-      await logAct(`Carga masiva: ${data?.length || 0} productos`);
-      return data?.length || 0;
+      await logAct(`Carga masiva: ${data?.length || 0} productos${skipDuplicates ? ` (${duplicados.length} duplicados saltados)` : ""}`);
+      return { insertados: data?.length || 0, duplicados: duplicados.length };
     } catch (err) {
       console.error("[v0] Bulk operation failed:", err);
       throw err;
@@ -1597,7 +1625,7 @@ const Inventario = () => {
     XLSX.writeFile(wb, "plantilla_inventario.xlsx");
   };
 
-  const confirmBulk = async () => {
+  const confirmBulk = async (skipDuplicates = false) => {
     const valid = bulkRows.filter((r) => !r._error);
     if (!valid.length) {
       setBulkErr("No hay filas validas para importar.");
@@ -1605,7 +1633,7 @@ const Inventario = () => {
     }
     setBulkSaving(true);
     try {
-      const count = await addProductosBulk(
+      const result = await addProductosBulk(
         valid.map((r) => ({
           nom: r.nom,
           sku: r.sku,
@@ -1618,15 +1646,28 @@ const Inventario = () => {
           stock: r.stock,
           min: r.min,
           foto: null,
-        }))
+        })),
+        skipDuplicates
       );
-      alert(`Se importaron ${count} productos correctamente.`);
-      setShowBulk(false);
-      setBulkRows([]);
+      
+      if (typeof result === 'object') {
+        const msg = `Se importaron ${result.insertados} productos correctamente.${
+          result.duplicados > 0 ? ` (${result.duplicados} duplicados saltados)` : ''
+        }`;
+        alert(msg);
+        setShowBulk(false);
+        setBulkRows([]);
+      }
     } catch (error: unknown) {
       const errorMsg = error instanceof Error ? error.message : "Error desconocido";
       console.error("[v0] Bulk upload failed:", errorMsg);
-      setBulkErr(`Error al guardar: ${errorMsg}. Por favor revisa la consola.`);
+      
+      // Si es error de duplicados, mostrar opción para saltar
+      if (errorMsg.includes("ya existen")) {
+        setBulkErr(`${errorMsg} ¿Quieres saltar los duplicados e importar solo los nuevos?`);
+      } else {
+        setBulkErr(`Error al guardar: ${errorMsg}. Por favor revisa la consola.`);
+      }
     } finally {
       setBulkSaving(false);
     }
@@ -1913,13 +1954,25 @@ const Inventario = () => {
 
           <div className="flex gap-2.5 mt-1">
             <button
-              onClick={() => setShowBulk(false)}
+              onClick={() => {
+                setShowBulk(false);
+                setBulkErr("");
+              }}
               className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
             >
               Cancelar
             </button>
+            {bulkErr && bulkErr.includes("ya existen") && (
+              <button
+                onClick={() => confirmBulk(true)}
+                disabled={bulkSaving || !bulkRows.some((r) => !r._error)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-orange-600 text-white font-bold text-sm disabled:opacity-50"
+              >
+                {bulkSaving ? "Importando..." : "Saltar duplicados"}
+              </button>
+            )}
             <button
-              onClick={confirmBulk}
+              onClick={() => confirmBulk(false)}
               disabled={
                 bulkSaving || !bulkRows.some((r) => !r._error)
               }
