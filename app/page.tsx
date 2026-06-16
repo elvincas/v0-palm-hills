@@ -321,11 +321,19 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const addProductosBulk = async (rows: Omit<Producto, "id">[]) => {
     const payload = rows.map(sanitizeProducto);
-    const { data, error } = await supabase.from("productos").insert(payload).select();
-    if (error) throw error;
-    if (data) setProductos((prev) => [...(data as Producto[]), ...prev]);
-    await logAct(`Carga masiva: ${data?.length || 0} productos`);
-    return data?.length || 0;
+    try {
+      const { data, error } = await supabase.from("productos").insert(payload).select();
+      if (error) {
+        console.error("[v0] Bulk insert error:", error.message, error.details, error.hint);
+        throw new Error(`Error de Supabase: ${error.message}${error.details ? ` - ${error.details}` : ""}`);
+      }
+      if (data) setProductos((prev) => [...(data as Producto[]), ...prev]);
+      await logAct(`Carga masiva: ${data?.length || 0} productos`);
+      return data?.length || 0;
+    } catch (err) {
+      console.error("[v0] Bulk operation failed:", err);
+      throw err;
+    }
   };
 
   const updateProducto = async (id: string, prod: Omit<Producto, "id">) => {
@@ -1600,8 +1608,10 @@ const Inventario = () => {
       alert(`Se importaron ${count} productos correctamente.`);
       setShowBulk(false);
       setBulkRows([]);
-    } catch {
-      setBulkErr("Ocurrio un error al guardar. Intenta de nuevo.");
+    } catch (error: unknown) {
+      const errorMsg = error instanceof Error ? error.message : "Error desconocido";
+      console.error("[v0] Bulk upload failed:", errorMsg);
+      setBulkErr(`Error al guardar: ${errorMsg}. Por favor revisa la consola.`);
     } finally {
       setBulkSaving(false);
     }
