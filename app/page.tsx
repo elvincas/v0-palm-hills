@@ -3094,9 +3094,11 @@ function AppContent() {
     <div className="max-w-[480px] mx-auto min-h-svh flex flex-col bg-background">
       <header className="bg-card border-b border-border px-4 py-2.5 flex items-center justify-between sticky top-0 z-[5]">
         <div className="flex items-center gap-2.5">
-          <div className="w-10 h-10 rounded-lg bg-secondary flex items-center justify-center text-lg font-black text-primary font-serif border border-secondary tracking-tighter">
-            PH
-          </div>
+          <img
+            src="/logo.png"
+            alt="Palm Hills"
+            className="w-12 h-12 object-contain"
+          />
           <div>
             <div className="text-base font-bold text-primary leading-tight">
               Palm Hills

@@ -48,9 +48,11 @@ export default function LoginPage() {
     <div className="flex min-h-svh w-full items-center justify-center bg-background p-6 md:p-10">
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-2 text-center">
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary text-primary-foreground text-xl font-bold">
-            PH
-          </div>
+          <img
+            src="/logo.png"
+            alt="Palm Hills"
+            className="h-16 w-16 object-contain"
+          />
           <h1 className="text-xl font-bold text-foreground text-balance">Palm Hills</h1>
           <p className="text-sm text-muted-foreground">Beauty &amp; Health</p>
         </div>
