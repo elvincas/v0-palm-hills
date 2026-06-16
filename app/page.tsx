@@ -2965,18 +2965,18 @@ const GestionarUsuarios = () => {
       console.log("[v0] Delete response:", { ok: res.ok, data });
 
       if (!res.ok) {
-        const errorMessage = data.error || "Error deleting user";
+        const errorMessage = data.error || "No se pudo eliminar el usuario";
         console.error("[v0] Delete failed:", errorMessage);
         throw new Error(errorMessage);
       }
       
       console.log("[v0] User deleted successfully, refreshing list");
       await fetchUsers();
-      alert("Usuario eliminado correctamente");
+      alert("Usuario eliminado exitosamente");
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : "Error desconocido al eliminar usuario";
+      const errorMessage = e instanceof Error ? e.message : "Error desconocido al eliminar el usuario";
       console.error("[v0] Delete user catch error:", errorMessage);
-      alert("❌ No se pudo eliminar el usuario:\n\n" + errorMessage);
+      alert("No se pudo eliminar el usuario:\n\n" + errorMessage);
     }
   };
 

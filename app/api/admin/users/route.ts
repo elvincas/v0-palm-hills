@@ -17,10 +17,18 @@ export async function POST(request: Request) {
   try {
     const { email, password, action } = await request.json()
 
-    // Validate inputs
-    if (!email || !password) {
+    // Validate email for all actions
+    if (!email) {
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'El correo electrónico es requerido' },
+        { status: 400 }
+      )
+    }
+
+    // Validate password only for create and resetPassword actions
+    if ((action === 'create' || action === 'resetPassword') && !password) {
+      return NextResponse.json(
+        { error: 'La contraseña es requerida' },
         { status: 400 }
       )
     }
@@ -34,14 +42,18 @@ export async function POST(request: Request) {
       })
 
       if (error) {
+        let errorMessage = error.message
+        if (error.message?.includes('already exists')) {
+          errorMessage = 'El correo ya está registrado'
+        }
         return NextResponse.json(
-          { error: error.message },
+          { error: errorMessage },
           { status: 400 }
         )
       }
 
       return NextResponse.json(
-        { user: data.user, message: 'User created successfully' },
+        { user: data.user, message: 'Usuario creado exitosamente' },
         { status: 201 }
       )
     }
@@ -52,7 +64,7 @@ export async function POST(request: Request) {
       
       if (listError) {
         return NextResponse.json(
-          { error: listError.message },
+          { error: 'Error al obtener usuarios' },
           { status: 400 }
         )
       }
@@ -74,13 +86,13 @@ export async function POST(request: Request) {
 
       if (error) {
         return NextResponse.json(
-          { error: error.message },
+          { error: 'Error al cambiar la contraseña' },
           { status: 400 }
         )
       }
 
       return NextResponse.json(
-        { message: 'Password reset successfully' },
+        { message: 'Contraseña cambiada exitosamente' },
         { status: 200 }
       )
     }
@@ -91,7 +103,7 @@ export async function POST(request: Request) {
       
       if (listError) {
         return NextResponse.json(
-          { error: listError.message },
+          { error: 'Error al obtener usuarios' },
           { status: 400 }
         )
       }
@@ -110,10 +122,9 @@ export async function POST(request: Request) {
 
       if (error) {
         console.error("[v0] Delete user error:", error)
-        // Proporcionar mensajes más descriptivos
-        let errorMessage = error.message || 'Error al eliminar usuario'
+        let errorMessage = 'Error al eliminar el usuario'
         
-        // Errores específicos de Supabase
+        // Errores específicos de Supabase en español
         if (error.message?.includes('Cannot delete user with an active session')) {
           errorMessage = 'No se puede eliminar un usuario con una sesión activa. Cierra su sesión primero o espera a que expire.'
         } else if (error.message?.includes('Invalid user_id')) {
@@ -129,19 +140,19 @@ export async function POST(request: Request) {
       }
 
       return NextResponse.json(
-        { message: 'User deleted successfully' },
+        { message: 'Usuario eliminado exitosamente' },
         { status: 200 }
       )
     }
 
     return NextResponse.json(
-      { error: 'Invalid action' },
+      { error: 'Acción inválida' },
       { status: 400 }
     )
   } catch (error) {
     console.error('Admin API error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }
@@ -154,7 +165,7 @@ export async function GET() {
 
     if (error) {
       return NextResponse.json(
-        { error: error.message },
+        { error: 'Error al obtener usuarios' },
         { status: 400 }
       )
     }
@@ -171,7 +182,7 @@ export async function GET() {
   } catch (error) {
     console.error('Admin API error:', error)
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'Error interno del servidor' },
       { status: 500 }
     )
   }
