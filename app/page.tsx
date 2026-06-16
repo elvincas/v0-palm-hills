@@ -1542,17 +1542,32 @@ const Inventario = () => {
       };
       const rows: BulkRow[] = json.map((r) => {
         const nom = String(keyMap.nom ? r[keyMap.nom] : "").trim();
+        const precio = keyMap.precio ? num(r[keyMap.precio]) : 0;
+        const costo = keyMap.costo ? num(r[keyMap.costo]) : 0;
+        const stock = keyMap.stock ? num(r[keyMap.stock]) : 0;
+
+        let error: string | undefined;
+        if (!nom) {
+          error = "Falta descripción";
+        } else if (precio <= 0) {
+          error = "Precio debe ser > 0";
+        } else if (costo < 0) {
+          error = "Costo inválido";
+        } else if (stock < 0) {
+          error = "Inventario no puede ser negativo";
+        }
+
         return {
           sku: String(keyMap.sku ? r[keyMap.sku] : "").trim(),
           nom,
           fabricante: String(keyMap.fabricante ? r[keyMap.fabricante] : "").trim(),
-          stock: keyMap.stock ? num(r[keyMap.stock]) : 0,
+          stock,
           cajas: keyMap.cajas ? num(r[keyMap.cajas]) : 0,
           barcode: String(keyMap.barcode ? r[keyMap.barcode] : "").trim(),
-          precio: keyMap.precio ? num(r[keyMap.precio]) : 0,
-          costo: keyMap.costo ? num(r[keyMap.costo]) : 0,
+          precio,
+          costo,
           min: keyMap.min ? num(r[keyMap.min]) : 5,
-          _error: nom ? undefined : "Falta descripcion",
+          _error: error,
         };
       });
       setBulkRows(rows);
@@ -1834,13 +1849,14 @@ const Inventario = () => {
             <>
               <div className="text-sm font-semibold text-card-foreground mb-2">
                 Vista previa ({bulkRows.filter((r) => !r._error).length} de{" "}
-                {bulkRows.length} validos)
+                {bulkRows.length} válidos)
               </div>
               <div className="max-h-60 overflow-auto rounded-xl border border-border mb-3">
                 <table className="w-full text-xs">
                   <thead className="bg-muted sticky top-0">
                     <tr className="text-left text-muted-foreground">
-                      <th className="px-2 py-1.5 font-medium">Descripcion</th>
+                      <th className="px-2 py-1.5 font-medium">Estado</th>
+                      <th className="px-2 py-1.5 font-medium">Descripción</th>
                       <th className="px-2 py-1.5 font-medium">SKU</th>
                       <th className="px-2 py-1.5 font-medium text-right">Inv.</th>
                       <th className="px-2 py-1.5 font-medium text-right">Precio</th>
@@ -1850,26 +1866,47 @@ const Inventario = () => {
                     {bulkRows.map((r, i) => (
                       <tr
                         key={i}
-                        className={`border-t border-border ${r._error ? "bg-red-50" : ""}`}
+                        className={`border-t border-border ${
+                          r._error
+                            ? "bg-red-50 hover:bg-red-100"
+                            : "bg-green-50 hover:bg-green-100"
+                        }`}
+                        title={r._error || "Válido para importar"}
                       >
-                        <td className="px-2 py-1.5 text-card-foreground">
-                          {r.nom || (
-                            <span className="text-destructive">{r._error}</span>
+                        <td className="px-2 py-1.5 font-medium whitespace-nowrap">
+                          {r._error ? (
+                            <span className="text-destructive">❌</span>
+                          ) : (
+                            <span className="text-green-600">✓</span>
                           )}
                         </td>
-                        <td className="px-2 py-1.5 text-muted-foreground font-mono">
-                          {r.sku}
+                        <td className="px-2 py-1.5 text-card-foreground max-w-xs truncate">
+                          {r.nom || (
+                            <span className="text-destructive italic">Sin nombre</span>
+                          )}
+                          {r._error && (
+                            <div className="text-xs text-destructive mt-0.5">
+                              {r._error}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-2 py-1.5 text-muted-foreground font-mono text-xs">
+                          {r.sku || "-"}
                         </td>
                         <td className="px-2 py-1.5 text-right text-card-foreground">
-                          {r.stock}
+                          {r.stock ?? "-"}
                         </td>
                         <td className="px-2 py-1.5 text-right text-card-foreground">
-                          {fmt(r.precio)}
+                          {fmt(r.precio || 0)}
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+              <div className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 mb-3">
+                <strong>Campos requeridos:</strong> Descripción, Inventario Actual, Precio,
+                Costo. Los campos vacíos deben ser 0 o números válidos.
               </div>
             </>
           )}
