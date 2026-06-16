@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
+import Cropper from "react-easy-crop";
 
 // ------------------------------
 // Types
@@ -918,6 +919,11 @@ const Clientes = () => {
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [fotoLocal, setFotoLocal] = useState("");
+  const [showCropModal, setShowCropModal] = useState(false);
+  const [cropImage, setCropImage] = useState("");
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [form, setForm] = useState({
     nom: "",
     rfc: "",
@@ -940,42 +946,80 @@ const Clientes = () => {
     if (!file) return;
     const reader = new FileReader();
     reader.onload = (e) => {
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        canvas.width = 1024;
-        canvas.height = 512; // 2:1 aspect for banner
-        
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-        
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, 1024, 512);
-        
-        const imgAspect = img.width / img.height;
-        const canvasAspect = 1024 / 512;
-        
-        let scaledWidth: number, scaledHeight: number;
-        if (imgAspect > canvasAspect) {
-          scaledHeight = 512;
-          scaledWidth = 512 * imgAspect;
-        } else {
-          scaledWidth = 1024;
-          scaledHeight = 1024 / imgAspect;
-        }
-        
-        const x = (1024 - scaledWidth) / 2;
-        const y = (512 - scaledHeight) / 2;
-        
-        ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
-        const optimized = canvas.toDataURL("image/webp", 0.9) || canvas.toDataURL("image/jpeg", 0.9);
-        setFotoLocal(optimized);
-        setForm({ ...form, foto_local: optimized });
-      };
-      img.src = e.target?.result as string;
+      setCropImage(e.target?.result as string);
+      setShowCropModal(true);
+      setCrop({ x: 0, y: 0 });
+      setZoom(1);
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleCropComplete = (croppedArea: any, croppedAreaPixels: any) => {
+    setCroppedAreaPixels(croppedAreaPixels);
+  };
+
+  const processCroppedImage = async () => {
+    if (!cropImage || !croppedAreaPixels) return;
+
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const pixelRatio = window.devicePixelRatio || 1;
+      
+      canvas.width = croppedAreaPixels.width * pixelRatio;
+      canvas.height = croppedAreaPixels.height * pixelRatio;
+      
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      ctx.drawImage(
+        img,
+        croppedAreaPixels.x * pixelRatio,
+        croppedAreaPixels.y * pixelRatio,
+        croppedAreaPixels.width * pixelRatio,
+        croppedAreaPixels.height * pixelRatio,
+        0,
+        0,
+        croppedAreaPixels.width * pixelRatio,
+        croppedAreaPixels.height * pixelRatio
+      );
+
+      // Redimensionar a 1024x512 manteniendo aspecto
+      const finalCanvas = document.createElement("canvas");
+      finalCanvas.width = 1024;
+      finalCanvas.height = 512;
+      
+      const finalCtx = finalCanvas.getContext("2d");
+      if (!finalCtx) return;
+
+      finalCtx.fillStyle = "#ffffff";
+      finalCtx.fillRect(0, 0, 1024, 512);
+
+      const aspectRatio = canvas.width / canvas.height;
+      const canvasAspect = 1024 / 512;
+      
+      let scaledWidth: number, scaledHeight: number;
+      if (aspectRatio > canvasAspect) {
+        scaledHeight = 512;
+        scaledWidth = 512 * aspectRatio;
+      } else {
+        scaledWidth = 1024;
+        scaledHeight = 1024 / aspectRatio;
+      }
+
+      const x = (1024 - scaledWidth) / 2;
+      const y = (512 - scaledHeight) / 2;
+
+      finalCtx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
+      const optimized = finalCanvas.toDataURL("image/webp", 0.9) || finalCanvas.toDataURL("image/jpeg", 0.9);
+      
+      setFotoLocal(optimized);
+      setForm({ ...form, foto_local: optimized });
+      setShowCropModal(false);
+      setCropImage("");
+    };
+    img.src = cropImage;
   };
 
   const reset = () => {
@@ -1170,6 +1214,54 @@ const Clientes = () => {
             >
               {editId ? "Guardar Cambios" : "Guardar Cliente"}
             </button>
+          </div>
+        </Modal>
+      )}
+      {showCropModal && (
+        <Modal onClose={() => setShowCropModal(false)}>
+          <div className="p-4 bg-card rounded-xl">
+            <h2 className="text-xl font-bold mb-4">Ajusta tu foto</h2>
+            <div className="relative w-full h-96 bg-muted rounded-lg overflow-hidden mb-4">
+              <Cropper
+                image={cropImage}
+                crop={crop}
+                zoom={zoom}
+                aspect={1024 / 512}
+                onCropChange={setCrop}
+                onCropAreaChange={handleCropComplete}
+                onZoomChange={setZoom}
+                cropShape="rect"
+                showGrid={true}
+              />
+            </div>
+            <div className="space-y-3 mb-4">
+              <div>
+                <label className="text-sm font-medium mb-2 block">Zoom: {(zoom * 100).toFixed(0)}%</label>
+                <input
+                  type="range"
+                  min={1}
+                  max={3}
+                  step={0.1}
+                  value={zoom}
+                  onChange={(e) => setZoom(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2.5">
+              <button
+                onClick={() => setShowCropModal(false)}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={processCroppedImage}
+                className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              >
+                Guardar foto
+              </button>
+            </div>
           </div>
         </Modal>
       )}
