@@ -1013,8 +1013,27 @@ const Clientes = () => {
         const y = (512 - scaledHeight) / 2;
 
         finalCtx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
-        const optimized = finalCanvas.toDataURL("image/webp", 0.9) || finalCanvas.toDataURL("image/jpeg", 0.9);
+        // Comprimir agresivamente para evitar data URLs gigantes
+        let optimized = finalCanvas.toDataURL("image/webp", 0.7);
         
+        // Si WebP no está disponible, usar JPEG con baja calidad
+        if (!optimized || optimized.length > 500000) {
+          optimized = finalCanvas.toDataURL("image/jpeg", 0.6);
+        }
+        
+        // Si aún es muy grande, reducir más
+        if (optimized.length > 500000) {
+          const tmpCanvas = document.createElement("canvas");
+          tmpCanvas.width = 800;
+          tmpCanvas.height = 400;
+          const tmpCtx = tmpCanvas.getContext("2d");
+          if (tmpCtx) {
+            tmpCtx.drawImage(finalCanvas, 0, 0, 800, 400);
+            optimized = tmpCanvas.toDataURL("image/jpeg", 0.5);
+          }
+        }
+        
+        console.log("[v0] Optimized image size:", Math.round(optimized.length / 1024) + "KB");
         setFotoLocal(optimized);
         setForm({ ...form, foto_local: optimized });
         setShowCropModal(false);
@@ -1148,6 +1167,10 @@ const Clientes = () => {
                   src={fotoLocal}
                   alt="Preview"
                   className="w-full h-full object-cover rounded-lg"
+                  onError={() => {
+                    console.log("[v0] Error loading photo preview");
+                    setFotoLocal("");
+                  }}
                 />
               ) : (
                 <div className="text-center">
