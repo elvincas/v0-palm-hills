@@ -1579,7 +1579,7 @@ const Inventario = () => {
         let warning: string | undefined;
         
         if (!nom) {
-          error = "Falta descripci����n";
+          error = "Falta descripci������n";
         } else if (costo < 0) {
           error = "Costo inválido";
         } else if (stock < 0) {
@@ -3002,7 +3002,7 @@ const GestionarUsuarios = () => {
                 </div>
               </div>
               <button
-                onClick={() => handleDeleteUser(u.id)}
+                onClick={() => handleDeleteUser(u.email)}
                 className="px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs font-bold shrink-0"
               >
                 Eliminar
