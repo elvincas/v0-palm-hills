@@ -17,7 +17,25 @@ export function createClient() {
     auth: {
       persistSession: true,
       storageKey: 'ph-supabase-auth',
-      storage: typeof window !== 'undefined' ? window.localStorage : undefined,
+      storage: {
+        getItem: (key) => {
+          if (typeof localStorage !== 'undefined') {
+            return localStorage.getItem(key)
+          }
+          return null
+        },
+        setItem: (key, value) => {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(key, value)
+            console.log("[v0] Stored session in localStorage:", key.substring(0, 30) + "...")
+          }
+        },
+        removeItem: (key) => {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.removeItem(key)
+          }
+        },
+      },
       autoRefreshToken: true,
       detectSessionInUrl: true,
     },

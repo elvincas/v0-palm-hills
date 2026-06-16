@@ -52,8 +52,12 @@ export default function LoginPage() {
       }
       
       console.log("[v0] Login successful, redirecting...")
-      router.push("/")
+      // Primero refrescar para asegurar que la sesión se propague
       router.refresh()
+      // Luego redireccionar después de un pequeño delay para que la sesión se registre
+      setTimeout(() => {
+        router.push("/")
+      }, 100)
     } catch (error: unknown) {
       console.error("[v0] Login error:", error)
       
