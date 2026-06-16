@@ -234,16 +234,10 @@ export default function ClienteDetailPage() {
         {/* Header del Cliente */}
         <div className="mb-6">
           <button
-            onClick={() => {
-              if (window.history.length > 1) {
-                router.back()
-              } else {
-                router.push("/")
-              }
-            }}
-            className="text-primary text-sm font-medium mb-4 cursor-pointer"
+            onClick={() => router.push("/?tab=cli")}
+            className="text-primary text-sm font-medium mb-4 cursor-pointer hover:opacity-80 transition-opacity"
           >
-            ← Volver
+            ← Volver a Clientes
           </button>
           
           <div className="bg-card rounded-2xl p-4 border border-border">
