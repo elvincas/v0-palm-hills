@@ -43,6 +43,9 @@ export default function NuevaOrdenPage() {
   const [tagFilter, setTagFilter] = useState<string>('')
   // cantidades por producto: { [prodId]: qty }
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
+  // precio con descuento manual por producto: { [prodId]: precioFinal }
+  const [descuentos, setDescuentos] = useState<Record<string, number>>({})
+  const [editandoDescuento, setEditandoDescuento] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState(false)
 
   useEffect(() => {
@@ -83,6 +86,20 @@ export default function NuevaOrdenPage() {
 
   const disponible = (p: Producto) => Number(p.stock || 0) - Number(p.reservado || 0)
 
+  const precioEfectivo = (p: Producto) => descuentos[p.id] ?? p.precio
+
+  const setDescuento = (prodId: string, precio: number) => {
+    setDescuentos((prev) => ({ ...prev, [prodId]: Math.max(0, precio) }))
+  }
+
+  const quitarDescuento = (prodId: string) => {
+    setDescuentos((prev) => {
+      const next = { ...prev }
+      delete next[prodId]
+      return next
+    })
+  }
+
   const setQty = (prodId: string, qty: number) => {
     setCantidades((prev) => {
       const next = { ...prev }
@@ -106,7 +123,7 @@ export default function NuevaOrdenPage() {
     [cantidades, productos],
   )
 
-  const total = seleccionados.reduce((acc, { p, qty }) => acc + Number(p.precio) * qty, 0)
+  const total = seleccionados.reduce((acc, { p, qty }) => acc + precioEfectivo(p) * qty, 0)
   const totalUnidades = seleccionados.reduce((acc, { qty }) => acc + qty, 0)
 
   const handleEnviar = async () => {
@@ -124,7 +141,9 @@ export default function NuevaOrdenPage() {
         barcode: p.barcode || '',
         sku: p.sku || '',
         precio: Number(p.precio),
+        precioFinal: precioEfectivo(p),
         qty,
+        qtyEnviada: qty,
       }))
 
       // Siguiente número de orden global
@@ -132,21 +151,7 @@ export default function NuevaOrdenPage() {
       const maxNum = (allOrdenes || []).reduce((m, o) => Math.max(m, o.num || 0), 0)
       const num = maxNum + 1
 
-      // Pick sheet generado
-      const pickSheet = {
-        generado: new Date().toISOString(),
-        cliente: cliente?.nom || '',
-        items: seleccionados.map(({ p, qty }) => ({
-          prodId: p.id,
-          prodNom: p.nom,
-          sku: p.sku || '',
-          barcode: p.barcode || '',
-          qty,
-          recogido: false,
-        })),
-      }
-
-      // Insertar orden
+      // Insertar orden (pendiente, lista para tomarse desde "Ordenes")
       const { data: orden, error: ordenError } = await supabase
         .from('ordenes')
         .insert({
@@ -155,7 +160,6 @@ export default function NuevaOrdenPage() {
           estado: 'Pendiente',
           total: +total.toFixed(2),
           lineas: lineasDetalle,
-          pick_sheet: pickSheet,
           num,
         })
         .select()
@@ -169,8 +173,8 @@ export default function NuevaOrdenPage() {
         await supabase.from('productos').update({ reservado: nuevoReservado }).eq('id', p.id)
       }
 
-      // Ir al pick sheet de la orden recién creada
-      router.push(`/ordenes/${orden.id}/pick-sheet`)
+      alert(`Orden #${num} creada. Queda pendiente en Ordenes.`)
+      router.push(`/clientes/${clienteId}`)
     } catch (error) {
       console.log('[v0] Error creando orden:', error)
       alert('Error al crear la orden. Intenta de nuevo.')
@@ -205,6 +209,7 @@ export default function NuevaOrdenPage() {
               type="date"
               value={fecha}
               onChange={(e) => setFecha(e.target.value)}
+              autoComplete="off"
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-sm"
             />
             <input
@@ -213,6 +218,8 @@ export default function NuevaOrdenPage() {
               placeholder="Buscar por nombre, SKU o código de barras"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              autoComplete="off"
+              autoCorrect="off"
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-base"
             />
             {allTags.length > 0 && (
@@ -247,7 +254,7 @@ export default function NuevaOrdenPage() {
       </div>
 
       {/* Catálogo de productos */}
-      <div className="max-w-2xl mx-auto p-4 pb-40">
+      <div className="max-w-2xl mx-auto p-4 pb-44" style={{ paddingBottom: "calc(11rem + env(safe-area-inset-bottom))" }}>
         <div className="grid grid-cols-2 gap-2.5">
           {filtered.length ? (
             filtered.map((p) => {
@@ -303,10 +310,63 @@ export default function NuevaOrdenPage() {
                   <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex mb-1 self-start ${estadoColor}`}>
                     {stockEstado}
                   </span>
-                  <div className="text-sm font-bold text-secondary-foreground mt-1">{fmt(p.precio)}</div>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    {descuentos[p.id] !== undefined && descuentos[p.id] !== p.precio ? (
+                      <>
+                        <span className="text-xs text-muted-foreground line-through">{fmt(p.precio)}</span>
+                        <span className="text-sm font-bold text-primary">{fmt(descuentos[p.id])}</span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-bold text-secondary-foreground">{fmt(p.precio)}</span>
+                    )}
+                  </div>
                   <div className={`text-xs mt-0.5 ${disp <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                     Disponible: {disp} uds.
                   </div>
+
+                  {/* Aplicar descuento */}
+                  {editandoDescuento === p.id ? (
+                    <div className="mt-2 pt-2 border-t border-border">
+                      <label className="text-[10px] text-muted-foreground block mb-1">Precio para esta orden</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          inputMode="decimal"
+                          autoComplete="off"
+                          defaultValue={descuentos[p.id] ?? p.precio}
+                          autoFocus
+                          onBlur={(e) => {
+                            setDescuento(p.id, Number(e.target.value))
+                            setEditandoDescuento(null)
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              setDescuento(p.id, Number((e.target as HTMLInputElement).value))
+                              setEditandoDescuento(null)
+                            }
+                          }}
+                          className="flex-1 px-2 py-1.5 rounded-lg border border-input bg-background text-card-foreground text-sm text-center font-bold"
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => setEditandoDescuento(p.id)}
+                      className="mt-2 text-[11px] font-medium text-primary underline self-start"
+                    >
+                      🏷️ Aplicar descuento
+                    </button>
+                  )}
+                  {descuentos[p.id] !== undefined && (
+                    <button
+                      onClick={() => quitarDescuento(p.id)}
+                      className="mt-1 text-[11px] text-destructive underline self-start"
+                    >
+                      Quitar descuento
+                    </button>
+                  )}
 
                   {/* Casilla de cantidad */}
                   <div className="mt-2 pt-2 border-t border-border">
@@ -315,6 +375,7 @@ export default function NuevaOrdenPage() {
                       type="number"
                       min={0}
                       inputMode="numeric"
+                      autoComplete="off"
                       placeholder="0"
                       value={qty || ''}
                       onChange={(e) => setQty(p.id, Number(e.target.value))}
@@ -337,20 +398,23 @@ export default function NuevaOrdenPage() {
         </div>
       </div>
 
-      {/* Barra inferior con resumen (siempre visible) */}
-      <div className="fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border">
-        <div className="max-w-2xl mx-auto p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
+      {/* Barra inferior con resumen (siempre visible, estilo vidrio) */}
+      <div
+        className="fixed bottom-0 inset-x-0 z-30 backdrop-blur-xl bg-card/85 border-t border-white/40 shadow-[0_-12px_32px_-4px_rgba(0,0,0,0.15)]"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      >
+        <div className="max-w-2xl mx-auto px-4 py-3.5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0">
               <p className="text-xs text-muted-foreground">
                 {seleccionados.length} productos · {totalUnidades} uds.
               </p>
-              <p className="text-xl font-bold text-primary">{fmt(total)}</p>
+              <p className="text-xl font-bold text-primary truncate">{fmt(total)}</p>
             </div>
             <button
               onClick={() => setReviewing(true)}
               disabled={seleccionados.length === 0}
-              className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
+              className="shrink-0 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 shadow-md"
             >
               Revisar orden
             </button>
