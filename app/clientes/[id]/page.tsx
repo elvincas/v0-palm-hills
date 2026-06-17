@@ -21,12 +21,44 @@ interface Cliente {
   foto_local?: string;
 }
 
+interface Factura {
+  id: string;
+  num: number;
+  fecha: string;
+  estado: string;
+  total: number;
+}
+
+const fmt = (n: number) =>
+  "$" + Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+const fdate = (s: string) => {
+  if (!s) return "";
+  const [y, m, d] = s.split("-");
+  return `${d}/${m}/${y}`;
+};
+
+const FACTURA_BADGE: Record<string, string> = {
+  Pagada: "bg-green-100 text-green-800",
+  Pendiente: "bg-amber-100 text-amber-800",
+  "En revision": "bg-blue-100 text-blue-800",
+  "En revisión": "bg-blue-100 text-blue-800",
+};
+
+const FacturaBadge = ({ e }: { e: string }) => (
+  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex ${FACTURA_BADGE[e] || "bg-blue-100 text-blue-800"}`}>
+    {e}
+  </span>
+);
+
 export default function ClientePerfilPage() {
   const params = useParams();
   const clienteId = params.id as string;
   const supabase = useMemo(() => createClient(), []);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [form, setForm] = useState<Cliente | null>(null);
+  const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [loadingFacturas, setLoadingFacturas] = useState(true);
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -50,6 +82,18 @@ export default function ClientePerfilPage() {
     }
     setCliente(data as Cliente);
     setForm(data as Cliente);
+    cargarFacturas((data as Cliente).nom);
+  };
+
+  const cargarFacturas = async (nombreCliente: string) => {
+    setLoadingFacturas(true);
+    const { data } = await supabase
+      .from("facturas")
+      .select("*")
+      .eq("cli", nombreCliente)
+      .order("num", { ascending: false });
+    setFacturas((data as Factura[]) || []);
+    setLoadingFacturas(false);
   };
 
   const handleGuardar = async () => {
@@ -102,190 +146,233 @@ export default function ClientePerfilPage() {
         ← Volver
       </button>
 
-      <div className="bg-card rounded-2xl border border-border p-5">
-        {/* Encabezado con foto, numero de cliente y nombre */}
-        <div className="flex items-start gap-4">
-          <div className="w-20 h-20 rounded-full overflow-hidden bg-muted flex items-center justify-center shrink-0 border border-border">
-            {cliente.foto_local ? (
-              <img src={cliente.foto_local} alt={cliente.nom} className="w-full h-full object-cover" />
-            ) : (
-              <span className="text-3xl">🏪</span>
-            )}
-          </div>
+      <div className="bg-card rounded-2xl border border-border overflow-hidden">
+        {/* Banner con la foto del cliente */}
+        <div className="w-full h-40 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden">
+          {cliente.foto_local ? (
+            <img src={cliente.foto_local} alt={cliente.nom} className="w-full h-full object-cover" />
+          ) : (
+            <div className="text-5xl">🏪</div>
+          )}
+        </div>
 
-          <div className="flex-1 min-w-0">
-            <div className="mb-1">
-              <span className="text-xs uppercase tracking-wider text-muted-foreground">Número de Cliente</span>
+        <div className="p-5">
+          {/* Encabezado: numero de cliente, nombre y boton de editar */}
+          <div className="flex items-start gap-4">
+            <div className="flex-1 min-w-0">
+              <div className="mb-1">
+                <span className="text-xs uppercase tracking-wider text-muted-foreground">Número de Cliente</span>
+                {editando ? (
+                  <input
+                    value={form.codigo_cliente || ""}
+                    onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
+                    className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground font-mono text-lg outline-none focus:ring-2 focus:ring-ring"
+                  />
+                ) : (
+                  <p className="font-mono text-xl font-bold text-primary">
+                    {cliente.codigo_cliente || "Sin asignar"}
+                  </p>
+                )}
+              </div>
+
               {editando ? (
                 <input
-                  value={form.codigo_cliente || ""}
-                  onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground font-mono text-lg outline-none focus:ring-2 focus:ring-ring"
+                  value={form.nom}
+                  onChange={(e) => setForm({ ...form, nom: e.target.value })}
+                  className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-lg font-bold outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="font-mono text-xl font-bold text-primary">
-                  {cliente.codigo_cliente || "Sin asignar"}
-                </p>
+                <h1 className="text-2xl font-bold text-card-foreground break-words">{cliente.nom}</h1>
               )}
             </div>
 
-            {editando ? (
-              <input
-                value={form.nom}
-                onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-lg font-bold outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <h1 className="text-2xl font-bold text-card-foreground break-words">{cliente.nom}</h1>
-            )}
-          </div>
-
-          <button
-            onClick={() => {
-              if (editando) setForm(cliente);
-              setEditando(!editando);
-            }}
-            className="shrink-0 px-3 py-1.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
-          >
-            {editando ? "Cancelar" : "Editar"}
-          </button>
-        </div>
-
-        {/* Informacion del cliente */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">📍 Dirección</label>
-            {editando ? (
-              <input
-                value={form.dir || ""}
-                onChange={(e) => setForm({ ...form, dir: e.target.value })}
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <p className="text-card-foreground">{cliente.dir || "No especificada"}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Ciudad</label>
-            {editando ? (
-              <input
-                value={form.ciudad || ""}
-                onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <p className="text-card-foreground">{cliente.ciudad || "No especificada"}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Estado</label>
-            {editando ? (
-              <input
-                value={form.estado_dir || ""}
-                onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
-                placeholder="Ej. New York"
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <p className="text-card-foreground">{cliente.estado_dir || "No especificado"}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Contacto</label>
-            {editando ? (
-              <input
-                value={form.contacto || ""}
-                onChange={(e) => setForm({ ...form, contacto: e.target.value })}
-                placeholder="Nombre de la persona de contacto"
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <p className="text-card-foreground">{cliente.contacto || "No especificado"}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">📞 Teléfono</label>
-            {editando ? (
-              <input
-                type="tel"
-                value={form.tel || ""}
-                onChange={(e) => setForm({ ...form, tel: e.target.value })}
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <p className="text-card-foreground">{cliente.tel || "No especificado"}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">✉️ Correo Electrónico</label>
-            {editando ? (
-              <input
-                type="email"
-                value={form.email || ""}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              />
-            ) : (
-              <p className="text-card-foreground">{cliente.email || "No especificado"}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="text-xs uppercase tracking-wider text-muted-foreground">Estatus del Cliente</label>
-            {editando ? (
-              <select
-                value={form.estado}
-                onChange={(e) => setForm({ ...form, estado: e.target.value })}
-                className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option>Activo</option>
-                <option>Inactivo</option>
-                <option>En espera</option>
-              </select>
-            ) : (
-              <p className="text-card-foreground">{cliente.estado || "No especificado"}</p>
-            )}
-          </div>
-        </div>
-
-        {/* Toggle: Abierto los sabados */}
-        <div className="mt-6 p-4 bg-muted rounded-xl flex items-center justify-between">
-          <div>
-            <span className="font-medium text-card-foreground">📅 Abierto los sábados</span>
-            <p className="text-sm text-muted-foreground">¿Este cliente recibe pedidos los sábados?</p>
-          </div>
-          <button
-            disabled={!editando}
-            onClick={() => editando && setForm({ ...form, abierto_sabados: !form.abierto_sabados })}
-            className={`relative w-14 h-8 rounded-full transition-all shrink-0 ${
-              form.abierto_sabados ? "bg-primary" : "bg-gray-300"
-            } ${!editando ? "opacity-70" : ""}`}
-          >
-            <div
-              className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${
-                form.abierto_sabados ? "right-1" : "left-1"
-              }`}
-            />
-          </button>
-        </div>
-
-        {/* Boton Guardar (solo en modo edicion) */}
-        {editando && (
-          <div className="mt-6 flex justify-end">
             <button
-              disabled={guardando}
-              onClick={handleGuardar}
-              className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+              onClick={() => {
+                if (editando) setForm(cliente);
+                setEditando(!editando);
+              }}
+              className="shrink-0 px-3 py-1.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
             >
-              {guardando ? "Guardando..." : "💾 Guardar Cambios"}
+              {editando ? "Cancelar" : "Editar"}
             </button>
           </div>
-        )}
+
+          {/* Informacion del cliente */}
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">📍 Dirección</label>
+              {editando ? (
+                <input
+                  value={form.dir || ""}
+                  onChange={(e) => setForm({ ...form, dir: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-card-foreground">{cliente.dir || "No especificada"}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Ciudad</label>
+              {editando ? (
+                <input
+                  value={form.ciudad || ""}
+                  onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-card-foreground">{cliente.ciudad || "No especificada"}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Estado</label>
+              {editando ? (
+                <input
+                  value={form.estado_dir || ""}
+                  onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
+                  placeholder="Ej. New York"
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-card-foreground">{cliente.estado_dir || "No especificado"}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Contacto</label>
+              {editando ? (
+                <input
+                  value={form.contacto || ""}
+                  onChange={(e) => setForm({ ...form, contacto: e.target.value })}
+                  placeholder="Nombre de la persona de contacto"
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-card-foreground">{cliente.contacto || "No especificado"}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">📞 Teléfono</label>
+              {editando ? (
+                <input
+                  type="tel"
+                  value={form.tel || ""}
+                  onChange={(e) => setForm({ ...form, tel: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-card-foreground">{cliente.tel || "No especificado"}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">✉️ Correo Electrónico</label>
+              {editando ? (
+                <input
+                  type="email"
+                  value={form.email || ""}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                />
+              ) : (
+                <p className="text-card-foreground">{cliente.email || "No especificado"}</p>
+              )}
+            </div>
+
+            <div>
+              <label className="text-xs uppercase tracking-wider text-muted-foreground">Estatus del Cliente</label>
+              {editando ? (
+                <select
+                  value={form.estado}
+                  onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option>Activo</option>
+                  <option>Inactivo</option>
+                  <option>En espera</option>
+                </select>
+              ) : (
+                <p className="text-card-foreground">{cliente.estado || "No especificado"}</p>
+              )}
+            </div>
+          </div>
+
+          {/* Toggle: Abierto los sabados */}
+          <div className="mt-6 p-4 bg-muted rounded-xl flex items-center justify-between">
+            <div>
+              <span className="font-medium text-card-foreground">📅 Abierto los sábados</span>
+              <p className="text-sm text-muted-foreground">¿Este cliente recibe pedidos los sábados?</p>
+            </div>
+            <button
+              disabled={!editando}
+              onClick={() => editando && setForm({ ...form, abierto_sabados: !form.abierto_sabados })}
+              className={`relative w-14 h-8 rounded-full transition-all shrink-0 ${
+                form.abierto_sabados ? "bg-primary" : "bg-gray-300"
+              } ${!editando ? "opacity-70" : ""}`}
+            >
+              <div
+                className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${
+                  form.abierto_sabados ? "right-1" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
+
+          {/* Boton Guardar (solo en modo edicion) */}
+          {editando && (
+            <div className="mt-4 flex justify-end">
+              <button
+                disabled={guardando}
+                onClick={handleGuardar}
+                className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+              >
+                {guardando ? "Guardando..." : "💾 Guardar Cambios"}
+              </button>
+            </div>
+          )}
+
+          {/* Boton Nueva Orden */}
+          <button
+            onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
+            className="mt-6 w-full px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2"
+          >
+            <span className="text-xl leading-none">+</span> Nueva Orden
+          </button>
+
+          {/* Seccion Facturas */}
+          <div className="mt-6">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Facturas</h2>
+            {loadingFacturas ? (
+              <p className="text-sm text-muted-foreground">Cargando facturas...</p>
+            ) : facturas.length ? (
+              <div className="space-y-2">
+                {facturas.map((f) => {
+                  const balance = f.estado === "Pagada" ? 0 : f.total;
+                  return (
+                    <div
+                      key={f.id}
+                      className="flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-card-foreground">Factura #{f.num}</div>
+                        <div className="text-xs text-muted-foreground">{fdate(f.fecha)}</div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</div>
+                        <div className="text-sm font-bold text-card-foreground">{fmt(balance)}</div>
+                        <FacturaBadge e={f.estado} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Sin facturas registradas.</p>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
