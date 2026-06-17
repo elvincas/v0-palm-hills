@@ -206,6 +206,7 @@ interface DataContextType {
   addCliente: (c: Omit<Cliente, "id">) => void;
   deleteCliente: (id: string) => void;
   updateCliente: (id: string, c: Omit<Cliente, "id">) => void;
+  addClientesBulk: (rows: Omit<Cliente, "id">[]) => Promise<number>;
   addProducto: (p: Omit<Producto, "id">) => void;
   addProductosBulk: (rows: Omit<Producto, "id">[]) => Promise<number>;
   updateProducto: (id: string, p: Omit<Producto, "id">) => void;
@@ -295,6 +296,14 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const { data } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
     if (data) setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
     await logAct(`Cliente actualizado: ${updated.nom}`);
+  };
+
+  const addClientesBulk = async (rows: Omit<Cliente, "id">[]): Promise<number> => {
+    const { data, error } = await supabase.from("clientes").insert(rows).select();
+    if (error) throw new Error(error.message);
+    if (data) setClientes((prev) => [...(data as Cliente[]), ...prev]);
+    await logAct(`Importacion masiva: ${rows.length} clientes`);
+    return data?.length ?? 0;
   };
 
   // --- Productos ---
@@ -452,6 +461,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addCliente,
     deleteCliente,
     updateCliente,
+    addClientesBulk,
     addProducto,
     addProductosBulk,
     updateProducto,
@@ -915,9 +925,10 @@ const Facturas = () => {
 // Clientes
 const Clientes = () => {
   const router = useRouter();
-  const { clientes, addCliente, deleteCliente, updateCliente } = useData();
+  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [fotoLocal, setFotoLocal] = useState("");
   const [showCropModal, setShowCropModal] = useState(false);
@@ -925,6 +936,9 @@ const Clientes = () => {
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [croppedAreaPixels, setCroppedAreaPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
+  const [bulkRows, setBulkRows] = useState<ClienteBulkRow[]>([]);
+  const [bulkErr, setBulkErr] = useState("");
+  const [bulkSaving, setBulkSaving] = useState(false);
   const [form, setForm] = useState({
     nom: "",
     rfc: "",
@@ -1040,12 +1054,29 @@ const Clientes = () => {
 
   return (
     <div>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar cliente..."
-        className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
-      />
+      {/* Header: buscador + botones */}
+      <div className="flex gap-2 mb-3">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Buscar cliente..."
+          className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+        <button
+          onClick={() => setShow(true)}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shrink-0"
+        >
+          <span className="text-base leading-none">+</span>
+          Nuevo
+        </button>
+        <button
+          onClick={() => { setBulkRows([]); setBulkErr(""); setShowBulk(true); }}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary text-secondary-foreground text-xs font-bold shrink-0 border border-border"
+        >
+          <span className="text-base leading-none">↑</span>
+          Granel
+        </button>
+      </div>
       <div className="space-y-2.5">
         {filtered.length ? (
           filtered.map((c) => (
@@ -1107,12 +1138,6 @@ const Clientes = () => {
           </div>
         )}
       </div>
-      <button
-        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
-        onClick={() => setShow(true)}
-      >
-        +
-      </button>
 
       {show && (
         <Modal title={editId ? "Editar Cliente" : "Nuevo Cliente"} onClose={() => { reset(); setShow(false); }}>
@@ -1255,6 +1280,140 @@ const Clientes = () => {
           </div>
         </Modal>
       )}
+
+      {/* Modal Subir Clientes A Granel */}
+      {showBulk && (
+        <Modal title="Subir Clientes A Granel" onClose={() => setShowBulk(false)}>
+          <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
+            Sube un archivo Excel (.xlsx) con estas columnas:{" "}
+            <span className="font-medium text-card-foreground">
+              Nombre, RFC, Telefono, Email, Direccion, Estado
+            </span>.
+          </div>
+          <button
+            onClick={() => {
+              const ws = XLSX.utils.aoa_to_sheet([
+                ["Nombre", "RFC", "Telefono", "Email", "Direccion", "Estado"],
+                ["Hamilton Meat Market", "HAM-001234", "2125550199", "hamilton@example.com", "123 St Nicholas Ave, NY", "Activo"],
+              ]);
+              const wb = XLSX.utils.book_new();
+              XLSX.utils.book_append_sheet(wb, ws, "Clientes");
+              XLSX.writeFile(wb, "plantilla_clientes.xlsx");
+            }}
+            className="w-full px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-medium text-sm mb-3"
+          >
+            Descargar plantilla de ejemplo
+          </button>
+          <div
+            onClick={() => document.getElementById("clienteExcelInput")?.click()}
+            className="w-full h-28 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer bg-muted mb-3"
+          >
+            <div className="text-2xl">📊</div>
+            <div className="text-sm text-muted-foreground mt-1">Toca para seleccionar archivo Excel</div>
+          </div>
+          <input
+            id="clienteExcelInput"
+            type="file"
+            accept=".xlsx,.xls"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              setBulkErr("");
+              try {
+                const buf = await file.arrayBuffer();
+                const wb = XLSX.read(buf, { type: "array" });
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
+                if (!json.length) { setBulkErr("El archivo esta vacio."); return; }
+                const normH = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
+                const headers = Object.keys(json[0]);
+                const find = (aliases: string[]) => headers.find(h => aliases.includes(normH(h))) ?? null;
+                const kNom = find(["nombre", "nom", "cliente", "razon"]);
+                if (!kNom) { setBulkErr("No se encontro la columna 'Nombre'. Verifica los encabezados o descarga la plantilla."); return; }
+                const kRfc = find(["rfc"]);
+                const kTel = find(["telefono", "tel", "phone"]);
+                const kEmail = find(["email", "correo"]);
+                const kDir = find(["direccion", "dir", "address"]);
+                const kEst = find(["estado", "status"]);
+                const rows: ClienteBulkRow[] = json.map((r) => {
+                  const nom = String(kNom ? r[kNom] : "").trim();
+                  return {
+                    nom,
+                    rfc: String(kRfc ? r[kRfc] : "").trim(),
+                    tel: String(kTel ? r[kTel] : "").trim(),
+                    email: String(kEmail ? r[kEmail] : "").trim(),
+                    dir: String(kDir ? r[kDir] : "").trim(),
+                    estado: String(kEst ? r[kEst] : "Activo").trim() || "Activo",
+                    foto_local: "",
+                    _error: !nom ? "Falta nombre" : undefined,
+                  };
+                });
+                setBulkRows(rows);
+              } catch {
+                setBulkErr("No se pudo leer el archivo. Asegurate de que sea un Excel valido (.xlsx).");
+              }
+            }}
+          />
+          {bulkErr && (
+            <div className="text-sm text-destructive mb-3 bg-red-50 rounded-lg px-3 py-2">{bulkErr}</div>
+          )}
+          {bulkRows.length > 0 && (
+            <>
+              <div className="text-sm font-semibold text-card-foreground mb-2">
+                Vista previa ({bulkRows.filter(r => !r._error).length} de {bulkRows.length} validos)
+              </div>
+              <div className="max-h-60 overflow-auto rounded-xl border border-border mb-3">
+                <table className="w-full text-xs">
+                  <thead className="bg-muted sticky top-0">
+                    <tr className="text-left text-muted-foreground">
+                      <th className="px-2 py-1.5 font-medium">Estado</th>
+                      <th className="px-2 py-1.5 font-medium">Nombre</th>
+                      <th className="px-2 py-1.5 font-medium">RFC</th>
+                      <th className="px-2 py-1.5 font-medium">Telefono</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkRows.map((r, i) => (
+                      <tr key={i} className={`border-t border-border ${r._error ? "bg-red-50" : "bg-green-50"}`}>
+                        <td className="px-2 py-1.5">
+                          {r._error ? <span className="text-destructive">✕</span> : <span className="text-green-600">✓</span>}
+                        </td>
+                        <td className="px-2 py-1.5 text-card-foreground max-w-[120px] truncate">
+                          {r.nom || <span className="text-destructive italic">Sin nombre</span>}
+                          {r._error && <div className="text-xs text-destructive">{r._error}</div>}
+                        </td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{r.rfc || "—"}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{r.tel || "—"}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <button
+                disabled={bulkSaving || !bulkRows.some(r => !r._error)}
+                onClick={async () => {
+                  const valid = bulkRows.filter(r => !r._error);
+                  setBulkSaving(true);
+                  try {
+                    const n = await addClientesBulk(valid.map(({ _error, ...rest }) => rest));
+                    alert(`Se importaron ${n} clientes correctamente.`);
+                    setShowBulk(false);
+                    setBulkRows([]);
+                  } catch (err) {
+                    setBulkErr(`Error al guardar: ${err instanceof Error ? err.message : "Error desconocido"}`);
+                  } finally {
+                    setBulkSaving(false);
+                  }
+                }}
+                className="w-full px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+              >
+                {bulkSaving ? "Importando..." : `Importar ${bulkRows.filter(r => !r._error).length} clientes`}
+              </button>
+            </>
+          )}
+        </Modal>
+      )}
     </div>
   );
 };
@@ -1277,6 +1436,17 @@ type BulkRow = {
 };
 
 type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku";
+
+type ClienteBulkRow = {
+  nom: string;
+  rfc: string;
+  tel: string;
+  email: string;
+  dir: string;
+  estado: string;
+  foto_local: string;
+  _error?: string;
+};
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "nom", label: "A-Z Descripcion" },
