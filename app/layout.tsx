@@ -10,6 +10,29 @@ export const metadata: Metadata = {
   title: 'Palm Hills - Beauty & Health',
   description: 'Sistema de gestión empresarial para negocios de belleza y salud',
   generator: 'v0.app',
+  metadataBase: new URL('https://v0-palm-hills.vercel.app'),
+  openGraph: {
+    title: 'Palm Hills - Beauty & Health',
+    description: 'Sistema de gestión empresarial para negocios de belleza y salud',
+    url: 'https://v0-palm-hills.vercel.app',
+    siteName: 'Palm Hills',
+    images: [
+      {
+        url: '/og-image.png',
+        width: 1024,
+        height: 1024,
+        alt: 'Palm Hills Beauty & Health',
+      },
+    ],
+    locale: 'es_US',
+    type: 'website',
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Palm Hills - Beauty & Health',
+    description: 'Sistema de gestión empresarial para negocios de belleza y salud',
+    images: ['/og-image.png'],
+  },
   icons: {
     icon: [
       {
