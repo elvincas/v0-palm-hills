@@ -15,18 +15,6 @@ interface Cliente {
   foto_local?: string
 }
 
-interface Producto {
-  id: string
-  cod: string
-  nom: string
-  stock: number
-  reservado: number
-  precio: number
-  foto?: string
-  fab?: string
-  sku?: string
-}
-
 interface Factura {
   id: string
   num: number
@@ -45,7 +33,30 @@ interface Orden {
   total?: number
 }
 
-export default function ClienteDetailPage() {
+const fmt = (n: number) =>
+  new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'USD' }).format(n || 0)
+
+const fmtDate = (d?: string) => {
+  if (!d) return ''
+  const date = new Date(d + 'T00:00:00')
+  return date.toLocaleDateString('es-DO', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+const estadoBadgeClass = (estado: string) => {
+  switch (estado?.toLowerCase()) {
+    case 'pagada':
+    case 'completada':
+      return 'bg-emerald-50 text-emerald-700 border border-emerald-100'
+    case 'pendiente':
+      return 'bg-amber-50 text-amber-700 border border-amber-100'
+    case 'cancelada':
+      return 'bg-red-50 text-red-600 border border-red-100'
+    default:
+      return 'bg-[var(--muted)] text-[var(--muted-foreground)] border border-[var(--border)]'
+  }
+}
+
+export default function ClientePerfilPage() {
   const params = useParams()
   const router = useRouter()
   const clienteId = params.id as string
@@ -54,13 +65,9 @@ export default function ClienteDetailPage() {
   const [cliente, setCliente] = useState<Cliente | null>(null)
   const [facturas, setFacturas] = useState<Factura[]>([])
   const [ordenes, setOrdenes] = useState<Orden[]>([])
-  const [productos, setProductos] = useState<Producto[]>([])
   const [loading, setLoading] = useState(true)
   const [balance, setBalance] = useState(0)
-  const [showNewOrder, setShowNewOrder] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [selectedProducts, setSelectedProducts] = useState<Record<string, number>>({})
-  const [submitting, setSubmitting] = useState(false)
+  const [activeTab, setActiveTab] = useState<'facturas' | 'ordenes'>('facturas')
 
   useEffect(() => {
     const loadData = async () => {
@@ -68,137 +75,41 @@ export default function ClienteDetailPage() {
         const { data: c } = await supabase.from('clientes').select('*').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
 
-        const { data: f } = await supabase.from('facturas').select('*').eq('cli', clienteId)
-        if (f) setFacturas(f as Factura[])
-
-        const { data: o } = await supabase.from('ordenes').select('*').eq('cli', clienteId)
-        if (o) setOrdenes(o as Orden[])
-
-        const { data: p } = await supabase.from('productos').select('*')
-        if (p) setProductos(p as Producto[])
-
+        const { data: f } = await supabase
+          .from('facturas')
+          .select('*')
+          .eq('cli', clienteId)
+          .order('fecha', { ascending: false })
         if (f) {
+          setFacturas(f as Factura[])
           const total = f.reduce((sum, fac) => sum + (fac.total || 0), 0)
-          const pagado = f.filter((fac) => fac.estado === 'Pagada').reduce((sum, fac) => sum + (fac.total || 0), 0)
+          const pagado = f
+            .filter((fac) => fac.estado === 'Pagada')
+            .reduce((sum, fac) => sum + (fac.total || 0), 0)
           setBalance(total - pagado)
         }
+
+        const { data: o } = await supabase
+          .from('ordenes')
+          .select('*')
+          .eq('cli', clienteId)
+          .order('fecha', { ascending: false })
+        if (o) setOrdenes(o as Orden[])
       } catch (error) {
-        console.log("[v0] Error loading cliente details:", error)
+        console.error('Error loading perfil:', error)
       } finally {
         setLoading(false)
       }
     }
-
     loadData()
-  }, [clienteId, supabase])
-
-  const handleQuantityChange = (productId: string, qty: number) => {
-    if (qty <= 0) {
-      const newSelected = { ...selectedProducts }
-      delete newSelected[productId]
-      setSelectedProducts(newSelected)
-    } else {
-      setSelectedProducts({ ...selectedProducts, [productId]: qty })
-    }
-  }
-
-  const handleSubmitOrder = async () => {
-    const itemsToOrder = Object.entries(selectedProducts).filter(([_, qty]) => qty > 0)
-    
-    if (itemsToOrder.length === 0) {
-      alert('Selecciona al menos un producto')
-      return
-    }
-
-    setSubmitting(true)
-    try {
-      // Obtener próximo número de orden
-      const { data: lastOrder } = await supabase
-        .from('ordenes')
-        .select('num')
-        .order('num', { ascending: false })
-        .limit(1)
-      
-      const nextNum = (lastOrder?.[0]?.num ?? 0) + 1
-
-      // Calcular total y preparar líneas
-      let total = 0
-      const lineas = []
-      const pickSheetItems = []
-
-      for (const [productId, qty] of itemsToOrder) {
-        const producto = productos.find(p => p.id === productId)
-        if (!producto) continue
-
-        const subtotal = (producto.precio || 0) * qty
-        total += subtotal
-
-        lineas.push({
-          producto_id: productId,
-          cantidad: qty,
-          precio_unitario: producto.precio,
-          subtotal
-        })
-
-        pickSheetItems.push({
-          cod: producto.cod,
-          nom: producto.nom,
-          cantidad: qty,
-          foto: producto.foto,
-          fab: producto.fab,
-          ubicacion: ''
-        })
-      }
-
-      // Crear orden
-      const { error: orderError } = await supabase
-        .from('ordenes')
-        .insert({
-          num: nextNum,
-          cli: clienteId,
-          fecha: new Date().toISOString().split('T')[0],
-          estado: 'Pendiente',
-          total,
-          lineas,
-          pick_sheet: { items: pickSheetItems, fecha_creacion: new Date().toISOString() }
-        })
-
-      if (orderError) throw orderError
-
-      // Actualizar reservado en productos
-      for (const [productId, qty] of itemsToOrder) {
-        const producto = productos.find(p => p.id === productId)
-        if (producto) {
-          await supabase
-            .from('productos')
-            .update({ reservado: (producto.reservado || 0) + qty })
-            .eq('id', productId)
-        }
-      }
-
-      alert(`Orden #${nextNum} creada exitosamente. Total: $${total.toFixed(2)}`)
-      setSelectedProducts({})
-      setShowNewOrder(false)
-      
-      // Recargar órdenes y productos
-      const { data: o } = await supabase.from('ordenes').select('*').eq('cli', clienteId)
-      if (o) setOrdenes(o as Orden[])
-      
-      const { data: p } = await supabase.from('productos').select('*')
-      if (p) setProductos(p as Producto[])
-    } catch (error) {
-      console.log("[v0] Error creating order:", error)
-      alert('Error al crear la orden')
-    } finally {
-      setSubmitting(false)
-    }
-  }
+  }, [clienteId])
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="flex items-center justify-center h-96">
-          <p className="text-muted-foreground">Cargando...</p>
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-8 h-8 rounded-full border-2 border-[var(--primary)] border-t-transparent animate-spin" />
+          <p className="text-sm text-[var(--muted-foreground)]">Cargando perfil...</p>
         </div>
       </div>
     )
@@ -206,258 +117,254 @@ export default function ClienteDetailPage() {
 
   if (!cliente) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="flex items-center justify-center h-96">
-          <p className="text-destructive">Cliente no encontrado</p>
-        </div>
+      <div className="min-h-screen bg-[var(--background)] flex items-center justify-center">
+        <p className="text-sm text-[var(--muted-foreground)]">Perfil no encontrado</p>
       </div>
     )
   }
 
   const facturasPendientes = facturas.filter((f) => f.estado !== 'Pagada')
-  const facturasPagadas = facturas.filter((f) => f.estado === 'Pagada')
   const ordenesPendientes = ordenes.filter((o) => o.estado !== 'Completada')
-
-  const filteredProducts = productos.filter(p =>
-    p.nom.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (p.sku && p.sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (p.barcode && p.barcode.toLowerCase().includes(searchTerm.toLowerCase()))
-  )
-
-  const totalOrder = Object.entries(selectedProducts).reduce((sum, [productId, qty]) => {
-    const prod = productos.find(p => p.id === productId)
-    return sum + ((prod?.precio || 0) * qty)
-  }, 0)
+  const totalFacturas = facturas.reduce((s, f) => s + (f.total || 0), 0)
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="max-w-6xl mx-auto p-4 pb-20">
-        {/* Header del Cliente */}
-        <div className="mb-6">
-          <button
-            onClick={() => router.push("/?tab=cli")}
-            className="text-primary text-sm font-medium mb-4 cursor-pointer hover:opacity-80 transition-opacity"
-          >
-            ← Volver a Clientes
-          </button>
-          
-          <div className="bg-card rounded-2xl p-4 border border-border">
-            {cliente.foto_local && (
-              <img
-                src={cliente.foto_local}
-                alt={cliente.nom}
-                className="w-full h-32 object-cover rounded-xl mb-4"
-              />
-            )}
-            
-            <h1 className="text-2xl font-bold text-card-foreground mb-2">{cliente.nom}</h1>
-            
-            <div className="space-y-1.5 text-sm text-muted-foreground mb-4">
-              {cliente.rfc && <p>ID: {cliente.rfc}</p>}
-              {cliente.email && <p>Email: {cliente.email}</p>}
-              {cliente.tel && <p>Teléfono: {cliente.tel}</p>}
-              {cliente.dir && <p>Dirección: {cliente.dir}</p>}
+    <div className="min-h-screen bg-[var(--background)]">
+      {/* Banner + Hero */}
+      <div className="relative">
+        {/* Foto banner */}
+        <div className="w-full h-48 bg-gradient-to-br from-[var(--secondary)] to-[var(--muted)] overflow-hidden">
+          {cliente.foto_local ? (
+            <img
+              src={cliente.foto_local}
+              alt={cliente.nom}
+              className="w-full h-full object-cover"
+            />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <div className="w-16 h-16 rounded-2xl bg-white/40 backdrop-blur-sm flex items-center justify-center text-3xl">
+                🏪
+              </div>
             </div>
+          )}
+          {/* Overlay gradiente inferior */}
+          <div className="absolute bottom-0 left-0 right-0 h-20 bg-gradient-to-t from-[var(--background)] to-transparent" />
+        </div>
 
-            <div className="flex gap-2">
-              <div className="flex-1 bg-primary bg-opacity-10 rounded-xl p-3">
-                <p className="text-xs text-muted-foreground">Balance Pendiente</p>
-                <p className="text-xl font-bold text-primary">${balance.toFixed(2)}</p>
-              </div>
-              <div className="flex-1 bg-green-50 rounded-xl p-3">
-                <p className="text-xs text-muted-foreground">Total Facturas</p>
-                <p className="text-xl font-bold text-green-600">{facturas.length}</p>
-              </div>
-            </div>
+        {/* Boton volver — glass pill */}
+        <button
+          onClick={() => router.push('/?tab=cli')}
+          className="absolute top-4 left-4 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium text-[var(--card-foreground)] backdrop-blur-md bg-white/70 border border-white/50 shadow-sm hover:bg-white/90 transition-colors"
+        >
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M8.5 3L5 7l3.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+          Clientes
+        </button>
+      </div>
+
+      {/* Contenido principal */}
+      <div className="px-4 pb-28 -mt-2">
+
+        {/* Nombre y estado */}
+        <div className="mb-4">
+          <div className="flex items-start justify-between gap-2">
+            <h1 className="text-2xl font-bold text-[var(--card-foreground)] leading-tight text-balance">
+              {cliente.nom}
+            </h1>
+            <span className={`shrink-0 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${estadoBadgeClass(cliente.estado)}`}>
+              {cliente.estado}
+            </span>
+          </div>
+          {/* Info de contacto compacta */}
+          <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+            {cliente.rfc && (
+              <span className="text-xs text-[var(--muted-foreground)]">ID {cliente.rfc}</span>
+            )}
+            {cliente.tel && (
+              <a href={`tel:${cliente.tel}`} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors">
+                {cliente.tel}
+              </a>
+            )}
+            {cliente.email && (
+              <a href={`mailto:${cliente.email}`} className="text-xs text-[var(--muted-foreground)] hover:text-[var(--primary)] transition-colors truncate max-w-[180px]">
+                {cliente.email}
+              </a>
+            )}
+            {cliente.dir && (
+              <span className="text-xs text-[var(--muted-foreground)] w-full">{cliente.dir}</span>
+            )}
           </div>
         </div>
 
-        {/* Facturas Pendientes */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-card-foreground mb-3">Facturas Pendientes ({facturasPendientes.length})</h2>
-          
-          {facturasPendientes.length > 0 ? (
-            <div className="space-y-2">
-              {facturasPendientes.map((f) => (
-                <div key={f.id} className="bg-card rounded-xl p-3 border border-border flex justify-between items-center">
-                  <div>
-                    <p className="font-medium text-card-foreground">Factura #{f.num}</p>
-                    <p className="text-xs text-muted-foreground">{f.fecha}</p>
-                  </div>
-                  <p className="font-bold text-primary">${f.total?.toFixed(2)}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="bg-card rounded-xl p-4 border border-border text-center text-muted-foreground text-sm">
-              Sin facturas pendientes
-            </div>
-          )}
+        {/* Tarjetas de resumen — glass style */}
+        <div className="grid grid-cols-3 gap-2.5 mb-5">
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3.5 border border-white shadow-sm">
+            <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Balance</p>
+            <p className={`text-base font-bold leading-tight ${balance > 0 ? 'text-amber-600' : 'text-emerald-600'}`}>
+              {fmt(balance)}
+            </p>
+          </div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3.5 border border-white shadow-sm">
+            <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Facturas</p>
+            <p className="text-base font-bold text-[var(--card-foreground)] leading-tight">{facturas.length}</p>
+            {facturasPendientes.length > 0 && (
+              <p className="text-[10px] text-amber-500 mt-0.5">{facturasPendientes.length} pendiente{facturasPendientes.length > 1 ? 's' : ''}</p>
+            )}
+          </div>
+          <div className="bg-white/80 backdrop-blur-sm rounded-2xl p-3.5 border border-white shadow-sm">
+            <p className="text-[10px] font-medium text-[var(--muted-foreground)] uppercase tracking-wide mb-1">Ordenes</p>
+            <p className="text-base font-bold text-[var(--card-foreground)] leading-tight">{ordenes.length}</p>
+            {ordenesPendientes.length > 0 && (
+              <p className="text-[10px] text-amber-500 mt-0.5">{ordenesPendientes.length} activa{ordenesPendientes.length > 1 ? 's' : ''}</p>
+            )}
+          </div>
         </div>
 
-        {/* Órdenes Pendientes */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-card-foreground mb-3">Órdenes Pendientes ({ordenesPendientes.length})</h2>
-          
-          {ordenesPendientes.length > 0 ? (
-            <div className="space-y-2">
-              {ordenesPendientes.map((o) => (
-                <div key={o.id} className="bg-card rounded-xl p-3 border border-border">
-                  <div className="flex justify-between items-start gap-3">
-                    <div>
-                      <p className="font-medium text-card-foreground">Orden #{o.num}</p>
-                      {o.fecha && <p className="text-xs text-muted-foreground mt-1">Fecha: {o.fecha}</p>}
-                      {o.total && <p className="text-xs text-muted-foreground mt-1">Total: ${o.total.toFixed(2)}</p>}
-                    </div>
-                    <button
-                      onClick={() => router.push(`/ordenes/${o.id}/pick-sheet`)}
-                      className="px-3 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold whitespace-nowrap hover:opacity-90"
-                    >
-                      Ver Pick Sheet
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="bg-card rounded-xl p-4 border border-border text-center text-muted-foreground text-sm">
-              Sin órdenes pendientes
-            </div>
-          )}
+        {/* Tabs Facturas / Ordenes */}
+        <div className="bg-[var(--muted)] rounded-xl p-1 flex gap-1 mb-4">
+          <button
+            onClick={() => setActiveTab('facturas')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'facturas'
+                ? 'bg-white text-[var(--card-foreground)] shadow-sm'
+                : 'text-[var(--muted-foreground)]'
+            }`}
+          >
+            Facturas
+          </button>
+          <button
+            onClick={() => setActiveTab('ordenes')}
+            className={`flex-1 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+              activeTab === 'ordenes'
+                ? 'bg-white text-[var(--card-foreground)] shadow-sm'
+                : 'text-[var(--muted-foreground)]'
+            }`}
+          >
+            Ordenes
+          </button>
         </div>
 
-        {/* Facturas Pagadas */}
-        <div className="mb-6">
-          <h2 className="text-lg font-bold text-card-foreground mb-3">Facturas Pagadas ({facturasPagadas.length})</h2>
-          
-          {facturasPagadas.length > 0 ? (
-            <div className="space-y-2">
-              {facturasPagadas.map((f) => (
-                <div key={f.id} className="bg-card rounded-xl p-3 border border-border flex justify-between items-center opacity-75">
-                  <div>
-                    <p className="font-medium text-card-foreground">Factura #{f.num}</p>
-                    <p className="text-xs text-muted-foreground">{f.fecha}</p>
-                  </div>
-                  <p className="font-bold text-green-600">${f.total?.toFixed(2)}</p>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="bg-card rounded-xl p-4 border border-border text-center text-muted-foreground text-sm">
-              Sin facturas pagadas
-            </div>
-          )}
-        </div>
-
-        {/* Modal Nueva Orden */}
-        {showNewOrder && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-background rounded-2xl p-6 max-w-5xl w-full max-h-[90vh] overflow-y-auto border border-border">
-              <div className="flex justify-between items-center mb-4">
-                <h2 className="text-xl font-bold text-card-foreground">Nueva Orden para {cliente.nom}</h2>
-                <button
-                  onClick={() => {
-                    setShowNewOrder(false)
-                    setSelectedProducts({})
-                    setSearchTerm('')
-                  }}
-                  className="text-muted-foreground hover:text-card-foreground text-2xl"
-                >
-                  ×
-                </button>
+        {/* Panel Facturas */}
+        {activeTab === 'facturas' && (
+          <div>
+            {facturas.length === 0 ? (
+              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-white text-center">
+                <p className="text-sm text-[var(--muted-foreground)]">Sin facturas registradas</p>
               </div>
-
-              {/* Buscador */}
-              <input
-                type="text"
-                placeholder="Buscar por nombre o código..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full px-4 py-2 rounded-lg border border-input bg-background mb-4 text-card-foreground"
-              />
-
-              {/* Grid de Productos */}
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                {filteredProducts.map((p) => {
-                  const disponible = p.stock - p.reservado
-                  const qty = selectedProducts[p.id] || 0
-                  return (
-                    <div key={p.id} className="bg-card rounded-xl border border-border p-3 overflow-hidden">
-                      {p.foto && (
-                        <img
-                          src={p.foto}
-                          alt={p.nom}
-                          className="w-full h-24 object-cover rounded-lg mb-2"
-                        />
-                      )}
-                      <p className="text-xs text-muted-foreground mb-1">COD: {p.cod}</p>
-                      <p className="font-bold text-card-foreground text-sm mb-1 truncate">{p.nom}</p>
-                      <div className="text-xs text-muted-foreground mb-2 space-y-0.5">
-                        <p>Stock: {p.stock} | Reservado: {p.reservado}</p>
-                        <p className="font-medium text-primary">Disponible: {disponible}</p>
+            ) : (
+              <div className="space-y-2">
+                {facturas.map((f) => (
+                  <div
+                    key={f.id}
+                    className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white shadow-sm overflow-hidden"
+                  >
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {/* Icono estado */}
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        f.estado === 'Pagada' ? 'bg-emerald-50' : 'bg-amber-50'
+                      }`}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={f.estado === 'Pagada' ? 'text-emerald-600' : 'text-amber-500'}>
+                          {f.estado === 'Pagada' ? (
+                            <path d="M2.5 7.5L5.5 10.5L11.5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          ) : (
+                            <path d="M7 3v4.5l2.5 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          )}
+                        </svg>
                       </div>
-                      <p className="text-sm font-bold text-primary mb-3">${p.precio?.toFixed(2)}</p>
-                      <input
-                        type="number"
-                        min="0"
-                        max={disponible}
-                        value={qty}
-                        onChange={(e) => handleQuantityChange(p.id, parseInt(e.target.value) || 0)}
-                        placeholder="Cantidad"
-                        className="w-full px-2 py-2 rounded-lg border border-input bg-background text-sm text-center text-card-foreground"
-                      />
-                      {qty > disponible && (
-                        <p className="text-xs text-destructive mt-1">Excede disponible</p>
-                      )}
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[var(--card-foreground)]">Factura #{f.num}</p>
+                        <p className="text-xs text-[var(--muted-foreground)]">{fmtDate(f.fecha)}</p>
+                      </div>
+                      {/* Monto y estado */}
+                      <div className="text-right shrink-0">
+                        <p className={`text-sm font-bold ${f.estado === 'Pagada' ? 'text-emerald-600' : 'text-amber-600'}`}>
+                          {fmt(f.total)}
+                        </p>
+                        <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${estadoBadgeClass(f.estado)}`}>
+                          {f.estado}
+                        </span>
+                      </div>
                     </div>
-                  )
-                })}
-              </div>
-
-              {filteredProducts.length === 0 && (
-                <div className="text-center text-muted-foreground py-8">
-                  No se encontraron productos
+                  </div>
+                ))}
+                {/* Total acumulado */}
+                <div className="bg-[var(--secondary)]/60 backdrop-blur-sm rounded-2xl px-4 py-3 border border-[var(--secondary)] flex justify-between items-center mt-1">
+                  <p className="text-xs font-medium text-[var(--secondary-foreground)]">Total facturado</p>
+                  <p className="text-sm font-bold text-[var(--primary)]">{fmt(totalFacturas)}</p>
                 </div>
-              )}
-
-              {/* Resumen */}
-              <div className="bg-primary bg-opacity-10 rounded-xl p-4 mb-4">
-                <p className="text-sm text-muted-foreground mb-1">Total de orden:</p>
-                <p className="text-3xl font-bold text-primary">${totalOrder.toFixed(2)}</p>
-                <p className="text-xs text-muted-foreground mt-2">{Object.values(selectedProducts).reduce((a, b) => a + b, 0)} producto(s) seleccionado(s)</p>
               </div>
-
-              {/* Botones */}
-              <div className="flex gap-3">
-                <button
-                  onClick={() => {
-                    setShowNewOrder(false)
-                    setSelectedProducts({})
-                    setSearchTerm('')
-                  }}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium"
-                >
-                  Cancelar
-                </button>
-                <button
-                  onClick={handleSubmitOrder}
-                  disabled={Object.values(selectedProducts).reduce((a, b) => a + b, 0) === 0 || submitting}
-                  className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {submitting ? 'Creando...' : 'Crear Orden'}
-                </button>
-              </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Botón flotante */}
-        <button
-          onClick={() => setShowNewOrder(true)}
-          className="fixed bottom-20 right-4 w-14 h-14 rounded-full bg-primary text-primary-foreground text-2xl font-bold shadow-lg hover:opacity-90 transition-opacity z-40"
-        >
-          +
-        </button>
+        {/* Panel Ordenes */}
+        {activeTab === 'ordenes' && (
+          <div>
+            {/* Boton Nueva Orden — inline rectangular cerca de las ordenes */}
+            <button
+              onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
+              className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[var(--secondary)] text-[var(--secondary-foreground)] text-xs font-semibold border border-[var(--secondary-foreground)]/10 hover:bg-[var(--secondary-foreground)]/10 transition-colors mb-3"
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M7 2v10M2 7h10" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
+              </svg>
+              Nueva Orden
+            </button>
+
+            {ordenes.length === 0 ? (
+              <div className="bg-white/60 backdrop-blur-sm rounded-2xl p-6 border border-white text-center">
+                <p className="text-sm text-[var(--muted-foreground)]">Sin ordenes registradas</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {ordenes.map((o) => (
+                  <div
+                    key={o.id}
+                    className="bg-white/80 backdrop-blur-sm rounded-2xl border border-white shadow-sm overflow-hidden"
+                  >
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      {/* Icono */}
+                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                        o.estado === 'Completada' ? 'bg-emerald-50' : 'bg-amber-50'
+                      }`}>
+                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" className={o.estado === 'Completada' ? 'text-emerald-600' : 'text-amber-500'}>
+                          <rect x="2" y="3" width="10" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                          <path d="M4.5 6.5h5M4.5 8.5h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+                        </svg>
+                      </div>
+                      {/* Info */}
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[var(--card-foreground)]">Orden #{o.num}</p>
+                        {o.fecha && <p className="text-xs text-[var(--muted-foreground)]">{fmtDate(o.fecha)}</p>}
+                      </div>
+                      {/* Acciones */}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {o.total != null && (
+                          <p className="text-sm font-bold text-[var(--card-foreground)]">{fmt(o.total)}</p>
+                        )}
+                        <button
+                          onClick={() => router.push(`/ordenes/${o.id}/pick-sheet`)}
+                          className="px-2.5 py-1.5 rounded-lg bg-[var(--secondary)] text-[var(--secondary-foreground)] text-[10px] font-semibold hover:opacity-80 transition-opacity whitespace-nowrap"
+                        >
+                          Pick Sheet
+                        </button>
+                      </div>
+                    </div>
+                    {/* Badge estado en barra inferior */}
+                    <div className={`px-4 py-1.5 border-t border-[var(--border)]/30 ${
+                      o.estado === 'Completada' ? 'bg-emerald-50/50' : 'bg-amber-50/50'
+                    }`}>
+                      <span className={`text-[10px] font-semibold ${estadoBadgeClass(o.estado)} px-2 py-0.5 rounded-full`}>
+                        {o.estado}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   )
