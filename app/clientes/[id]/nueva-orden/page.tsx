@@ -18,6 +18,7 @@ interface Producto {
   etiquetas?: string[]
   precio: number
   stock: number
+  min?: number
   reservado?: number
   icon?: string
   foto?: string | null
@@ -253,6 +254,14 @@ export default function NuevaOrdenPage() {
               const disp = disponible(p)
               const qty = cantidades[p.id] || 0
               const excede = qty > disp
+              const min = Number(p.min || 5)
+              const stockEstado = disp <= 0 ? 'Sin stock' : disp <= min ? 'Stock bajo' : 'En stock'
+              const estadoColor =
+                stockEstado === 'Sin stock'
+                  ? 'bg-red-100 text-red-800'
+                  : stockEstado === 'Stock bajo'
+                  ? 'bg-amber-100 text-amber-800'
+                  : 'bg-green-100 text-green-800'
               return (
                 <div
                   key={p.id}
@@ -273,9 +282,27 @@ export default function NuevaOrdenPage() {
                   {p.sku && (
                     <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">{p.sku}</div>
                   )}
+                  {p.fabricante && (
+                    <div className="text-xs text-muted-foreground mb-0.5 break-words">{p.fabricante}</div>
+                  )}
                   {p.barcode && (
                     <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">CB: {p.barcode}</div>
                   )}
+                  {(p.etiquetas || []).length > 0 && (
+                    <div className="flex flex-wrap gap-1 mb-1">
+                      {p.etiquetas!.slice(0, 4).map((t) => (
+                        <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground">
+                          {t}
+                        </span>
+                      ))}
+                      {p.etiquetas!.length > 4 && (
+                        <span className="text-[10px] px-1 py-0.5 text-muted-foreground">+{p.etiquetas!.length - 4}</span>
+                      )}
+                    </div>
+                  )}
+                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex mb-1 self-start ${estadoColor}`}>
+                    {stockEstado}
+                  </span>
                   <div className="text-sm font-bold text-secondary-foreground mt-1">{fmt(p.precio)}</div>
                   <div className={`text-xs mt-0.5 ${disp <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
                     Disponible: {disp} uds.
@@ -310,27 +337,26 @@ export default function NuevaOrdenPage() {
         </div>
       </div>
 
-      {/* Barra inferior con resumen */}
-      {seleccionados.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border">
-          <div className="max-w-2xl mx-auto p-4">
-            <div className="flex items-center justify-between mb-3">
-              <div>
-                <p className="text-xs text-muted-foreground">
-                  {seleccionados.length} productos · {totalUnidades} uds.
-                </p>
-                <p className="text-xl font-bold text-primary">{fmt(total)}</p>
-              </div>
-              <button
-                onClick={() => setReviewing(true)}
-                className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold"
-              >
-                Revisar orden
-              </button>
+      {/* Barra inferior con resumen (siempre visible) */}
+      <div className="fixed bottom-0 left-0 right-0 z-20 bg-card border-t border-border">
+        <div className="max-w-2xl mx-auto p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs text-muted-foreground">
+                {seleccionados.length} productos · {totalUnidades} uds.
+              </p>
+              <p className="text-xl font-bold text-primary">{fmt(total)}</p>
             </div>
+            <button
+              onClick={() => setReviewing(true)}
+              disabled={seleccionados.length === 0}
+              className="px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
+            >
+              Revisar orden
+            </button>
           </div>
         </div>
-      )}
+      </div>
 
       {/* Modal de revisión */}
       {reviewing && (
