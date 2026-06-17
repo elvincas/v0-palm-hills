@@ -14,11 +14,15 @@ import "react-easy-crop/react-easy-crop.css";
 interface Cliente {
   id: string;
   nom: string;
-  rfc?: string;
+  codigo_cliente?: string;
   tel?: string;
   email?: string;
   dir?: string;
+  ciudad?: string;
+  estado_dir?: string;
+  contacto?: string;
   estado: string;
+  abierto_sabados?: boolean;
   foto_local?: string;
 }
 
@@ -943,11 +947,15 @@ const Clientes = () => {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [form, setForm] = useState({
     nom: "",
-    rfc: "",
+    codigo_cliente: "",
     tel: "",
     email: "",
     dir: "",
+    ciudad: "",
+    estado_dir: "",
+    contacto: "",
     estado: "Activo",
+    abierto_sabados: false,
     foto_local: "",
   });
 
@@ -955,7 +963,7 @@ const Clientes = () => {
     ? clientes.filter(
         (c) =>
           c.nom.toLowerCase().includes(q.toLowerCase()) ||
-          (c.rfc || "").toLowerCase().includes(q.toLowerCase())
+          (c.codigo_cliente || "").toLowerCase().includes(q.toLowerCase())
       )
     : clientes;
 
@@ -1026,7 +1034,7 @@ const Clientes = () => {
   };
 
   const reset = () => {
-    setForm({ nom: "", rfc: "", tel: "", email: "", dir: "", estado: "Activo", foto_local: "" });
+    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Activo", abierto_sabados: false, foto_local: "" });
     setFotoLocal("");
     setEditId(null);
     setShowCropModal(false);
@@ -1047,7 +1055,19 @@ const Clientes = () => {
 
   const openEdit = (c: Cliente) => {
     setEditId(c.id);
-    setForm({ ...c, foto_local: c.foto_local || "" });
+    setForm({
+      nom: c.nom,
+      codigo_cliente: c.codigo_cliente || "",
+      tel: c.tel || "",
+      email: c.email || "",
+      dir: c.dir || "",
+      ciudad: c.ciudad || "",
+      estado_dir: c.estado_dir || "",
+      contacto: c.contacto || "",
+      estado: c.estado,
+      abierto_sabados: c.abierto_sabados || false,
+      foto_local: c.foto_local || "",
+    });
     setFotoLocal(c.foto_local || "");
     setShow(true);
   };
@@ -1055,6 +1075,10 @@ const Clientes = () => {
   const handleSave = () => {
     if (!form.nom.trim()) {
       alert("Ingresa el nombre");
+      return;
+    }
+    if (!form.codigo_cliente.trim()) {
+      alert("Ingresa el numero de cliente");
       return;
     }
     if (editId) {
@@ -1134,14 +1158,27 @@ const Clientes = () => {
                 >
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-bold text-card-foreground">{c.nom}</div>
+                    {c.codigo_cliente && (
+                      <div className="text-xs font-mono text-muted-foreground">#{c.codigo_cliente}</div>
+                    )}
                     <div className="text-xs text-muted-foreground">
-                      {c.email || c.tel || c.rfc || "Sin contacto"}
+                      {c.email || c.tel || "Sin contacto"}
                     </div>
                   </div>
                   <Badge e={c.estado} />
                 </div>
-                {c.dir && (
-                  <div className="text-xs text-muted-foreground mb-2.5">📍 {c.dir}</div>
+                {(c.dir || c.ciudad) && (
+                  <div className="text-xs text-muted-foreground mb-1">
+                    📍 {[c.dir, c.ciudad, c.estado_dir].filter(Boolean).join(", ")}
+                  </div>
+                )}
+                {c.contacto && (
+                  <div className="text-xs text-muted-foreground mb-2.5">👤 {c.contacto}</div>
+                )}
+                {c.abierto_sabados && (
+                  <div className="inline-block text-xs font-medium text-primary bg-secondary px-2 py-0.5 rounded-full mb-2.5">
+                    Abierto los sábados
+                  </div>
                 )}
                 <div className="flex gap-1.5">
                   <button
@@ -1209,11 +1246,12 @@ const Clientes = () => {
             />
           </Field>
           <Row2>
-            <Field label="ID Cliente">
+            <Field label="Número de Cliente *">
               <input
-                value={form.rfc}
-                onChange={(e) => setForm({ ...form, rfc: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                value={form.codigo_cliente}
+                onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
+                placeholder="Ej. CLI-0001"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base font-mono outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
             <Field label="Telefono">
@@ -1238,7 +1276,32 @@ const Clientes = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Estado">
+          <Row2>
+            <Field label="Ciudad">
+              <input
+                value={form.ciudad}
+                onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="Estado">
+              <input
+                value={form.estado_dir}
+                onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
+                placeholder="Ej. New York"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+          </Row2>
+          <Field label="Contacto">
+            <input
+              value={form.contacto}
+              onChange={(e) => setForm({ ...form, contacto: e.target.value })}
+              placeholder="Nombre de la persona de contacto"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <Field label="Estatus del Cliente">
             <select
               value={form.estado}
               onChange={(e) => setForm({ ...form, estado: e.target.value })}
@@ -1249,6 +1312,22 @@ const Clientes = () => {
               <option>En espera</option>
             </select>
           </Field>
+          <div className="mt-1 p-3 bg-muted rounded-xl flex items-center justify-between">
+            <span className="text-sm font-medium text-card-foreground">Abierto los sábados</span>
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, abierto_sabados: !form.abierto_sabados })}
+              className={`relative w-12 h-7 rounded-full transition-all ${
+                form.abierto_sabados ? "bg-primary" : "bg-gray-300"
+              }`}
+            >
+              <div
+                className={`absolute top-1 w-5 h-5 bg-white rounded-full transition-all ${
+                  form.abierto_sabados ? "right-1" : "left-1"
+                }`}
+              />
+            </button>
+          </div>
           <div className="flex gap-2.5 mt-3.5">
             <button
               onClick={() => { reset(); setShow(false); }}
@@ -1317,14 +1396,14 @@ const Clientes = () => {
           <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
             Sube un archivo Excel (.xlsx) con estas columnas:{" "}
             <span className="font-medium text-card-foreground">
-              Nombre, RFC, Telefono, Email, Direccion, Estado
-            </span>.
+              Numero de Cliente, Nombre, Direccion, Ciudad, Estado, Contacto, Telefono, Email, Abierto Sabados
+            </span>. (Estado = estado/provincia de la dirección, ej. "NY").
           </div>
           <button
             onClick={() => {
               const ws = XLSX.utils.aoa_to_sheet([
-                ["Nombre", "RFC", "Telefono", "Email", "Direccion", "Estado"],
-                ["Hamilton Meat Market", "HAM-001234", "2125550199", "hamilton@example.com", "123 St Nicholas Ave, NY", "Activo"],
+                ["Numero de Cliente", "Nombre", "Direccion", "Ciudad", "Estado", "Contacto", "Telefono", "Email", "Abierto Sabados"],
+                ["CLI-0001", "Hamilton Meat Market", "123 St Nicholas Ave", "New York", "NY", "Hamilton Diaz", "2125550199", "hamilton@example.com", "Si"],
               ]);
               const wb = XLSX.utils.book_new();
               XLSX.utils.book_append_sheet(wb, ws, "Clientes");
@@ -1361,22 +1440,35 @@ const Clientes = () => {
                 const find = (aliases: string[]) => headers.find(h => aliases.includes(normH(h))) ?? null;
                 const kNom = find(["nombre", "nom", "cliente", "razon"]);
                 if (!kNom) { setBulkErr("No se encontro la columna 'Nombre'. Verifica los encabezados o descarga la plantilla."); return; }
-                const kRfc = find(["rfc"]);
+                const kCod = find(["numerodecliente", "numerocliente", "codigodecliente", "codigocliente", "codigo", "numero", "rfc"]);
+                if (!kCod) { setBulkErr("No se encontro la columna 'Numero de Cliente'. Verifica los encabezados o descarga la plantilla."); return; }
                 const kTel = find(["telefono", "tel", "phone"]);
                 const kEmail = find(["email", "correo"]);
                 const kDir = find(["direccion", "dir", "address"]);
-                const kEst = find(["estado", "status"]);
+                const kCiudad = find(["ciudad", "city"]);
+                const kEstDir = find(["estado", "state", "provincia"]);
+                const kContacto = find(["contacto", "persona", "personadecontacto"]);
+                const kSab = find(["abiertosabados", "abiertolossabados", "sabados", "sabado"]);
                 const rows: ClienteBulkRow[] = json.map((r) => {
                   const nom = String(kNom ? r[kNom] : "").trim();
+                  const codigo_cliente = String(kCod ? r[kCod] : "").trim();
+                  const sabVal = normH(String(kSab ? r[kSab] : ""));
+                  let err: string | undefined;
+                  if (!nom) err = "Falta nombre";
+                  else if (!codigo_cliente) err = "Falta numero de cliente";
                   return {
                     nom,
-                    rfc: String(kRfc ? r[kRfc] : "").trim(),
+                    codigo_cliente,
                     tel: String(kTel ? r[kTel] : "").trim(),
                     email: String(kEmail ? r[kEmail] : "").trim(),
                     dir: String(kDir ? r[kDir] : "").trim(),
-                    estado: String(kEst ? r[kEst] : "Activo").trim() || "Activo",
+                    ciudad: String(kCiudad ? r[kCiudad] : "").trim(),
+                    estado_dir: String(kEstDir ? r[kEstDir] : "").trim(),
+                    contacto: String(kContacto ? r[kContacto] : "").trim(),
+                    estado: "Activo",
+                    abierto_sabados: ["si", "s", "yes", "y", "true", "1", "x"].includes(sabVal),
                     foto_local: "",
-                    _error: !nom ? "Falta nombre" : undefined,
+                    _error: err,
                   };
                 });
                 setBulkRows(rows);
@@ -1399,7 +1491,7 @@ const Clientes = () => {
                     <tr className="text-left text-muted-foreground">
                       <th className="px-2 py-1.5 font-medium">Estado</th>
                       <th className="px-2 py-1.5 font-medium">Nombre</th>
-                      <th className="px-2 py-1.5 font-medium">RFC</th>
+                      <th className="px-2 py-1.5 font-medium">No. Cliente</th>
                       <th className="px-2 py-1.5 font-medium">Telefono</th>
                     </tr>
                   </thead>
@@ -1413,7 +1505,7 @@ const Clientes = () => {
                           {r.nom || <span className="text-destructive italic">Sin nombre</span>}
                           {r._error && <div className="text-xs text-destructive">{r._error}</div>}
                         </td>
-                        <td className="px-2 py-1.5 text-muted-foreground">{r.rfc || "—"}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground font-mono">{r.codigo_cliente || "—"}</td>
                         <td className="px-2 py-1.5 text-muted-foreground">{r.tel || "—"}</td>
                       </tr>
                     ))}
@@ -1469,11 +1561,15 @@ type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku";
 
 type ClienteBulkRow = {
   nom: string;
-  rfc: string;
+  codigo_cliente: string;
   tel: string;
   email: string;
   dir: string;
+  ciudad: string;
+  estado_dir: string;
+  contacto: string;
   estado: string;
+  abierto_sabados: boolean;
   foto_local: string;
   _error?: string;
 };
