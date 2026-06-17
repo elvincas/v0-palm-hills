@@ -945,7 +945,6 @@ const Clientes = () => {
     reader.onload = (e) => {
       setCropImage(e.target?.result as string);
       setShowCropModal(true);
-      setCrop({ x: 0, y: 0 });
       setZoom(1);
     };
     reader.readAsDataURL(file);
@@ -957,9 +956,16 @@ const Clientes = () => {
       return;
     }
 
+    console.log("[v0] Processing image, length:", cropImage.length);
+    
     const img = new Image();
     img.crossOrigin = "anonymous";
+    
+    let loadTimeout: NodeJS.Timeout;
+    
     img.onload = () => {
+      clearTimeout(loadTimeout);
+      console.log("[v0] Image loaded successfully");
       try {
         // Crear canvas con el tamaño final deseado (1024x512)
         const finalCanvas = document.createElement("canvas");
@@ -1039,10 +1045,20 @@ const Clientes = () => {
         alert("Error al procesar la imagen: " + (error instanceof Error ? error.message : String(error)));
       }
     };
+    
     img.onerror = () => {
+      clearTimeout(loadTimeout);
       console.error("[v0] Error loading image for crop");
       alert("No se pudo cargar la imagen. Intenta con otra foto.");
     };
+    
+    // Timeout en caso de que la imagen no cargue
+    loadTimeout = setTimeout(() => {
+      console.error("[v0] Image loading timeout");
+      alert("La imagen tardó demasiado en cargar. Intenta de nuevo.");
+    }, 5000);
+    
+    console.log("[v0] Setting img.src, first 50 chars:", cropImage.substring(0, 50));
     img.src = cropImage;
   };
 
