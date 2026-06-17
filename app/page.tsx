@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
+import Cropper from "react-easy-crop";
+import "react-easy-crop/react-easy-crop.css";
 
 // ------------------------------
 // Types
@@ -920,7 +922,9 @@ const Clientes = () => {
   const [fotoLocal, setFotoLocal] = useState("");
   const [showCropModal, setShowCropModal] = useState(false);
   const [cropImage, setCropImage] = useState("");
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<{ x: number; y: number; width: number; height: number } | null>(null);
   const [form, setForm] = useState({
     nom: "",
     rfc: "",
@@ -950,116 +954,59 @@ const Clientes = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleCropComplete = (_: unknown, pixels: { x: number; y: number; width: number; height: number }) => {
+    setCroppedAreaPixels(pixels);
+  };
+
   const processCroppedImage = async () => {
     if (!cropImage) {
       alert("Por favor carga una imagen primero");
       return;
     }
 
-    console.log("[v0] Processing image, length:", cropImage.length);
-    
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    
-    let loadTimeout: NodeJS.Timeout;
-    
-    img.onload = () => {
-      clearTimeout(loadTimeout);
-      console.log("[v0] Image loaded successfully");
-      try {
-        // Crear canvas con el tamaño final deseado (1024x512)
-        const finalCanvas = document.createElement("canvas");
-        finalCanvas.width = 1024;
-        finalCanvas.height = 512;
-        
-        const finalCtx = finalCanvas.getContext("2d");
-        if (!finalCtx) return;
+    try {
+      // Convertir data URL a Blob sin usar fetch
+      const byteString = atob(cropImage.split(",")[1]);
+      const mimeType = cropImage.split(",")[0].split(":")[1].split(";")[0];
+      const ab = new ArrayBuffer(byteString.length);
+      const ia = new Uint8Array(ab);
+      for (let i = 0; i < byteString.length; i++) ia[i] = byteString.charCodeAt(i);
+      const blob = new Blob([ab], { type: mimeType });
 
-        // Llenar con blanco
-        finalCtx.fillStyle = "#ffffff";
-        finalCtx.fillRect(0, 0, 1024, 512);
+      const bitmap = await createImageBitmap(blob);
 
-        // Calcular cómo escalar la imagen cargada para que llene el 1024x512 manteniendo aspecto
-        const sourceAspect = img.width / img.height;
-        const targetAspect = 1024 / 512;
-        
-        let destWidth: number, destHeight: number;
-        if (sourceAspect > targetAspect) {
-          // Imagen más ancha, limitar altura
-          destHeight = 512;
-          destWidth = 512 * sourceAspect;
-        } else {
-          // Imagen más alta, limitar ancho
-          destWidth = 1024;
-          destHeight = 1024 / sourceAspect;
-        }
+      const sx = croppedAreaPixels?.x ?? 0;
+      const sy = croppedAreaPixels?.y ?? 0;
+      const sw = croppedAreaPixels?.width && croppedAreaPixels.width > 0 ? croppedAreaPixels.width : bitmap.width;
+      const sh = croppedAreaPixels?.height && croppedAreaPixels.height > 0 ? croppedAreaPixels.height : bitmap.height;
 
-        // Centrar la imagen en el canvas
-        const destX = (1024 - destWidth) / 2;
-        const destY = (512 - destHeight) / 2;
+      const canvas = document.createElement("canvas");
+      canvas.width = 1024;
+      canvas.height = 512;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-        // Dibujar la imagen escalada en el canvas final
-        finalCtx.drawImage(
-          img,
-          0,              // x en imagen original
-          0,               // y en imagen original
-          img.width,       // ancho en imagen original
-          img.height,      // alto en imagen original
-          destX,           // x en canvas final
-          destY,           // y en canvas final
-          destWidth,       // ancho en canvas final
-          destHeight       // alto en canvas final
-        );
-        
-        // Comprimir agresivamente para evitar data URLs gigantes
-        let optimized = finalCanvas.toDataURL("image/webp", 0.7);
-        
-        // Si WebP no está disponible, usar JPEG
-        if (!optimized || optimized.length < 100 || optimized.length > 500000) {
-          optimized = finalCanvas.toDataURL("image/jpeg", 0.6);
-        }
-        
-        // Si aún es muy grande, reducir más
-        if (!optimized || optimized.length < 100 || optimized.length > 500000) {
-          const tmpCanvas = document.createElement("canvas");
-          tmpCanvas.width = 800;
-          tmpCanvas.height = 400;
-          const tmpCtx = tmpCanvas.getContext("2d");
-          if (tmpCtx) {
-            tmpCtx.drawImage(finalCanvas, 0, 0, 800, 400);
-            optimized = tmpCanvas.toDataURL("image/jpeg", 0.5);
-          }
-        }
-        
-        if (!optimized || optimized.length < 100) {
-          throw new Error("La imagen procesada está vacía");
-        }
-        
-        console.log("[v0] Saved photo, size:", Math.round(optimized.length / 1024) + "KB");
-        setFotoLocal(optimized);
-        setForm({ ...form, foto_local: optimized });
-        setShowCropModal(false);
-        setCropImage("");
-      } catch (error) {
-        console.error("[v0] Error processing cropped image:", error);
-        alert("Error al procesar la imagen: " + (error instanceof Error ? error.message : String(error)));
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, 1024, 512);
+      ctx.drawImage(bitmap, sx, sy, sw, sh, 0, 0, 1024, 512);
+      bitmap.close();
+
+      let optimized = canvas.toDataURL("image/jpeg", 0.7);
+      if (optimized.length > 500000) {
+        const small = document.createElement("canvas");
+        small.width = 800; small.height = 400;
+        small.getContext("2d")?.drawImage(canvas, 0, 0, 800, 400);
+        optimized = small.toDataURL("image/jpeg", 0.6);
       }
-    };
-    
-    img.onerror = () => {
-      clearTimeout(loadTimeout);
-      console.error("[v0] Error loading image for crop");
-      alert("No se pudo cargar la imagen. Intenta con otra foto.");
-    };
-    
-    // Timeout en caso de que la imagen no cargue
-    loadTimeout = setTimeout(() => {
-      console.error("[v0] Image loading timeout");
-      alert("La imagen tardó demasiado en cargar. Intenta de nuevo.");
-    }, 5000);
-    
-    console.log("[v0] Setting img.src, first 50 chars:", cropImage.substring(0, 50));
-    img.src = cropImage;
+
+      setFotoLocal(optimized);
+      setForm({ ...form, foto_local: optimized });
+      setShowCropModal(false);
+      setCropImage("");
+    } catch (err) {
+      console.error("[v0] Error:", err);
+      alert("Error al procesar la imagen. Intenta de nuevo.");
+    }
   };
 
   const reset = () => {
@@ -1265,33 +1212,31 @@ const Clientes = () => {
       )}
       {showCropModal && cropImage && (
         <Modal onClose={() => setShowCropModal(false)}>
-          <div className="p-4 bg-card rounded-xl max-w-md">
+          <div className="p-4 bg-card rounded-xl max-w-md w-full">
             <h2 className="text-xl font-bold mb-4">Ajusta tu foto</h2>
-            <div style={{ position: "relative", width: "100%", height: "300px", backgroundColor: "#000", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
-              <img
-                src={cropImage}
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "contain",
-                  transform: `scale(${zoom})`,
-                }}
-                alt="Crop preview"
+            <div style={{ position: "relative", width: "100%", height: "300px" }} className="mb-4 rounded-lg overflow-hidden bg-black">
+              <Cropper
+                image={cropImage}
+                crop={crop}
+                zoom={zoom}
+                aspect={1024 / 512}
+                onCropChange={setCrop}
+                onCropComplete={handleCropComplete}
+                onZoomChange={setZoom}
+                objectFit="contain"
               />
             </div>
-            <div className="space-y-3 mb-4">
-              <div>
-                <label className="text-sm font-medium mb-2 block">Zoom: {(zoom * 100).toFixed(0)}%</label>
-                <input
-                  type="range"
-                  min={1}
-                  max={3}
-                  step={0.1}
-                  value={zoom}
-                  onChange={(e) => setZoom(parseFloat(e.target.value))}
-                  className="w-full"
-                />
-              </div>
+            <div className="mb-4">
+              <label className="text-sm font-medium mb-2 block">Zoom: {(zoom * 100).toFixed(0)}%</label>
+              <input
+                type="range"
+                min={1}
+                max={3}
+                step={0.05}
+                value={zoom}
+                onChange={(e) => setZoom(parseFloat(e.target.value))}
+                className="w-full"
+              />
             </div>
             <div className="flex gap-2.5">
               <button
