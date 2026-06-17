@@ -931,6 +931,7 @@ const Clientes = () => {
   const router = useRouter();
   const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente } = useData();
   const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("nom");
   const [show, setShow] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -959,13 +960,24 @@ const Clientes = () => {
     foto_local: "",
   });
 
-  const filtered = q
-    ? clientes.filter(
-        (c) =>
-          c.nom.toLowerCase().includes(q.toLowerCase()) ||
-          (c.codigo_cliente || "").toLowerCase().includes(q.toLowerCase())
-      )
-    : clientes;
+  const filtered = useMemo(() => {
+    const base = q
+      ? clientes.filter(
+          (c) =>
+            c.nom.toLowerCase().includes(q.toLowerCase()) ||
+            (c.codigo_cliente || "").toLowerCase().includes(q.toLowerCase())
+        )
+      : clientes;
+    const sorted = [...base];
+    if (sortBy === "codigo_cliente") {
+      sorted.sort((a, b) =>
+        (a.codigo_cliente || "").localeCompare(b.codigo_cliente || "", "es", { numeric: true })
+      );
+    } else {
+      sorted.sort((a, b) => a.nom.localeCompare(b.nom, "es"));
+    }
+    return sorted;
+  }, [clientes, q, sortBy]);
 
   const handleFotoUpload = (file: File | undefined) => {
     if (!file) return;
@@ -1130,6 +1142,21 @@ const Clientes = () => {
             </div>
           )}
         </div>
+      </div>
+      <div className="flex items-center gap-2 mb-3">
+        <label htmlFor="sortByCliente" className="text-xs text-muted-foreground shrink-0">
+          Ordenar por
+        </label>
+        <select
+          id="sortByCliente"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as "codigo_cliente" | "nom")}
+          className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="nom">Nombre A-Z</option>
+          <option value="codigo_cliente">Número de Cliente A-Z</option>
+        </select>
+        <span className="text-xs text-muted-foreground shrink-0">{filtered.length} cli.</span>
       </div>
       <div className="space-y-2.5">
         {filtered.length ? (
