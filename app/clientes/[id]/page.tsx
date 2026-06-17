@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 
 interface Cliente {
   id: string;
@@ -21,25 +21,33 @@ interface Cliente {
   foto_local?: string;
 }
 
-export default function ClientePerfilPage({ params }: { params: { id: string } }) {
+export default function ClientePerfilPage() {
+  const params = useParams();
+  const clienteId = params.id as string;
   const supabase = useMemo(() => createClient(), []);
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [form, setForm] = useState<Cliente | null>(null);
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
+  const [error, setError] = useState("");
   const router = useRouter();
 
   useEffect(() => {
     cargarCliente();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [params.id]);
+  }, [clienteId]);
 
   const cargarCliente = async () => {
-    const { data } = await supabase
+    setError("");
+    const { data, error } = await supabase
       .from("clientes")
       .select("*")
-      .eq("id", params.id)
+      .eq("id", clienteId)
       .single();
+    if (error || !data) {
+      setError("No se pudo cargar este cliente. Verifica que el enlace sea correcto.");
+      return;
+    }
     setCliente(data as Cliente);
     setForm(data as Cliente);
   };
@@ -59,7 +67,7 @@ export default function ClientePerfilPage({ params }: { params: { id: string } }
     const { data } = await supabase
       .from("clientes")
       .update(updated)
-      .eq("id", params.id)
+      .eq("id", clienteId)
       .select()
       .single();
     setGuardando(false);
@@ -69,6 +77,17 @@ export default function ClientePerfilPage({ params }: { params: { id: string } }
       setEditando(false);
     }
   };
+
+  if (error) {
+    return (
+      <div className="p-6 max-w-md mx-auto text-center">
+        <p className="text-sm text-destructive mb-3">{error}</p>
+        <button onClick={() => router.push("/")} className="text-sm text-muted-foreground underline">
+          Volver
+        </button>
+      </div>
+    );
+  }
 
   if (!cliente || !form) {
     return <div className="p-6 text-sm text-muted-foreground">Cargando...</div>;
