@@ -166,12 +166,12 @@ export default function ClientePerfilPage() {
       <div className="px-4 pb-28 -mt-2">
 
         {/* Nombre y estado */}
-        <div className="mb-4">
-          <div className="flex items-start justify-between gap-2">
-            <h1 className="text-2xl font-bold text-[var(--card-foreground)] leading-tight text-balance">
-              {cliente.nom}
-            </h1>
-            <span className={`shrink-0 mt-1 text-[10px] font-semibold px-2 py-0.5 rounded-full ${estadoBadgeClass(cliente.estado)}`}>
+        <div className="mb-4 mt-3">
+          <h1 className="text-sm font-semibold uppercase tracking-widest text-[var(--card-foreground)] leading-snug">
+            {cliente.nom}
+          </h1>
+          <div className="mt-1.5">
+            <span className={`inline-flex text-[10px] font-semibold px-2.5 py-0.5 rounded-full ${estadoBadgeClass(cliente.estado)}`}>
               {cliente.estado}
             </span>
           </div>
