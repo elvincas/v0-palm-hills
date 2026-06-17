@@ -929,6 +929,8 @@ const Clientes = () => {
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const addMenuRef = useRef<HTMLDivElement>(null);
   const [editId, setEditId] = useState<string | null>(null);
   const [fotoLocal, setFotoLocal] = useState("");
   const [showCropModal, setShowCropModal] = useState(false);
@@ -1031,6 +1033,18 @@ const Clientes = () => {
     setCropImage("");
   };
 
+  // Cerrar dropdown al tocar fuera
+  useEffect(() => {
+    if (!showAddMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddMenu]);
+
   const openEdit = (c: Cliente) => {
     setEditId(c.id);
     setForm({ ...c, foto_local: c.foto_local || "" });
@@ -1054,7 +1068,7 @@ const Clientes = () => {
 
   return (
     <div>
-      {/* Header: buscador + botones */}
+      {/* Header: buscador + botón + dropdown */}
       <div className="flex gap-2 mb-3">
         <input
           value={q}
@@ -1062,20 +1076,36 @@ const Clientes = () => {
           placeholder="Buscar cliente..."
           className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
-        <button
-          onClick={() => setShow(true)}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold shrink-0"
-        >
-          <span className="text-base leading-none">+</span>
-          Nuevo
-        </button>
-        <button
-          onClick={() => { setBulkRows([]); setBulkErr(""); setShowBulk(true); }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-secondary text-secondary-foreground text-xs font-bold shrink-0 border border-border"
-        >
-          <span className="text-base leading-none">↑</span>
-          Granel
-        </button>
+        <div className="relative shrink-0" ref={addMenuRef}>
+          <button
+            onClick={() => setShowAddMenu((v) => !v)}
+            className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-light"
+            aria-label="Agregar cliente"
+          >
+            +
+          </button>
+          {showAddMenu && (
+            <div className="absolute right-0 top-12 z-20 bg-card border border-border rounded-2xl shadow-lg overflow-hidden min-w-[180px]"
+              onBlur={() => setShowAddMenu(false)}
+            >
+              <button
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
+                onClick={() => { setShowAddMenu(false); setShow(true); }}
+              >
+                <span className="text-base">+</span>
+                Agregar manualmente
+              </button>
+              <div className="h-px bg-border mx-3" />
+              <button
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
+                onClick={() => { setShowAddMenu(false); setBulkRows([]); setBulkErr(""); setShowBulk(true); }}
+              >
+                <span className="text-base">↑</span>
+                Subir a granel
+              </button>
+            </div>
+          )}
+        </div>
       </div>
       <div className="space-y-2.5">
         {filtered.length ? (
