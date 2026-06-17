@@ -167,7 +167,7 @@ export default function ClientePerfilPage() {
 
         {/* Nombre y estado */}
         <div className="mb-4 mt-3">
-          <h1 className="text-sm font-semibold uppercase tracking-widest text-[var(--card-foreground)] leading-snug">
+          <h1 className="text-xs font-bold uppercase tracking-wider text-[var(--card-foreground)] leading-snug">
             {cliente.nom}
           </h1>
           <div className="mt-1.5">
