@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
-import Cropper from "react-easy-crop";
 
 // ------------------------------
 // Types
@@ -921,9 +920,7 @@ const Clientes = () => {
   const [fotoLocal, setFotoLocal] = useState("");
   const [showCropModal, setShowCropModal] = useState(false);
   const [cropImage, setCropImage] = useState("");
-  const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
   const [form, setForm] = useState({
     nom: "",
     rfc: "",
@@ -954,14 +951,9 @@ const Clientes = () => {
     reader.readAsDataURL(file);
   };
 
-  const handleCropComplete = (croppedArea: any, croppedAreaPixels: any) => {
-    setCroppedAreaPixels(croppedAreaPixels);
-  };
-
   const processCroppedImage = async () => {
-    if (!cropImage || !croppedAreaPixels || croppedAreaPixels.width === 0 || croppedAreaPixels.height === 0) {
-      console.error("[v0] Invalid crop area");
-      alert("Por favor ajusta el área de recorte antes de guardar");
+    if (!cropImage) {
+      alert("Por favor carga una imagen primero");
       return;
     }
 
@@ -969,28 +961,7 @@ const Clientes = () => {
     img.crossOrigin = "anonymous";
     img.onload = () => {
       try {
-        const canvas = document.createElement("canvas");
-        const pixelRatio = window.devicePixelRatio || 1;
-        
-        canvas.width = croppedAreaPixels.width * pixelRatio;
-        canvas.height = croppedAreaPixels.height * pixelRatio;
-        
-        const ctx = canvas.getContext("2d");
-        if (!ctx) return;
-
-        ctx.drawImage(
-          img,
-          croppedAreaPixels.x * pixelRatio,
-          croppedAreaPixels.y * pixelRatio,
-          croppedAreaPixels.width * pixelRatio,
-          croppedAreaPixels.height * pixelRatio,
-          0,
-          0,
-          croppedAreaPixels.width * pixelRatio,
-          croppedAreaPixels.height * pixelRatio
-        );
-
-        // Redimensionar a 1024x512 manteniendo aspecto
+        // Crear canvas con el tamaño final deseado (1024x512)
         const finalCanvas = document.createElement("canvas");
         finalCanvas.width = 1024;
         finalCanvas.height = 512;
@@ -998,35 +969,51 @@ const Clientes = () => {
         const finalCtx = finalCanvas.getContext("2d");
         if (!finalCtx) return;
 
+        // Llenar con blanco
         finalCtx.fillStyle = "#ffffff";
         finalCtx.fillRect(0, 0, 1024, 512);
 
-        const aspectRatio = canvas.width / canvas.height;
-        const canvasAspect = 1024 / 512;
+        // Calcular cómo escalar la imagen cargada para que llene el 1024x512 manteniendo aspecto
+        const sourceAspect = img.width / img.height;
+        const targetAspect = 1024 / 512;
         
-        let scaledWidth: number, scaledHeight: number;
-        if (aspectRatio > canvasAspect) {
-          scaledHeight = 512;
-          scaledWidth = 512 * aspectRatio;
+        let destWidth: number, destHeight: number;
+        if (sourceAspect > targetAspect) {
+          // Imagen más ancha, limitar altura
+          destHeight = 512;
+          destWidth = 512 * sourceAspect;
         } else {
-          scaledWidth = 1024;
-          scaledHeight = 1024 / aspectRatio;
+          // Imagen más alta, limitar ancho
+          destWidth = 1024;
+          destHeight = 1024 / sourceAspect;
         }
 
-        const x = (1024 - scaledWidth) / 2;
-        const y = (512 - scaledHeight) / 2;
+        // Centrar la imagen en el canvas
+        const destX = (1024 - destWidth) / 2;
+        const destY = (512 - destHeight) / 2;
 
-        finalCtx.drawImage(canvas, x, y, scaledWidth, scaledHeight);
+        // Dibujar la imagen escalada en el canvas final
+        finalCtx.drawImage(
+          img,
+          0,              // x en imagen original
+          0,               // y en imagen original
+          img.width,       // ancho en imagen original
+          img.height,      // alto en imagen original
+          destX,           // x en canvas final
+          destY,           // y en canvas final
+          destWidth,       // ancho en canvas final
+          destHeight       // alto en canvas final
+        );
         
         // Comprimir agresivamente para evitar data URLs gigantes
         let optimized = finalCanvas.toDataURL("image/webp", 0.7);
         
-        // Si WebP no está disponible, usar JPEG con baja calidad
+        // Si WebP no está disponible, usar JPEG
         if (!optimized || optimized.length < 100 || optimized.length > 500000) {
           optimized = finalCanvas.toDataURL("image/jpeg", 0.6);
         }
         
-        // Si aún es muy grande o vacío, reducir más
+        // Si aún es muy grande, reducir más
         if (!optimized || optimized.length < 100 || optimized.length > 500000) {
           const tmpCanvas = document.createElement("canvas");
           tmpCanvas.width = 800;
@@ -1042,6 +1029,7 @@ const Clientes = () => {
           throw new Error("La imagen procesada está vacía");
         }
         
+        console.log("[v0] Saved photo, size:", Math.round(optimized.length / 1024) + "KB");
         setFotoLocal(optimized);
         setForm({ ...form, foto_local: optimized });
         setShowCropModal(false);
@@ -1261,19 +1249,18 @@ const Clientes = () => {
       )}
       {showCropModal && cropImage && (
         <Modal onClose={() => setShowCropModal(false)}>
-          <div className="p-4 bg-card rounded-xl">
+          <div className="p-4 bg-card rounded-xl max-w-md">
             <h2 className="text-xl font-bold mb-4">Ajusta tu foto</h2>
-            <div className="relative w-full h-96 bg-muted rounded-lg overflow-hidden mb-4">
-              <Cropper
-                image={cropImage}
-                crop={crop}
-                zoom={zoom}
-                aspect={1024 / 512}
-                onCropChange={setCrop}
-                onCropAreaChange={handleCropComplete}
-                onZoomChange={setZoom}
-                cropShape="rect"
-                showGrid={true}
+            <div style={{ position: "relative", width: "100%", height: "300px", backgroundColor: "#000", borderRadius: "8px", overflow: "hidden", marginBottom: "16px" }}>
+              <img
+                src={cropImage}
+                style={{
+                  width: "100%",
+                  height: "100%",
+                  objectFit: "contain",
+                  transform: `scale(${zoom})`,
+                }}
+                alt="Crop preview"
               />
             </div>
             <div className="space-y-3 mb-4">
