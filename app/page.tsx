@@ -1356,15 +1356,15 @@ const Inventario = () => {
         })),
         {
           includeScore: true,
-          threshold: 0.45, // tolerant of typos
+          threshold: 0.25, // stricter — only close matches
           ignoreLocation: true,
           keys: [
-            { name: "nom", weight: 2 },
-            { name: "_normNom", weight: 2 },
-            { name: "sku", weight: 1 },
+            { name: "nom", weight: 3 },
+            { name: "_normNom", weight: 3 },
+            { name: "sku", weight: 2 },
             { name: "barcode", weight: 1 },
-            { name: "_tags", weight: 2 },
-            { name: "_normTags", weight: 2 },
+            { name: "_tags", weight: 1 },
+            { name: "_normTags", weight: 1 },
           ],
         }
       ),
@@ -1374,15 +1374,43 @@ const Inventario = () => {
   const filtered = useMemo(() => {
     let list = productos;
 
-    // Text search (fuzzy, typo tolerant). Search both the raw query and its
-    // normalized form so "risos" matches "rizos".
+    // Text search: exact substring match takes priority (score 0),
+    // then fuzzy results ordered by Fuse score (lower = better match).
     if (q.trim()) {
-      const ids = new Set<string>();
-      [q, normTag(q)].forEach((term) => {
-        if (!term.trim()) return;
-        fuse.search(term).forEach((r) => ids.add(r.item.id));
+      const term = q.trim();
+      const normTerm = normTag(term);
+
+      // Score map: 0 = exact substring in name, 1 = exact in other fields, 2+ = fuzzy
+      const scoreMap = new Map<string, number>();
+
+      // 1. Exact substring matches — always included, highest priority
+      productos.forEach((p) => {
+        const nameNorm = normTag(p.nom || "");
+        const skuNorm = normTag(p.sku || "");
+        const barcodeNorm = normTag(p.barcode || "");
+        const tagsNorm = (p.etiquetas || []).map(normTag).join(" ");
+
+        if (nameNorm.includes(normTerm) || (p.nom || "").toLowerCase().includes(term.toLowerCase())) {
+          scoreMap.set(p.id, 0); // best: exact in name
+        } else if (skuNorm.includes(normTerm) || barcodeNorm.includes(normTerm) || tagsNorm.includes(normTerm)) {
+          scoreMap.set(p.id, 0.3); // good: exact in sku/barcode/tags
+        }
       });
-      list = list.filter((p) => ids.has(p.id));
+
+      // 2. Fuzzy results — only add if not already found via exact match
+      [term, normTerm].forEach((t) => {
+        if (!t.trim()) return;
+        fuse.search(t).forEach((r) => {
+          if (!scoreMap.has(r.item.id)) {
+            scoreMap.set(r.item.id, 0.5 + (r.score ?? 0.5));
+          }
+        });
+      });
+
+      // Filter and sort: exact matches first, then by fuzzy score
+      list = productos
+        .filter((p) => scoreMap.has(p.id))
+        .sort((a, b) => (scoreMap.get(a.id) ?? 1) - (scoreMap.get(b.id) ?? 1));
     }
 
     // Tag filter (product must contain ALL selected tags)
@@ -1393,13 +1421,15 @@ const Inventario = () => {
       });
     }
 
-    // Sorting. Numeric fields sort descending (highest first); text fields
-    // sort A-Z using a locale-aware, accent-insensitive comparison so "Ácido"
-    // and "Acido" order naturally and empty values fall to the end.
+    // Sorting. When there's an active search query AND no explicit sort column
+    // selected, preserve the relevance order from the search above.
+    // Only apply column sort when the user explicitly chooses one.
     const sorted = [...list];
     const textCmp = (a: string, b: string) =>
       (a || "").localeCompare(b || "", "es", { sensitivity: "base", numeric: true });
     const blankLast = (v: string) => (v && v.trim() ? 0 : 1);
+
+    const hasQuery = q.trim().length > 0;
 
     if (sortBy === "precio") {
       sorted.sort((a, b) => (b.precio || 0) - (a.precio || 0));
@@ -1424,8 +1454,8 @@ const Inventario = () => {
           blankLast(a.sku || "") - blankLast(b.sku || "") ||
           textCmp(a.sku || "", b.sku || "")
       );
-    } else {
-      // Default: A-Z by description
+    } else if (!hasQuery) {
+      // Default A-Z only when no search query — preserve relevance order otherwise
       sorted.sort((a, b) => textCmp(a.nom, b.nom));
     }
 
