@@ -14,10 +14,15 @@ import "react-easy-crop/react-easy-crop.css";
 interface Cliente {
   id: string;
   nom: string;
+  cod?: string;
   rfc?: string;
   tel?: string;
   email?: string;
   dir?: string;
+  ciudad?: string;
+  estado_dir?: string;
+  contacto?: string;
+  abre_sabado?: boolean;
   estado: string;
   foto_local?: string;
 }
@@ -943,10 +948,15 @@ const Clientes = () => {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [form, setForm] = useState({
     nom: "",
+    cod: "",
     rfc: "",
     tel: "",
     email: "",
     dir: "",
+    ciudad: "",
+    estado_dir: "",
+    contacto: "",
+    abre_sabado: false,
     estado: "Activo",
     foto_local: "",
   });
@@ -1026,7 +1036,7 @@ const Clientes = () => {
   };
 
   const reset = () => {
-    setForm({ nom: "", rfc: "", tel: "", email: "", dir: "", estado: "Activo", foto_local: "" });
+    setForm({ nom: "", cod: "", rfc: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", abre_sabado: false, estado: "Activo", foto_local: "" });
     setFotoLocal("");
     setEditId(null);
     setShowCropModal(false);
@@ -1047,7 +1057,7 @@ const Clientes = () => {
 
   const openEdit = (c: Cliente) => {
     setEditId(c.id);
-    setForm({ ...c, foto_local: c.foto_local || "" });
+    setForm({ ...c, cod: c.cod || "", ciudad: c.ciudad || "", estado_dir: c.estado_dir || "", contacto: c.contacto || "", abre_sabado: c.abre_sabado ?? false, foto_local: c.foto_local || "" });
     setFotoLocal(c.foto_local || "");
     setShow(true);
   };
@@ -1209,28 +1219,22 @@ const Clientes = () => {
             />
           </Field>
           <Row2>
-            <Field label="ID Cliente">
+            <Field label="# Numero de Cliente">
+              <input
+                value={form.cod}
+                onChange={(e) => setForm({ ...form, cod: e.target.value })}
+                placeholder="ej. C-0001"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base font-mono outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="RFC / Tax ID">
               <input
                 value={form.rfc}
                 onChange={(e) => setForm({ ...form, rfc: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
-            <Field label="Telefono">
-              <input
-                value={form.tel}
-                onChange={(e) => setForm({ ...form, tel: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
           </Row2>
-          <Field label="Email">
-            <input
-              value={form.email}
-              onChange={(e) => setForm({ ...form, email: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            />
-          </Field>
           <Field label="Direccion">
             <input
               value={form.dir}
@@ -1238,17 +1242,71 @@ const Clientes = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Estado">
-            <select
-              value={form.estado}
-              onChange={(e) => setForm({ ...form, estado: e.target.value })}
+          <Row2>
+            <Field label="Ciudad">
+              <input
+                value={form.ciudad}
+                onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="Estado / Prov.">
+              <input
+                value={form.estado_dir}
+                onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+          </Row2>
+          <Field label="Persona de Contacto">
+            <input
+              value={form.contacto}
+              onChange={(e) => setForm({ ...form, contacto: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option>Activo</option>
-              <option>Inactivo</option>
-              <option>En espera</option>
-            </select>
+            />
           </Field>
+          <Row2>
+            <Field label="Telefono">
+              <input
+                value={form.tel}
+                onChange={(e) => setForm({ ...form, tel: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="Email">
+              <input
+                value={form.email}
+                onChange={(e) => setForm({ ...form, email: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+          </Row2>
+          <Row2>
+            <Field label="Estado del Cliente">
+              <select
+                value={form.estado}
+                onChange={(e) => setForm({ ...form, estado: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option>Activo</option>
+                <option>Inactivo</option>
+                <option>En espera</option>
+              </select>
+            </Field>
+            <Field label="Abre los Sabados">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, abre_sabado: !form.abre_sabado })}
+                className={`w-full h-[46px] rounded-xl border font-medium text-sm transition-colors ${
+                  form.abre_sabado
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-muted-foreground border-input"
+                }`}
+              >
+                {form.abre_sabado ? "Si, abre" : "No abre"}
+              </button>
+            </Field>
+          </Row2>
           <div className="flex gap-2.5 mt-3.5">
             <button
               onClick={() => { reset(); setShow(false); }}
@@ -1323,8 +1381,8 @@ const Clientes = () => {
           <button
             onClick={() => {
               const ws = XLSX.utils.aoa_to_sheet([
-                ["Nombre", "RFC", "Telefono", "Email", "Direccion", "Estado"],
-                ["Hamilton Meat Market", "HAM-001234", "2125550199", "hamilton@example.com", "123 St Nicholas Ave, NY", "Activo"],
+                ["# Numero Cliente", "Nombre", "RFC", "Direccion", "Ciudad", "Estado", "Contacto", "Telefono", "Email", "Abre Sabado", "Status"],
+                ["C-0001", "Hamilton Meat Market", "HAM-001234", "123 St Nicholas Ave", "New York", "NY", "Juan Perez", "2125550199", "hamilton@example.com", "Si", "Activo"],
               ]);
               const wb = XLSX.utils.book_new();
               XLSX.utils.book_append_sheet(wb, ws, "Clientes");
@@ -1361,19 +1419,31 @@ const Clientes = () => {
                 const find = (aliases: string[]) => headers.find(h => aliases.includes(normH(h))) ?? null;
                 const kNom = find(["nombre", "nom", "cliente", "razon"]);
                 if (!kNom) { setBulkErr("No se encontro la columna 'Nombre'. Verifica los encabezados o descarga la plantilla."); return; }
-                const kRfc = find(["rfc"]);
-                const kTel = find(["telefono", "tel", "phone"]);
-                const kEmail = find(["email", "correo"]);
-                const kDir = find(["direccion", "dir", "address"]);
-                const kEst = find(["estado", "status"]);
+                const kCod  = find(["numerocliente", "numero", "cod", "codigo", "codigocliente", "num"]);
+                const kRfc  = find(["rfc", "taxid", "tax"]);
+                const kDir  = find(["direccion", "dir", "address"]);
+                const kCiu  = find(["ciudad", "city"]);
+                const kEdDir= find(["estado", "prov", "province", "estadodirec", "estadoprov"]);
+                const kCon  = find(["contacto", "contact", "persona", "personadecontacto"]);
+                const kTel  = find(["telefono", "tel", "phone", "celular"]);
+                const kEmail= find(["email", "correo"]);
+                const kSab  = find(["abresabado", "sabado", "saturday", "abre"]);
+                const kEst  = find(["status", "estatus", "activo", "statuscliente"]);
                 const rows: ClienteBulkRow[] = json.map((r) => {
                   const nom = String(kNom ? r[kNom] : "").trim();
+                  const sabRaw = String(kSab ? r[kSab] : "").trim().toLowerCase();
+                  const abre_sabado = ["si", "yes", "true", "1", "s"].includes(sabRaw);
                   return {
                     nom,
+                    cod: String(kCod ? r[kCod] : "").trim(),
                     rfc: String(kRfc ? r[kRfc] : "").trim(),
+                    dir: String(kDir ? r[kDir] : "").trim(),
+                    ciudad: String(kCiu ? r[kCiu] : "").trim(),
+                    estado_dir: String(kEdDir ? r[kEdDir] : "").trim(),
+                    contacto: String(kCon ? r[kCon] : "").trim(),
                     tel: String(kTel ? r[kTel] : "").trim(),
                     email: String(kEmail ? r[kEmail] : "").trim(),
-                    dir: String(kDir ? r[kDir] : "").trim(),
+                    abre_sabado,
                     estado: String(kEst ? r[kEst] : "Activo").trim() || "Activo",
                     foto_local: "",
                     _error: !nom ? "Falta nombre" : undefined,
@@ -1397,10 +1467,12 @@ const Clientes = () => {
                 <table className="w-full text-xs">
                   <thead className="bg-muted sticky top-0">
                     <tr className="text-left text-muted-foreground">
-                      <th className="px-2 py-1.5 font-medium">Estado</th>
+                      <th className="px-2 py-1.5 font-medium">OK</th>
+                      <th className="px-2 py-1.5 font-medium">#</th>
                       <th className="px-2 py-1.5 font-medium">Nombre</th>
-                      <th className="px-2 py-1.5 font-medium">RFC</th>
-                      <th className="px-2 py-1.5 font-medium">Telefono</th>
+                      <th className="px-2 py-1.5 font-medium">Ciudad</th>
+                      <th className="px-2 py-1.5 font-medium">Contacto</th>
+                      <th className="px-2 py-1.5 font-medium">Tel</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1409,11 +1481,13 @@ const Clientes = () => {
                         <td className="px-2 py-1.5">
                           {r._error ? <span className="text-destructive">✕</span> : <span className="text-green-600">✓</span>}
                         </td>
-                        <td className="px-2 py-1.5 text-card-foreground max-w-[120px] truncate">
+                        <td className="px-2 py-1.5 text-muted-foreground font-mono text-[10px]">{r.cod || "—"}</td>
+                        <td className="px-2 py-1.5 text-card-foreground max-w-[100px] truncate">
                           {r.nom || <span className="text-destructive italic">Sin nombre</span>}
                           {r._error && <div className="text-xs text-destructive">{r._error}</div>}
                         </td>
-                        <td className="px-2 py-1.5 text-muted-foreground">{r.rfc || "—"}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{r.ciudad || "—"}</td>
+                        <td className="px-2 py-1.5 text-muted-foreground">{r.contacto || "—"}</td>
                         <td className="px-2 py-1.5 text-muted-foreground">{r.tel || "—"}</td>
                       </tr>
                     ))}
@@ -1469,10 +1543,15 @@ type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku";
 
 type ClienteBulkRow = {
   nom: string;
+  cod: string;
   rfc: string;
   tel: string;
   email: string;
   dir: string;
+  ciudad: string;
+  estado_dir: string;
+  contacto: string;
+  abre_sabado: boolean;
   estado: string;
   foto_local: string;
   _error?: string;
