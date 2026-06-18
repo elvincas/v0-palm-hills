@@ -8,6 +8,7 @@ import Fuse from "fuse.js";
 import "react-easy-crop/react-easy-crop.css";
 import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
+import { getDeliveryDays, setDeliveryDays, DIAS_SEMANA } from "@/lib/delivery";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -120,6 +121,14 @@ const fdate = (s: string) => {
   const [y, m, d] = s.split("-");
   return `${d}/${m}/${y}`;
 };
+
+// Estilos de botones tipo "vidrio" (glassmorphism), reutilizables en toda la app
+const GLASS_BTN =
+  "backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-card-foreground";
+const GLASS_BTN_PRIMARY =
+  "backdrop-blur-md bg-primary/85 border border-white/30 shadow-md hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground";
+const GLASS_BTN_DESTRUCTIVE =
+  "backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive";
 
 // ------------------------------
 // Badge component
@@ -582,7 +591,7 @@ const Dashboard = () => {
             )}
           </div>
           <button
-            className="bg-secondary text-secondary-foreground border border-primary rounded-lg px-3 py-1.5 text-xs font-bold"
+            className={`rounded-full px-3 py-1.5 text-xs font-bold ${GLASS_BTN}`}
             onClick={() => {
               setMetaInp(meta ? String(meta) : "");
               setEditMeta(true);
@@ -723,17 +732,213 @@ const Dashboard = () => {
           <div className="flex gap-2.5">
             <button
               onClick={() => setEditMeta(false)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
             <button
               onClick={saveMeta}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
               Guardar meta
             </button>
           </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ------------------------------
+// Calendario de entregas
+// ------------------------------
+const MESES = [
+  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+];
+const DIAS_CORTOS = ["D", "L", "M", "M", "J", "V", "S"];
+
+const Calendario = () => {
+  const { ordenes, clientes } = useData();
+  const [deliveryDays, setDeliveryDaysState] = useState<number[]>(() => getDeliveryDays());
+  const [showConfig, setShowConfig] = useState(false);
+  const [mesActual, setMesActual] = useState(() => {
+    const d = new Date();
+    return { year: d.getFullYear(), month: d.getMonth() };
+  });
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
+
+  const toggleDeliveryDay = (dia: number) => {
+    const next = deliveryDays.includes(dia)
+      ? deliveryDays.filter((d) => d !== dia)
+      : [...deliveryDays, dia].sort();
+    setDeliveryDaysState(next);
+    setDeliveryDays(next);
+  };
+
+  const ordenesPorFecha = useMemo(() => {
+    const map: Record<string, Orden[]> = {};
+    ordenes.forEach((o) => {
+      if (!o.fecha) return;
+      if (!map[o.fecha]) map[o.fecha] = [];
+      map[o.fecha].push(o);
+    });
+    return map;
+  }, [ordenes]);
+
+  const clienteFor = (cli: string) =>
+    clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
+
+  const primerDia = new Date(mesActual.year, mesActual.month, 1);
+  const diasEnMes = new Date(mesActual.year, mesActual.month + 1, 0).getDate();
+  const offsetInicial = primerDia.getDay();
+  const celdas: (string | null)[] = [
+    ...Array(offsetInicial).fill(null),
+    ...Array.from({ length: diasEnMes }, (_, i) => {
+      const d = String(i + 1).padStart(2, "0");
+      const m = String(mesActual.month + 1).padStart(2, "0");
+      return `${mesActual.year}-${m}-${d}`;
+    }),
+  ];
+
+  const cambiarMes = (delta: number) => {
+    setDiaSeleccionado(null);
+    setMesActual((prev) => {
+      const d = new Date(prev.year, prev.month + delta, 1);
+      return { year: d.getFullYear(), month: d.getMonth() };
+    });
+  };
+
+  const ordenesDelDia = diaSeleccionado ? ordenesPorFecha[diaSeleccionado] || [] : [];
+
+  return (
+    <div>
+      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => cambiarMes(-1)}
+              className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-card-foreground"
+            >
+              ‹
+            </button>
+            <span className="text-sm font-bold text-card-foreground min-w-[120px] text-center">
+              {MESES[mesActual.month]} {mesActual.year}
+            </span>
+            <button
+              onClick={() => cambiarMes(1)}
+              className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-card-foreground"
+            >
+              ›
+            </button>
+          </div>
+          <button onClick={() => setShowConfig(true)} className={`px-3 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN}`}>
+            ⚙️ Días de entrega
+          </button>
+        </div>
+
+        <div className="grid grid-cols-7 gap-1 mb-1">
+          {DIAS_CORTOS.map((d, i) => (
+            <div key={i} className="text-center text-[10px] font-bold text-muted-foreground py-1">
+              {d}
+            </div>
+          ))}
+        </div>
+        <div className="grid grid-cols-7 gap-1">
+          {celdas.map((fecha, i) => {
+            if (!fecha) return <div key={i} />;
+            const diaSemana = new Date(fecha + "T00:00:00").getDay();
+            const esEntrega = deliveryDays.includes(diaSemana);
+            const ordenesDia = ordenesPorFecha[fecha] || [];
+            const numDia = Number(fecha.slice(-2));
+            const esHoy = fecha === today();
+            return (
+              <button
+                key={fecha}
+                onClick={() => setDiaSeleccionado(fecha === diaSeleccionado ? null : fecha)}
+                className={`aspect-square rounded-lg flex flex-col items-center justify-center relative text-xs ${
+                  diaSeleccionado === fecha
+                    ? "bg-primary text-primary-foreground font-bold"
+                    : esEntrega
+                      ? "bg-secondary text-secondary-foreground font-semibold"
+                      : "bg-muted text-card-foreground"
+                } ${esHoy && diaSeleccionado !== fecha ? "ring-2 ring-primary" : ""}`}
+              >
+                {numDia}
+                {ordenesDia.length > 0 && (
+                  <span
+                    className={`absolute bottom-0.5 w-1.5 h-1.5 rounded-full ${
+                      diaSeleccionado === fecha ? "bg-white" : "bg-primary"
+                    }`}
+                  />
+                )}
+              </button>
+            );
+          })}
+        </div>
+        {deliveryDays.length > 0 && (
+          <div className="text-[11px] text-muted-foreground mt-2">
+            🚚 Entregas: {deliveryDays.map((d) => DIAS_SEMANA[d]).join(", ")}
+          </div>
+        )}
+      </div>
+
+      {diaSeleccionado && (
+        <div className="bg-card rounded-2xl p-3.5 border border-border">
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+            Entregas del {fdate(diaSeleccionado)}
+          </div>
+          {ordenesDelDia.length ? (
+            ordenesDelDia.map((o) => {
+              const cInfo = clienteFor(o.cli);
+              return (
+                <div key={o.id} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold uppercase text-card-foreground truncate">
+                      {cInfo ? cInfo.nom : o.cli}
+                    </div>
+                    <div className="text-xs text-muted-foreground">Orden #{o.num}</div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
+                    <Badge e={o.estado} />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <Empty text="Sin entregas programadas este día." />
+          )}
+        </div>
+      )}
+
+      {showConfig && (
+        <Modal title="Días de entrega" onClose={() => setShowConfig(false)}>
+          <p className="text-sm text-muted-foreground mb-3">
+            Marca los días en que haces entregas. Las órdenes creadas después del mediodía del día anterior
+            se programan automáticamente para el siguiente día de entrega disponible.
+          </p>
+          <div className="flex flex-wrap gap-2 mb-4">
+            {DIAS_SEMANA.map((nombre, i) => (
+              <button
+                key={i}
+                onClick={() => toggleDeliveryDay(i)}
+                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${
+                  deliveryDays.includes(i)
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-secondary-foreground border-border"
+                }`}
+              >
+                {nombre}
+              </button>
+            ))}
+          </div>
+          <button
+            onClick={() => setShowConfig(false)}
+            className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
+          >
+            Listo
+          </button>
         </Modal>
       )}
     </div>
@@ -851,7 +1056,7 @@ const Facturas = () => {
         </div>
       )}
       <button
-        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
+        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
         onClick={() => setShow(true)}
       >
         +
@@ -959,13 +1164,13 @@ const Facturas = () => {
           <div className="flex gap-2.5">
             <button
               onClick={() => setShow(false)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
               Guardar Factura
             </button>
@@ -1447,13 +1652,13 @@ const Clientes = () => {
           <div className="flex gap-2.5 mt-3.5">
             <button
               onClick={() => { reset(); setShow(false); }}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
               {editId ? "Guardar Cambios" : "Guardar Cliente"}
             </button>
@@ -1491,13 +1696,13 @@ const Clientes = () => {
             <div className="flex gap-2.5">
               <button
                 onClick={() => setShowCropModal(false)}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+                className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
               >
                 Cancelar
               </button>
               <button
                 onClick={processCroppedImage}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+                className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
               >
                 Guardar foto
               </button>
@@ -2242,7 +2447,10 @@ const Inventario = () => {
         </span>
       </div>
       {allTags.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-2 mb-2 -mx-1 px-1">
+        <div
+          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-2 -mx-1 px-1"
+          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+        >
           {tagFilter.length > 0 && (
             <button
               onClick={() => setTagFilter([])}
@@ -2339,6 +2547,14 @@ const Inventario = () => {
                   <div className="text-sm font-bold text-secondary-foreground mt-1">
                     {fmt(p.precio)}
                   </div>
+                  {Number(p.costo) > 0 && (
+                    <div className="text-[11px] font-semibold text-primary mt-0.5">
+                      Margen: {(((Number(p.precio) - Number(p.costo)) / Number(p.costo)) * 100).toFixed(0)}%
+                      <span className="text-muted-foreground font-normal ml-1">
+                        ({fmt(Number(p.precio) - Number(p.costo))})
+                      </span>
+                    </div>
+                  )}
                   <div className="text-xs text-muted-foreground mt-0.5">
                     Stock: {stock} uds.
                   </div>
@@ -2507,7 +2723,7 @@ const Inventario = () => {
                 setShowBulk(false);
                 setBulkErr("");
               }}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
@@ -2570,7 +2786,7 @@ const Inventario = () => {
             {foto && (
               <button
                 onClick={() => setFoto(null)}
-                className="w-full px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs mb-1"
+                className="w-full px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs mb-1"
               >
                 X Quitar foto
               </button>
@@ -2718,7 +2934,7 @@ const Inventario = () => {
                   setShow(false);
                 }
               }}
-              className="w-full px-4 py-2.5 rounded-xl bg-red-50 text-destructive font-medium text-sm mb-3"
+              className="w-full px-4 py-2.5 rounded-xl backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive font-medium text-sm mb-3"
             >
               Eliminar producto
             </button>
@@ -2726,13 +2942,13 @@ const Inventario = () => {
           <div className="flex gap-2.5 mt-3.5">
             <button
               onClick={() => setShow(false)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
               {editId ? "Actualizar" : "Guardar"} Producto
             </button>
@@ -3074,7 +3290,7 @@ const Ordenes = () => {
         )}
       </div>
       <button
-        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
+        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
         onClick={() => setShow(true)}
       >
         +
@@ -3180,13 +3396,13 @@ const Ordenes = () => {
           <div className="flex gap-2.5">
             <button
               onClick={() => setShow(false)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
               Guardar Orden
             </button>
@@ -3438,7 +3654,7 @@ const Ordenes = () => {
             <div className="flex gap-2.5">
             <button
               onClick={() => setPicking(null)}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cerrar
             </button>
@@ -3640,7 +3856,7 @@ const Mejoras = () => {
             Editar
           </button>
           <button
-            className="px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs font-bold"
+            className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold"
             onClick={() => {
               if (confirm("Eliminar esta mejora?")) deleteMejora(m.id);
             }}
@@ -3684,7 +3900,7 @@ const Mejoras = () => {
       )}
 
       <button
-        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
+        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
         onClick={openNew}
         aria-label="Agregar mejora"
       >
@@ -3755,13 +3971,13 @@ const Mejoras = () => {
                 reset();
                 setShow(false);
               }}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
             <button
               onClick={handleSave}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
               {editId ? "Guardar Cambios" : "Guardar Mejora"}
             </button>
@@ -3777,6 +3993,7 @@ const Mejoras = () => {
 // ------------------------------
 const TITLES: Record<string, string> = {
   dash: "Dashboard",
+  cal: "Calendario",
   fact: "Facturacion",
   cli: "Clientes",
   inv: "Inventario",
@@ -3890,7 +4107,7 @@ const GestionarUsuarios = () => {
               </div>
               <button
                 onClick={() => handleDeleteUser(u.email)}
-                className="px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs font-bold shrink-0"
+                className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold shrink-0"
               >
                 Eliminar
               </button>
@@ -3900,7 +4117,7 @@ const GestionarUsuarios = () => {
       </div>
 
       <button
-        className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
+        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
         onClick={() => setShow(true)}
         aria-label="Crear usuario"
       >
@@ -3946,7 +4163,7 @@ const GestionarUsuarios = () => {
                 setForm({ email: "", password: "" });
                 setMessage("");
               }}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               Cancelar
             </button>
@@ -4018,6 +4235,7 @@ function AppContent() {
 
   const panels: Record<string, ReactNode> = {
     dash: <Dashboard />,
+    cal: <Calendario />,
     fact: <Facturas />,
     cli: <Clientes />,
     inv: <Inventario />,

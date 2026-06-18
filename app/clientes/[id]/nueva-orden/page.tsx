@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { getDeliveryDays, nextDeliveryDate } from '@/lib/delivery'
 
 interface Cliente {
   id: string
@@ -38,7 +39,7 @@ export default function NuevaOrdenPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const [fecha, setFecha] = useState(today())
+  const [fecha, setFecha] = useState(() => nextDeliveryDate(getDeliveryDays()))
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string>('')
   // cantidades por producto: { [prodId]: qty }
@@ -47,6 +48,15 @@ export default function NuevaOrdenPage() {
   const [descuentos, setDescuentos] = useState<Record<string, number>>({})
   const [editandoDescuento, setEditandoDescuento] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState(false)
+  const [columnas, setColumnas] = useState<2 | 3>(() => {
+    if (typeof window === 'undefined') return 2
+    return (Number(localStorage.getItem('ph_columnas_orden')) as 2 | 3) || 2
+  })
+
+  const cambiarColumnas = (n: 2 | 3) => {
+    setColumnas(n)
+    localStorage.setItem('ph_columnas_orden', String(n))
+  }
 
   useEffect(() => {
     const load = async () => {
@@ -223,7 +233,10 @@ export default function NuevaOrdenPage() {
               className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-base"
             />
             {allTags.length > 0 && (
-              <div className="flex gap-1.5 overflow-x-auto pb-1">
+              <div
+                className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1"
+                style={{ scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch' }}
+              >
                 <button
                   onClick={() => setTagFilter('')}
                   className={`shrink-0 px-3 py-1 rounded-full text-xs font-medium border ${
@@ -255,7 +268,29 @@ export default function NuevaOrdenPage() {
 
       {/* Catálogo de productos */}
       <div className="max-w-2xl mx-auto p-4 pb-44" style={{ paddingBottom: "calc(11rem + env(safe-area-inset-bottom))" }}>
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="flex justify-end mb-2.5">
+          <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+            <button
+              onClick={() => cambiarColumnas(2)}
+              aria-label="2 columnas"
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                columnas === 2 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              ▥ 2
+            </button>
+            <button
+              onClick={() => cambiarColumnas(3)}
+              aria-label="3 columnas"
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                columnas === 3 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              ▦ 3
+            </button>
+          </div>
+        </div>
+        <div className={`grid gap-2.5 ${columnas === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {filtered.length ? (
             filtered.map((p) => {
               const disp = disponible(p)

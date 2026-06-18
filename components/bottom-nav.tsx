@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 
 export const NAV_ICONS: Record<string, string> = {
   dash: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
+  cal: "M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z",
   fact: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8",
   cli: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
   inv: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12",
@@ -14,6 +16,7 @@ export const NAV_ICONS: Record<string, string> = {
 
 export const NAV_TABS = [
   { id: "dash", label: "Inicio" },
+  { id: "cal", label: "Calendario" },
   { id: "fact", label: "Facturas" },
   { id: "cli", label: "Clientes" },
   { id: "inv", label: "Inventario" },
@@ -30,6 +33,11 @@ export function BottomNav({
   onSelect?: (id: string) => void;
 }) {
   const router = useRouter();
+  const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+
+  useEffect(() => {
+    itemRefs.current[active]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
+  }, [active]);
 
   const go = (id: string) => {
     if (onSelect) {
@@ -41,32 +49,41 @@ export function BottomNav({
 
   return (
     <nav
-      className="bg-card border-t border-border flex fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[5]"
+      className="bg-card border-t border-border fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[5]"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      {NAV_TABS.map((t) => (
-        <button
-          key={t.id}
-          onClick={() => go(t.id)}
-          className={`flex-1 flex flex-col items-center py-2.5 px-0.5 cursor-pointer text-xs gap-1 border-none bg-transparent font-sans ${
-            active === t.id ? "text-secondary-foreground font-bold" : "text-muted-foreground font-normal"
-          }`}
-        >
-          <svg
-            width={22}
-            height={22}
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
-            strokeWidth={1.8}
-            strokeLinecap="round"
-            strokeLinejoin="round"
+      <div
+        className="flex overflow-x-auto no-scrollbar"
+        style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
+      >
+        {NAV_TABS.map((t) => (
+          <button
+            key={t.id}
+            ref={(el) => {
+              itemRefs.current[t.id] = el;
+            }}
+            onClick={() => go(t.id)}
+            style={{ scrollSnapAlign: "center" }}
+            className={`w-[68px] shrink-0 flex flex-col items-center py-2.5 px-0.5 cursor-pointer text-xs gap-1 border-none bg-transparent font-sans ${
+              active === t.id ? "text-secondary-foreground font-bold" : "text-muted-foreground font-normal"
+            }`}
           >
-            <path d={NAV_ICONS[t.id]} />
-          </svg>
-          {t.label}
-        </button>
-      ))}
+            <svg
+              width={22}
+              height={22}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
+              strokeWidth={1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d={NAV_ICONS[t.id]} />
+            </svg>
+            <span className="truncate w-full text-center">{t.label}</span>
+          </button>
+        ))}
+      </div>
     </nav>
   );
 }

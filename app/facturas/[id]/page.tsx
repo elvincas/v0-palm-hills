@@ -42,59 +42,44 @@ const fdate = (s: string) => {
   return `${d}/${m}/${y}`;
 };
 
-const ESTADO_BADGE: Record<string, string> = {
-  Pagada: "bg-green-100 text-green-800",
-  Pendiente: "bg-amber-100 text-amber-800",
-  "En revision": "bg-blue-100 text-blue-800",
-  "En revisión": "bg-blue-100 text-blue-800",
-};
-
 // Filas de producto por hoja impresa (deja espacio para el encabezado completo en cada una)
-const FILAS_POR_HOJA = 14;
+const FILAS_POR_HOJA = 20;
 
 function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
   return (
     <>
-      <div className="px-6 sm:px-10 pt-8 pb-6 flex items-start justify-between gap-6 border-b-2 border-[#4a6741]">
-        <div className="flex items-center gap-3.5">
-          <img src="/logo.png" alt="Palm Hills" className="w-16 h-16 object-contain shrink-0" />
+      <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
+        <div className="flex items-center gap-2">
+          <img src="/logo.png" alt="Palm Hills" className="w-9 h-9 object-contain shrink-0" />
           <div>
-            <div className="text-lg font-bold text-[#1a1a18] leading-tight">Palm Hills</div>
-            <div className="text-xs font-medium text-[#b09060] tracking-wide">Beauty &amp; Health</div>
-            <div className="text-[11px] text-gray-500 mt-1.5">
+            <div className="text-sm font-bold text-[#1a1a18] leading-tight">Palm Hills</div>
+            <div className="text-[10px] text-gray-500">
               📞 (551) 248-3442 &nbsp;·&nbsp; ✉️ admin@palmhillsco.net
             </div>
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-2xl font-black tracking-wide text-[#4a6741]">FACTURA</div>
-          <div className="text-sm font-mono text-gray-600 mt-1">#{String(factura.num).padStart(3, "0")}</div>
-          <span
-            className={`mt-2 inline-flex px-3 py-1 rounded-full text-xs font-bold ${
-              ESTADO_BADGE[factura.estado] || "bg-blue-100 text-blue-800"
-            }`}
-          >
-            {factura.estado}
-          </span>
+          <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">FACTURA</div>
+          <div className="text-xs font-mono text-gray-600">#{String(factura.num).padStart(3, "0")}</div>
         </div>
       </div>
-      <div className="px-6 sm:px-10 py-6 grid grid-cols-2 gap-6 bg-[#fafaf7]">
+      <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
         <div>
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Facturar a</div>
-          <div className="text-sm font-bold text-[#1a1a18]">{cliente?.nom || factura.cli}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Facturar a</div>
+          <div className="text-xs font-bold text-[#1a1a18]">{cliente?.nom || factura.cli}</div>
           {cliente?.codigo_cliente && (
-            <div className="text-xs font-mono text-gray-500">#{cliente.codigo_cliente}</div>
+            <div className="text-[10px] font-mono text-gray-500">#{cliente.codigo_cliente}</div>
           )}
           {cliente?.dir && (
-            <div className="text-xs text-gray-600 mt-1">
+            <div className="text-[10px] text-gray-600">
               {[cliente.dir, cliente.ciudad, cliente.estado_dir].filter(Boolean).join(", ")}
             </div>
           )}
-          {cliente?.tel && <div className="text-xs text-gray-600">📞 {cliente.tel}</div>}
+          {cliente?.tel && <div className="text-[10px] text-gray-600">📞 {cliente.tel}</div>}
         </div>
         <div className="text-right">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Fecha</div>
-          <div className="text-sm font-medium text-[#1a1a18]">{fdate(factura.fecha)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Fecha</div>
+          <div className="text-xs font-medium text-[#1a1a18]">{fdate(factura.fecha)}</div>
         </div>
       </div>
     </>
@@ -144,8 +129,11 @@ export default function FacturaPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button onClick={() => router.push("/?tab=fact")} className="text-sm text-muted-foreground underline">
-          Volver
+        <button
+          onClick={() => router.push("/?tab=fact")}
+          className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
+        >
+          ← Volver
         </button>
       </div>
     );
@@ -167,13 +155,13 @@ export default function FacturaPage() {
         <div className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between">
           <button
             onClick={() => router.push("/?tab=fact")}
-            className="text-sm font-medium text-[#4a6741] hover:text-[#39512f]"
+            className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
           >
             ← Volver
           </button>
           <button
             onClick={() => window.print()}
-            className="px-5 py-2 rounded-full bg-[#4a6741] text-white text-sm font-bold shadow-sm hover:bg-[#3d5636]"
+            className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
           >
             🖨️ Imprimir / Guardar PDF
           </button>
@@ -196,6 +184,7 @@ export default function FacturaPage() {
                   <thead>
                     <tr className="border-b-2 border-[#1a1a18] text-left">
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Cant.</th>
+                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Cajas</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">SKU</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">
                         Descripción
@@ -215,6 +204,9 @@ export default function FacturaPage() {
                         return (
                           <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#f4f6f2]"}>
                             <td className="py-2 text-gray-700 text-xs">{l.qty}</td>
+                            <td className="py-2">
+                              <div className="w-10 border-b border-gray-300 h-4" />
+                            </td>
                             <td className="py-2 text-gray-400 font-mono text-[11px]">{l.sku || "—"}</td>
                             <td className="py-2 text-gray-800 text-xs">{l.prodNom}</td>
                             <td className="py-2 text-right text-xs">
@@ -246,7 +238,7 @@ export default function FacturaPage() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">
+                        <td colSpan={6} className="py-6 text-center text-gray-400 text-sm">
                           Sin detalle de productos
                         </td>
                       </tr>
@@ -275,6 +267,28 @@ export default function FacturaPage() {
                   </div>
                 )}
               </div>
+
+              {esUltima && (
+                <div className="px-6 sm:px-10 py-6 border-t border-gray-200">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-4">
+                    Confirmación de entrega
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                    <div>
+                      <div className="border-b border-gray-400 h-8" />
+                      <div className="text-[11px] text-gray-500 mt-1">Firma de orden recibida</div>
+                    </div>
+                    <div>
+                      <div className="border-b border-gray-400 h-8" />
+                      <div className="text-[11px] text-gray-500 mt-1">Fecha</div>
+                    </div>
+                    <div className="col-span-2">
+                      <div className="border-b border-gray-400 h-8" />
+                      <div className="text-[11px] text-gray-500 mt-1">Nombre de la persona que recibió</div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {esUltima && (
                 <div className="px-6 sm:px-10 py-6 border-t border-gray-200 text-center">
