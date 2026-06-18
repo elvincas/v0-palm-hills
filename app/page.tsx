@@ -963,6 +963,24 @@ const Clientes = () => {
     foto_local: "",
   });
 
+  const nextCodigoCliente = useMemo(() => {
+    let prefix = "01";
+    let maxNum = 0;
+    let width = 4;
+    clientes.forEach((c) => {
+      const m = (c.codigo_cliente || "").match(/^(\d+)-(\d+)$/);
+      if (m) {
+        const num = parseInt(m[2], 10);
+        if (num > maxNum) {
+          maxNum = num;
+          prefix = m[1];
+          width = m[2].length;
+        }
+      }
+    });
+    return `${prefix}-${String(maxNum + 1).padStart(width, "0")}`;
+  }, [clientes]);
+
   const filtered = useMemo(() => {
     const base = q
       ? clientes.filter(
@@ -1129,7 +1147,12 @@ const Clientes = () => {
             >
               <button
                 className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
-                onClick={() => { setShowAddMenu(false); setShow(true); }}
+                onClick={() => {
+                  setShowAddMenu(false);
+                  reset();
+                  setForm((f) => ({ ...f, codigo_cliente: nextCodigoCliente }));
+                  setShow(true);
+                }}
               >
                 <span className="text-base">+</span>
                 Agregar manualmente
@@ -1280,9 +1303,15 @@ const Clientes = () => {
               <input
                 value={form.codigo_cliente}
                 onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
-                placeholder="Ej. CLI-0001"
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base font-mono outline-none focus:ring-2 focus:ring-ring"
+                readOnly={!editId}
+                placeholder="Ej. 01-0001"
+                className={`w-full px-3 py-2.5 rounded-xl border border-input text-base font-mono outline-none focus:ring-2 focus:ring-ring ${
+                  !editId ? "bg-muted text-muted-foreground cursor-not-allowed" : "bg-card text-card-foreground"
+                }`}
               />
+              {!editId && (
+                <p className="text-[11px] text-muted-foreground mt-1">Se asigna automáticamente</p>
+              )}
             </Field>
             <Field label="Telefono">
               <input
