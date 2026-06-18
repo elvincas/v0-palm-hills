@@ -44,7 +44,7 @@ const fdate = (s: string) => {
 };
 
 // Filas de producto por hoja impresa (deja espacio para el encabezado completo en cada una)
-const FILAS_POR_HOJA = 15;
+const FILAS_POR_HOJA = 12;
 
 function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
   return (
