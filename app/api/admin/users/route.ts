@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import { createClient as createServerSessionClient } from '@/lib/supabase/server'
 
 // Initialize Supabase Admin client with service role key
 const supabaseAdmin = createClient(
@@ -13,8 +14,26 @@ const supabaseAdmin = createClient(
   }
 )
 
+// Esta API usa la llave de servicio (acceso total), asi que primero hay que
+// confirmar que quien llama tiene una sesion valida con rol "admin" - de lo
+// contrario cualquiera que conozca esta URL podria crear o borrar usuarios.
+async function requireAdmin() {
+  const supabase = await createServerSessionClient()
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data.user) {
+    return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
+  }
+  if (data.user.user_metadata?.role === 'visitante') {
+    return NextResponse.json({ error: 'No tienes permiso para gestionar usuarios' }, { status: 403 })
+  }
+  return null
+}
+
 export async function POST(request: Request) {
   try {
+    const unauthorized = await requireAdmin()
+    if (unauthorized) return unauthorized
+
     const { email, password, action, role } = await request.json()
 
     // Validate email for all actions
@@ -197,6 +216,9 @@ export async function POST(request: Request) {
 // GET: List all users
 export async function GET() {
   try {
+    const unauthorized = await requireAdmin()
+    if (unauthorized) return unauthorized
+
     const { data, error } = await supabaseAdmin.auth.admin.listUsers()
 
     if (error) {
