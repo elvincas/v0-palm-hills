@@ -51,7 +51,7 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Palm Hills" className="w-9 h-9 object-contain shrink-0" />
+          <img src="/logo.png" alt="Palm Hills" className="w-14 h-14 object-contain shrink-0" />
           <div>
             <div className="text-sm font-bold text-[#1a1a18] leading-tight">Palm Hills</div>
             <div className="text-[10px] text-gray-500">
@@ -205,10 +205,10 @@ export default function FacturaPage() {
                       pagina.map((l, i) => {
                         const tieneDescuento = l.precioOriginal !== undefined && l.precioOriginal !== l.precio;
                         return (
-                          <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#f4f6f2]"}>
+                          <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"}>
                             <td className="py-2 text-gray-700 text-xs">{l.qty}</td>
                             <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
-                            <td className="py-2 text-gray-800 text-xs">{l.prodNom}</td>
+                            <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
                             <td className="py-2 text-right text-xs">
                               {tieneDescuento ? (
                                 <div className="flex flex-col items-end leading-tight">
@@ -269,22 +269,22 @@ export default function FacturaPage() {
               </div>
 
               {esUltima && (
-                <div className="px-6 sm:px-10 py-6 border-t border-gray-200">
-                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-4">
+                <div className="px-6 sm:px-10 py-3 border-t border-gray-200">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">
                     Confirmación de entrega
                   </div>
-                  <div className="grid grid-cols-2 gap-x-8 gap-y-6">
+                  <div className="flex flex-wrap gap-x-6 gap-y-2">
                     <div>
-                      <div className="border-b border-gray-400 h-8" />
-                      <div className="text-[11px] text-gray-500 mt-1">Firma de orden recibida</div>
+                      <div className="border-b border-gray-400 h-4 w-28" />
+                      <div className="text-[9px] text-gray-500 mt-0.5">Firma de orden recibida</div>
                     </div>
                     <div>
-                      <div className="border-b border-gray-400 h-8" />
-                      <div className="text-[11px] text-gray-500 mt-1">Fecha</div>
+                      <div className="border-b border-gray-400 h-4 w-20" />
+                      <div className="text-[9px] text-gray-500 mt-0.5">Fecha</div>
                     </div>
-                    <div className="col-span-2">
-                      <div className="border-b border-gray-400 h-8" />
-                      <div className="text-[11px] text-gray-500 mt-1">Nombre de la persona que recibió</div>
+                    <div>
+                      <div className="border-b border-gray-400 h-4 w-40" />
+                      <div className="text-[9px] text-gray-500 mt-0.5">Nombre de quien recibió</div>
                     </div>
                   </div>
                 </div>
