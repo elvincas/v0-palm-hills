@@ -195,7 +195,7 @@ export default function ClientePerfilPage() {
   }
 
   return (
-    <div className="p-4 pb-24 max-w-3xl mx-auto">
+    <div className="p-4 pb-24 max-w-3xl mx-auto" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
       <button
         onClick={() => router.push("/?tab=cli")}
         className={`px-4 py-2 rounded-full text-sm font-medium mb-3 ${GLASS_BTN}`}

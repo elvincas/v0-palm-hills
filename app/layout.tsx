@@ -1,4 +1,4 @@
-import type { Metadata } from 'next'
+import type { Metadata, Viewport } from 'next'
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import './globals.css'
@@ -6,11 +6,22 @@ import './globals.css'
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
 
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+}
+
 export const metadata: Metadata = {
   title: 'Palm Hills - Beauty & Health',
   description: 'Sistema de gestión empresarial para negocios de belleza y salud',
   generator: 'v0.app',
   metadataBase: new URL('https://v0-palm-hills.vercel.app'),
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Palm Hills',
+  },
   openGraph: {
     title: 'Palm Hills - Beauty & Health',
     description: 'Sistema de gestión empresarial para negocios de belleza y salud',

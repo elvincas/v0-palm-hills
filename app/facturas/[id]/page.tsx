@@ -152,7 +152,10 @@ export default function FacturaPage() {
   return (
     <div className="min-h-screen bg-[#f0efe9]">
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
-        <div className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between">
+        <div
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between"
+          style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}
+        >
           <button
             onClick={() => router.push("/?tab=fact")}
             className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
