@@ -1,13 +1,17 @@
 "use client";
 
-import { useState, useEffect, useMemo, createContext, useContext, useRef, type ReactNode } from "react";
+import { useState, useEffect, useMemo, createContext, useContext, useRef, type ReactNode, type ComponentType } from "react";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
-import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
-import Cropper from "react-easy-crop";
 import "react-easy-crop/react-easy-crop.css";
+import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
+
+const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
+  Partial<CropperProps>
+>;
 
 // ------------------------------
 // Types
@@ -119,7 +123,6 @@ const BM: Record<string, string> = {
   Cancelado: "bg-red-100 text-red-800",
   "Al corriente": "bg-green-100 text-green-800",
   Incidencia: "bg-amber-100 text-amber-800",
-  Baja: "bg-red-100 text-red-800",
   Activo: "bg-green-100 text-green-800",
   Inactivo: "bg-red-100 text-red-800",
   "En espera": "bg-amber-100 text-amber-800",
@@ -173,7 +176,7 @@ const Modal = ({
   onClose,
   children,
 }: {
-  title: string;
+  title?: string;
   onClose: () => void;
   children: ReactNode;
 }) => (
@@ -183,15 +186,17 @@ const Modal = ({
   >
     <div className="bg-card rounded-t-3xl p-5 pb-8 w-full max-w-[480px] max-h-[90svh] overflow-y-auto">
       <div className="w-10 h-1 bg-border rounded-full mx-auto mb-4" />
-      <div className="flex items-center justify-between mb-4">
-        <span className="text-lg font-bold text-card-foreground">{title}</span>
-        <button
-          onClick={onClose}
-          className="bg-transparent border-none text-xl cursor-pointer text-muted-foreground hover:text-foreground"
-        >
-          X
-        </button>
-      </div>
+      {title && (
+        <div className="flex items-center justify-between mb-4">
+          <span className="text-lg font-bold text-card-foreground">{title}</span>
+          <button
+            onClick={onClose}
+            className="bg-transparent border-none text-xl cursor-pointer text-muted-foreground hover:text-foreground"
+          >
+            X
+          </button>
+        </div>
+      )}
       {children}
     </div>
   </div>
@@ -215,7 +220,10 @@ interface DataContextType {
   updateCliente: (id: string, c: Omit<Cliente, "id">) => void;
   addClientesBulk: (rows: Omit<Cliente, "id">[]) => Promise<number>;
   addProducto: (p: Omit<Producto, "id">) => void;
-  addProductosBulk: (rows: Omit<Producto, "id">[]) => Promise<number>;
+  addProductosBulk: (
+    rows: Omit<Producto, "id">[],
+    skipDuplicates?: boolean
+  ) => Promise<{ insertados: number; duplicados: number }>;
   updateProducto: (id: string, p: Omit<Producto, "id">) => void;
   deleteProducto: (id: string) => void;
   addFactura: (f: Omit<Factura, "id" | "num">) => void;
@@ -1459,7 +1467,8 @@ const Clientes = () => {
             </span>. (Estado = estado/provincia de la dirección, ej. "NY").
           </div>
           <button
-            onClick={() => {
+            onClick={async () => {
+              const XLSX = await import("xlsx");
               const ws = XLSX.utils.aoa_to_sheet([
                 ["Numero de Cliente", "Nombre", "Direccion", "Ciudad", "Estado", "Contacto", "Telefono", "Email", "Abierto Sabados"],
                 ["CLI-0001", "Hamilton Meat Market", "123 St Nicholas Ave", "New York", "NY", "Hamilton Diaz", "2125550199", "hamilton@example.com", "Si"],
@@ -1489,6 +1498,7 @@ const Clientes = () => {
               if (!file) return;
               setBulkErr("");
               try {
+                const XLSX = await import("xlsx");
                 const buf = await file.arrayBuffer();
                 const wb = XLSX.read(buf, { type: "array" });
                 const ws = wb.Sheets[wb.SheetNames[0]];
@@ -1979,7 +1989,7 @@ const Inventario = () => {
       .replace(/[\u0300-\u036f]/g, "")
       .replace(/[^a-z0-9]/g, "");
 
-  const COLS: Record<keyof Omit<BulkRow, "_error">, string[]> = {
+  const COLS: Record<keyof Omit<BulkRow, "_error" | "_warning">, string[]> = {
     sku: ["sku"],
     nom: ["descripcion", "descripcionn", "nombre", "producto"],
     fabricante: ["fabricante", "marca", "proveedor", "manufacturer"],
@@ -2004,6 +2014,7 @@ const Inventario = () => {
     if (!file) return;
     setBulkErr("");
     try {
+      const XLSX = await import("xlsx");
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: "array" });
       const ws = wb.Sheets[wb.SheetNames[0]];
@@ -2079,7 +2090,8 @@ const Inventario = () => {
     }
   };
 
-  const downloadTemplate = () => {
+  const downloadTemplate = async () => {
+    const XLSX = await import("xlsx");
     const ws = XLSX.utils.aoa_to_sheet([
       [
         "SKU",
