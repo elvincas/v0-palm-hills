@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import Fuse from "fuse.js";
 import Cropper from "react-easy-crop";
 import "react-easy-crop/react-easy-crop.css";
+import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
 
 // ------------------------------
 // Types
@@ -57,7 +58,9 @@ interface LineaOrden {
   barcode: string;
   sku: string;
   precio: number;
+  precioFinal?: number;
   qty: number;
+  qtyEnviada?: number;
   picked?: boolean;
 }
 
@@ -2651,7 +2654,9 @@ const Ordenes = () => {
     fecha: today(),
     estado: "Pendiente",
   });
-  const manualRef = useRef<HTMLInputElement>(null);
+
+  const clienteFor = (cli: string) =>
+    clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
 
   const total = lineas.reduce((acc, l) => {
     const p = productos.find((x) => x.id === l.prodId);
@@ -2697,41 +2702,33 @@ const Ordenes = () => {
       return;
     }
     setPicking(ord);
-    setPickItems(ord.lineas.map((l) => ({ ...l, picked: false })));
+    setPickItems(
+      ord.lineas.map((l) => ({ ...l, qtyEnviada: l.qtyEnviada ?? l.qty, picked: false }))
+    );
   };
 
-  const processPick = (code: string) => {
-    setPickItems((prev) => {
-      const idx = prev.findIndex(
-        (i) => !i.picked && (i.barcode === code || i.sku === code)
-      );
-      if (idx >= 0) {
-        const updated = [...prev];
-        updated[idx] = { ...updated[idx], picked: true };
-        if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
-        if (updated.every((i) => i.picked)) {
-          setTimeout(() => alert("Todos los productos pickeados!"), 150);
-        }
-        return updated;
-      }
-      alert(
-        prev.some((i) => i.picked && (i.barcode === code || i.sku === code))
-          ? "Ya pickeado"
-          : `Codigo no encontrado: ${code}`
-      );
-      return prev;
-    });
+  const togglePicked = (idx: number) => {
+    setPickItems((prev) => prev.map((it, i) => (i === idx ? { ...it, picked: !it.picked } : it)));
+  };
+
+  const setQtyEnviada = (idx: number, qty: number) => {
+    setPickItems((prev) =>
+      prev.map((it, i) =>
+        i === idx ? { ...it, qtyEnviada: Math.max(0, Math.min(qty, it.qty)) } : it
+      )
+    );
   };
 
   const completePick = () => {
     const done = pickItems.filter((i) => i.picked).length;
     if (
       done < pickItems.length &&
-      !confirm(`Faltan ${pickItems.length - done} items. Completar de todas formas?`)
+      !confirm(`Faltan ${pickItems.length - done} productos por confirmar. Completar de todas formas?`)
     )
       return;
     if (picking) {
-      updateOrden(picking.id, { ...picking, estado: "Entregado" });
+      const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
+      updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Entregado" });
     }
     setPicking(null);
   };
@@ -2740,15 +2737,18 @@ const Ordenes = () => {
     <div>
       <div className="bg-card rounded-2xl p-3.5 border border-border">
         {ordenes.length ? (
-          ordenes.map((o) => (
+          ordenes.map((o) => {
+            const cInfo = clienteFor(o.cli);
+            return (
             <Li
               key={o.id}
               left={
                 <>
                   <div className="text-sm font-semibold truncate text-card-foreground">
-                    {o.cli}
+                    {cInfo ? cInfo.nom : o.cli}
                   </div>
                   <div className="text-xs text-muted-foreground">
+                    {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
                     Orden #{o.num} - {fdate(o.fecha)}
                   </div>
                 </>
@@ -2767,7 +2767,8 @@ const Ordenes = () => {
                 </>
               }
             />
-          ))
+            );
+          })
         ) : (
           <Empty text="Sin ordenes. Toca + para crear." />
         )}
@@ -2902,92 +2903,111 @@ const Ordenes = () => {
             >
               X
             </button>
-            <span className="text-white text-base font-bold flex-1">
-              Picking — Orden #{picking.num}
-            </span>
+            <div className="flex-1">
+              <span className="text-white text-base font-bold block">Pickear Orden #{picking.num}</span>
+              <span className="text-white/80 text-xs">
+                {pickItems.filter((i) => i.picked).length}/{pickItems.length} productos confirmados
+              </span>
+            </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
-            <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-                Progreso: {pickItems.filter((i) => i.picked).length}/
-                {pickItems.length} items
-              </div>
-              {pickItems.map((item, i) => (
-                <div
-                  key={i}
-                  className="flex items-center gap-3 py-2.5 border-b border-border last:border-b-0"
-                >
+            <div className="bg-muted rounded-full h-2.5 overflow-hidden mb-4">
+              <div
+                className="h-full rounded-full bg-primary transition-all duration-300"
+                style={{
+                  width: `${pickItems.length ? (pickItems.filter((i) => i.picked).length / pickItems.length) * 100 : 0}%`,
+                }}
+              />
+            </div>
+            <div className="space-y-2.5">
+              {pickItems.map((item, i) => {
+                const prod = productos.find((p) => p.id === item.prodId);
+                const qtyEnviada = item.qtyEnviada ?? item.qty;
+                const parcial = qtyEnviada < item.qty;
+                return (
                   <div
-                    className={`w-7 h-7 rounded-full flex items-center justify-center shrink-0 text-sm font-bold ${item.picked ? "bg-primary text-primary-foreground" : "border-2 border-border"}`}
+                    key={i}
+                    className={`bg-card border rounded-2xl p-3 flex items-center gap-3 ${item.picked ? "border-primary" : "border-border"}`}
                   >
-                    {item.picked ? "✓" : ""}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-semibold text-card-foreground">{item.prodNom}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.barcode
-                        ? `CB: ${item.barcode}`
-                        : item.sku
-                          ? `SKU: ${item.sku}`
-                          : "Sin codigo"}
+                    <button
+                      onClick={() => togglePicked(i)}
+                      aria-label={item.picked ? "Marcar como pendiente" : "Marcar como pickeado"}
+                      className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base font-bold border-2 ${
+                        item.picked
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "border-border text-transparent"
+                      }`}
+                    >
+                      ✓
+                    </button>
+                    <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center text-xl shrink-0 overflow-hidden border border-border">
+                      {prod?.foto ? (
+                        <img
+                          src={prod.foto || "/placeholder.svg"}
+                          alt={item.prodNom}
+                          className="w-full h-full object-contain"
+                        />
+                      ) : (
+                        prod?.icon || "📦"
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-card-foreground truncate">{item.prodNom}</div>
+                      <div className="text-xs text-muted-foreground">
+                        Pedido: {item.qty}
+                        {item.sku ? ` · SKU ${item.sku}` : ""}
+                      </div>
+                      {parcial && (
+                        <div className="text-[11px] text-amber-600 font-medium mt-0.5">Envío parcial</div>
+                      )}
+                    </div>
+                    <div className="shrink-0 flex items-center gap-1">
+                      <button
+                        onClick={() => setQtyEnviada(i, qtyEnviada - 1)}
+                        className="w-7 h-7 rounded-lg bg-muted text-card-foreground font-bold flex items-center justify-center"
+                      >
+                        −
+                      </button>
+                      <input
+                        type="number"
+                        min={0}
+                        max={item.qty}
+                        inputMode="numeric"
+                        autoComplete="off"
+                        value={qtyEnviada}
+                        onChange={(e) => setQtyEnviada(i, Number(e.target.value))}
+                        className="w-12 px-1 py-1 rounded-lg border border-input bg-background text-card-foreground text-sm text-center font-bold"
+                      />
+                      <button
+                        onClick={() => setQtyEnviada(i, qtyEnviada + 1)}
+                        className="w-7 h-7 rounded-lg bg-muted text-card-foreground font-bold flex items-center justify-center"
+                      >
+                        +
+                      </button>
                     </div>
                   </div>
-                  <div className="text-sm font-bold text-secondary-foreground">
-                    x{item.qty}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
-              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">
-                Escanear para confirmar
-              </div>
-              <div className="flex gap-2 mb-2.5">
-                <input
-                  ref={manualRef}
-                  type="text"
-                  placeholder="Codigo de barras..."
-                  inputMode="numeric"
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && manualRef.current) {
-                      processPick(manualRef.current.value);
-                      manualRef.current.value = "";
-                    }
-                  }}
-                  className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-                />
-                <button
-                  onClick={() => {
-                    if (manualRef.current) {
-                      processPick(manualRef.current.value);
-                      manualRef.current.value = "";
-                    }
-                  }}
-                  className="shrink-0 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
-                >
-                  OK
-                </button>
-              </div>
-            </div>
-            <div className="flex gap-2.5">
-              <button
-                onClick={() => setPicking(null)}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
-              >
-                Cerrar
-              </button>
-              <button
-                onClick={completePick}
-                className={`flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm ${pickItems.every((i) => i.picked) ? "" : "opacity-60"}`}
-              >
-                Completar orden
-              </button>
+                );
+              })}
             </div>
           </div>
+          <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 py-3 flex gap-2.5 shrink-0">
+            <button
+              onClick={() => setPicking(null)}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+            >
+              Cerrar
+            </button>
+            <button
+              onClick={completePick}
+              className={`flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm ${pickItems.every((i) => i.picked) ? "" : "opacity-70"}`}
+            >
+              Completar orden
+            </button>
+          </div>
+          <div className="h-16 shrink-0" />
+          <BottomNav active="ord" />
         </div>
       )}
-
-      
     </div>
   );
 };
@@ -3303,26 +3323,6 @@ const Mejoras = () => {
 // ------------------------------
 // Main App
 // ------------------------------
-const ICONS: Record<string, string> = {
-  dash: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
-  fact: "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z M14 2v6h6 M16 13H8 M16 17H8 M10 9H8",
-  cli: "M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2 M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8z M23 21v-2a4 4 0 0 0-3-3.87 M16 3.13a4 4 0 0 1 0 7.75",
-  inv: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96L12 12.01l8.73-5.05 M12 22.08V12",
-  ord: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17M17 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM9 19a2 2 0 1 0 4 0 2 2 0 0 0-4 0z",
-  mej: "M12 19V5M5 12l7-7 7 7",
-  usr: "M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 9c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zm0 1c2.21 0 4 1.79 4 4v2c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2v-2c0-2.21 1.79-4 4-4z",
-};
-
-const TABS = [
-  { id: "dash", label: "Inicio" },
-  { id: "fact", label: "Facturas" },
-  { id: "cli", label: "Clientes" },
-  { id: "inv", label: "Inventario" },
-  { id: "ord", label: "Ordenes" },
-  { id: "mej", label: "Mejoras" },
-  { id: "usr", label: "Usuarios" },
-];
-
 const TITLES: Record<string, string> = {
   dash: "Dashboard",
   fact: "Facturacion",
@@ -3524,7 +3524,7 @@ function AppContent() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam === "cli" || tabParam === "inv") {
+      if (tabParam && NAV_TABS.some((t) => t.id === tabParam)) {
         setTab(tabParam);
       }
     }
@@ -3597,29 +3597,7 @@ function AppContent() {
         </div>
       )}
       <main className="flex-1 p-3 pb-20 overflow-y-auto">{panels[tab]}</main>
-      <nav className="bg-card border-t border-border flex fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[5]">
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`flex-1 flex flex-col items-center py-2.5 px-0.5 cursor-pointer text-xs gap-1 border-none bg-transparent font-sans ${tab === t.id ? "text-secondary-foreground font-bold" : "text-muted-foreground font-normal"}`}
-          >
-            <svg
-              width={22}
-              height={22}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={tab === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d={ICONS[t.id]} />
-            </svg>
-            {t.label}
-          </button>
-        ))}
-      </nav>
+      <BottomNav active={tab} onSelect={setTab} />
     </div>
   );
 }

@@ -458,11 +458,14 @@ export default function NuevaOrdenPage() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-card-foreground truncate">{p.nom}</p>
                         <p className="text-xs text-muted-foreground">
-                          {qty} × {fmt(p.precio)}
+                          {qty} × {fmt(precioEfectivo(p))}
+                          {descuentos[p.id] !== undefined && descuentos[p.id] !== p.precio && (
+                            <span className="ml-1 line-through text-muted-foreground/70">{fmt(p.precio)}</span>
+                          )}
                         </p>
                         {excede && <p className="text-[10px] text-destructive">Excede disponible ({disp})</p>}
                       </div>
-                      <p className="text-sm font-bold text-card-foreground">{fmt(p.precio * qty)}</p>
+                      <p className="text-sm font-bold text-card-foreground">{fmt(precioEfectivo(p) * qty)}</p>
                     </div>
                   )
                 })}

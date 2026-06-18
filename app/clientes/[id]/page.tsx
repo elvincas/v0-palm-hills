@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
+import { BottomNav } from "@/components/bottom-nav";
 
 interface Cliente {
   id: string;
@@ -22,6 +23,14 @@ interface Cliente {
 }
 
 interface Factura {
+  id: string;
+  num: number;
+  fecha: string;
+  estado: string;
+  total: number;
+}
+
+interface Orden {
   id: string;
   num: number;
   fecha: string;
@@ -51,6 +60,19 @@ const FacturaBadge = ({ e }: { e: string }) => (
   </span>
 );
 
+const ORDEN_BADGE: Record<string, string> = {
+  Pendiente: "bg-amber-100 text-amber-800",
+  "En proceso": "bg-blue-100 text-blue-800",
+  Entregado: "bg-green-100 text-green-800",
+  Cancelado: "bg-red-100 text-red-800",
+};
+
+const OrdenBadge = ({ e }: { e: string }) => (
+  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex ${ORDEN_BADGE[e] || "bg-blue-100 text-blue-800"}`}>
+    {e}
+  </span>
+);
+
 export default function ClientePerfilPage() {
   const params = useParams();
   const clienteId = params.id as string;
@@ -59,6 +81,8 @@ export default function ClientePerfilPage() {
   const [form, setForm] = useState<Cliente | null>(null);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
+  const [ordenes, setOrdenes] = useState<Orden[]>([]);
+  const [loadingOrdenes, setLoadingOrdenes] = useState(true);
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -83,6 +107,7 @@ export default function ClientePerfilPage() {
     setCliente(data as Cliente);
     setForm(data as Cliente);
     cargarFacturas((data as Cliente).nom);
+    cargarOrdenes(clienteId);
   };
 
   const cargarFacturas = async (nombreCliente: string) => {
@@ -94,6 +119,17 @@ export default function ClientePerfilPage() {
       .order("num", { ascending: false });
     setFacturas((data as Factura[]) || []);
     setLoadingFacturas(false);
+  };
+
+  const cargarOrdenes = async (clienteIdParam: string) => {
+    setLoadingOrdenes(true);
+    const { data } = await supabase
+      .from("ordenes")
+      .select("*")
+      .eq("cli", clienteIdParam)
+      .order("num", { ascending: false });
+    setOrdenes((data as Orden[]) || []);
+    setLoadingOrdenes(false);
   };
 
   const handleGuardar = async () => {
@@ -138,7 +174,7 @@ export default function ClientePerfilPage() {
   }
 
   return (
-    <div className="p-4 max-w-3xl mx-auto">
+    <div className="p-4 pb-24 max-w-3xl mx-auto">
       <button
         onClick={() => router.push("/")}
         className="text-sm text-muted-foreground mb-3"
@@ -341,6 +377,34 @@ export default function ClientePerfilPage() {
             <span className="text-xl leading-none">+</span> Nueva Orden
           </button>
 
+          {/* Seccion Ordenes */}
+          <div className="mt-6">
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Órdenes</h2>
+            {loadingOrdenes ? (
+              <p className="text-sm text-muted-foreground">Cargando órdenes...</p>
+            ) : ordenes.length ? (
+              <div className="space-y-2">
+                {ordenes.map((o) => (
+                  <div
+                    key={o.id}
+                    className="flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5"
+                  >
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-card-foreground">Orden #{o.num}</div>
+                      <div className="text-xs text-muted-foreground">{fdate(o.fecha)}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
+                      <OrdenBadge e={o.estado} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">Sin órdenes registradas.</p>
+            )}
+          </div>
+
           {/* Seccion Facturas */}
           <div className="mt-6">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Facturas</h2>
@@ -374,6 +438,7 @@ export default function ClientePerfilPage() {
           </div>
         </div>
       </div>
+      <BottomNav active="cli" />
     </div>
   );
 }
