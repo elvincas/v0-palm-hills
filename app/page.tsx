@@ -894,6 +894,7 @@ const Facturas = () => {
                     )
                   )
                 }
+                autoComplete="off"
                 className="w-14 px-1.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm text-center outline-none"
               />
               <button
@@ -1139,6 +1140,7 @@ const Clientes = () => {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Buscar cliente..."
+          autoComplete="off"
           className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
         <div className="relative shrink-0" ref={addMenuRef}>
@@ -1218,7 +1220,7 @@ const Clientes = () => {
                   className="flex items-start justify-between gap-2.5 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
                 >
                   <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-card-foreground">{c.nom}</div>
+                    <div className="text-sm font-bold uppercase tracking-wide text-card-foreground">{c.nom}</div>
                     {c.codigo_cliente && (
                       <div className="text-xs font-mono text-muted-foreground">#{c.codigo_cliente}</div>
                     )}
@@ -1244,7 +1246,7 @@ const Clientes = () => {
                 <div className="flex gap-1.5">
                   <button
                     onClick={() => openEdit(c)}
-                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold"
+                    className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-primary/85 border border-white/30 shadow-sm hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground text-xs font-bold"
                   >
                     Editar
                   </button>
@@ -1252,7 +1254,7 @@ const Clientes = () => {
                     onClick={() => {
                       if (confirm("Eliminar cliente?")) deleteCliente(c.id);
                     }}
-                    className="flex-1 px-2.5 py-1.5 rounded-lg bg-red-50 text-destructive text-xs font-bold"
+                    className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
                   >
                     Eliminar
                   </button>
@@ -1303,6 +1305,7 @@ const Clientes = () => {
             <input
               value={form.nom}
               onChange={(e) => setForm({ ...form, nom: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -1313,6 +1316,7 @@ const Clientes = () => {
                 onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
                 readOnly={!editId}
                 placeholder="Ej. 01-0001"
+                autoComplete="off"
                 className={`w-full px-3 py-2.5 rounded-xl border border-input text-base font-mono outline-none focus:ring-2 focus:ring-ring ${
                   !editId ? "bg-muted text-muted-foreground cursor-not-allowed" : "bg-card text-card-foreground"
                 }`}
@@ -1325,6 +1329,7 @@ const Clientes = () => {
               <input
                 value={form.tel}
                 onChange={(e) => setForm({ ...form, tel: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -1333,6 +1338,7 @@ const Clientes = () => {
             <input
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -1340,6 +1346,7 @@ const Clientes = () => {
             <input
               value={form.dir}
               onChange={(e) => setForm({ ...form, dir: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -1348,6 +1355,7 @@ const Clientes = () => {
               <input
                 value={form.ciudad}
                 onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -1356,6 +1364,7 @@ const Clientes = () => {
                 value={form.estado_dir}
                 onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
                 placeholder="Ej. New York"
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -1365,6 +1374,7 @@ const Clientes = () => {
               value={form.contacto}
               onChange={(e) => setForm({ ...form, contacto: e.target.value })}
               placeholder="Nombre de la persona de contacto"
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -1680,6 +1690,7 @@ const Inventario = () => {
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [foto, setFoto] = useState<string | null>(null);
+  const [fotoAmpliada, setFotoAmpliada] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
@@ -2165,6 +2176,7 @@ const Inventario = () => {
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Buscar por nombre, codigo o etiqueta..."
+        autoComplete="off"
         className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-2.5 outline-none focus:ring-2 focus:ring-ring"
       />
       <div className="flex items-center gap-2 mb-3">
@@ -2236,7 +2248,10 @@ const Inventario = () => {
                 >
                   Editar
                 </button>
-                <div className="w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
+                <div
+                  onClick={() => p.foto && setFotoAmpliada(p.foto)}
+                  className={`w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
+                >
                   {p.foto ? (
                     <img
                       src={p.foto}
@@ -2526,6 +2541,7 @@ const Inventario = () => {
             <input
               value={form.barcode}
               onChange={(e) => setForm({ ...form, barcode: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -2533,6 +2549,7 @@ const Inventario = () => {
             <input
               value={form.nom}
               onChange={(e) => setForm({ ...form, nom: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -2540,6 +2557,7 @@ const Inventario = () => {
             <input
               value={form.sku}
               onChange={(e) => setForm({ ...form, sku: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -2547,6 +2565,7 @@ const Inventario = () => {
             <input
               value={form.fabricante}
               onChange={(e) => setForm({ ...form, fabricante: e.target.value })}
+              autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -2585,6 +2604,7 @@ const Inventario = () => {
                 }}
                 onBlur={() => etqInput.trim() && addTag(etqInput)}
                 placeholder="Escribe y presiona Enter (ej. aceite, rizos, hair)"
+                autoComplete="off"
                 className="w-full px-1 py-1 bg-transparent text-card-foreground text-base outline-none"
               />
             </div>
@@ -2596,6 +2616,7 @@ const Inventario = () => {
                 step="0.01"
                 value={form.precio}
                 onChange={(e) => setForm({ ...form, precio: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2605,6 +2626,7 @@ const Inventario = () => {
                 step="0.01"
                 value={form.costo}
                 onChange={(e) => setForm({ ...form, costo: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2615,6 +2637,7 @@ const Inventario = () => {
                 type="number"
                 value={form.stock}
                 onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2623,6 +2646,7 @@ const Inventario = () => {
                 type="number"
                 value={form.cajas}
                 onChange={(e) => setForm({ ...form, cajas: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2633,6 +2657,7 @@ const Inventario = () => {
                 type="number"
                 value={form.min}
                 onChange={(e) => setForm({ ...form, min: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2641,6 +2666,7 @@ const Inventario = () => {
                 value={form.icon}
                 maxLength={2}
                 onChange={(e) => setForm({ ...form, icon: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2674,7 +2700,26 @@ const Inventario = () => {
           </div>
         </Modal>
       )}
-      
+
+      {fotoAmpliada && (
+        <div
+          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-6"
+          onClick={() => setFotoAmpliada(null)}
+        >
+          <img
+            src={fotoAmpliada}
+            alt="Foto ampliada"
+            className="max-w-full max-h-full object-contain rounded-lg"
+          />
+          <button
+            onClick={() => setFotoAmpliada(null)}
+            aria-label="Cerrar"
+            className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white text-xl flex items-center justify-center"
+          >
+            X
+          </button>
+        </div>
+      )}
     </div>
   );
 };
@@ -2683,7 +2728,7 @@ const Inventario = () => {
 // Ordenes
 // ------------------------------
 const Ordenes = () => {
-  const { ordenes, clientes, productos, addOrden, updateOrden } = useData();
+  const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden } = useData();
   const [show, setShow] = useState(false);
   const [picking, setPicking] = useState<Orden | null>(null);
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
@@ -2695,6 +2740,12 @@ const Ordenes = () => {
     fecha: today(),
     estado: "Pendiente",
   });
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+  const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
+  const [editQtys, setEditQtys] = useState<Record<string, number>>({});
+  const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
+  const [editSearch, setEditSearch] = useState("");
+  const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pendiente" });
 
   const clienteFor = (cli: string) =>
     clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
@@ -2774,6 +2825,100 @@ const Ordenes = () => {
     setPicking(null);
   };
 
+  const handleDeleteOrden = (ord: Orden) => {
+    if (
+      confirm(
+        `¿Eliminar la orden #${ord.num}? Esta acción no se puede deshacer y la orden no podrá ser recuperada.`
+      )
+    ) {
+      deleteOrden(ord.id);
+    }
+  };
+
+  const startEdit = (ord: Orden) => {
+    setMenuOpenId(null);
+    setEditingOrden(ord);
+    setEditForm({ fecha: ord.fecha, estado: ord.estado });
+    setEditSearch("");
+    const initialQtys: Record<string, number> = {};
+    (ord.lineas || []).forEach((l) => {
+      initialQtys[l.prodId] = l.qty;
+    });
+    setEditQtys(initialQtys);
+    // Productos ya en la orden primero, luego el resto ordenado por codigo (SKU)
+    const sorted = [...productos].sort((a, b) => {
+      const aTiene = initialQtys[a.id] > 0 ? 0 : 1;
+      const bTiene = initialQtys[b.id] > 0 ? 0 : 1;
+      if (aTiene !== bTiene) return aTiene - bTiene;
+      return (
+        (a.sku || "").localeCompare(b.sku || "", "es", { numeric: true }) ||
+        a.nom.localeCompare(b.nom, "es")
+      );
+    });
+    setEditProductOrder(sorted.map((p) => p.id));
+  };
+
+  const setEditQty = (prodId: string, qty: number) => {
+    setEditQtys((prev) => {
+      const next = { ...prev };
+      if (!qty || qty <= 0) {
+        delete next[prodId];
+      } else {
+        next[prodId] = qty;
+      }
+      return next;
+    });
+  };
+
+  const editProductosOrdenados = editProductOrder
+    .map((id) => productos.find((p) => p.id === id))
+    .filter((p): p is Producto => !!p);
+
+  const editProductosFiltrados = editSearch.trim()
+    ? editProductosOrdenados.filter((p) => {
+        const q = editSearch.trim().toLowerCase();
+        return (
+          p.nom.toLowerCase().includes(q) ||
+          (p.sku || "").toLowerCase().includes(q) ||
+          (p.barcode || "").toLowerCase().includes(q)
+        );
+      })
+    : editProductosOrdenados;
+
+  const editTotalUnidades = Object.values(editQtys).reduce((a, b) => a + b, 0);
+  const editTotal = editProductosOrdenados.reduce(
+    (acc, p) => acc + (editQtys[p.id] || 0) * Number(p.precio),
+    0
+  );
+
+  const handleSaveEdit = () => {
+    if (!editingOrden) return;
+    const items = Object.entries(editQtys).filter(([, qty]) => qty > 0);
+    if (items.length === 0) {
+      alert("Agrega al menos un producto");
+      return;
+    }
+    const lineasDetalle = items.map(([prodId, qty]) => {
+      const p = productos.find((x) => x.id === prodId)!;
+      return {
+        prodId: p.id,
+        prodNom: p.nom,
+        barcode: p.barcode || "",
+        sku: p.sku || "",
+        precio: Number(p.precio),
+        qty,
+      };
+    });
+    updateOrden(editingOrden.id, {
+      ...editingOrden,
+      fecha: editForm.fecha,
+      estado: editForm.estado,
+      total: +editTotal.toFixed(2),
+      lineas: lineasDetalle,
+    });
+    setEditingOrden(null);
+  };
+
   return (
     <div>
       <div className="bg-card rounded-2xl p-3.5 border border-border">
@@ -2785,8 +2930,45 @@ const Ordenes = () => {
               key={o.id}
               left={
                 <>
-                  <div className="text-sm font-semibold truncate text-card-foreground">
-                    {cInfo ? cInfo.nom : o.cli}
+                  <div className="flex items-center gap-1.5">
+                    <div className="text-sm font-semibold truncate text-card-foreground">
+                      {cInfo ? cInfo.nom : o.cli}
+                    </div>
+                    <div className="relative shrink-0">
+                      <button
+                        onClick={() => setMenuOpenId(menuOpenId === o.id ? null : o.id)}
+                        aria-label="Editar o eliminar orden"
+                        className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-card-foreground hover:bg-muted"
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M12 20h9" />
+                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                        </svg>
+                      </button>
+                      {menuOpenId === o.id && (
+                        <>
+                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
+                          <div className="absolute left-0 top-7 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden min-w-[140px]">
+                            <button
+                              onClick={() => startEdit(o)}
+                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
+                            >
+                              ✏️ Editar
+                            </button>
+                            <div className="h-px bg-border mx-2" />
+                            <button
+                              onClick={() => {
+                                setMenuOpenId(null);
+                                handleDeleteOrden(o);
+                              }}
+                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-destructive hover:bg-red-50 text-left"
+                            >
+                              🗑️ Borrar
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </div>
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
@@ -2843,6 +3025,7 @@ const Ordenes = () => {
                 type="date"
                 value={form.fecha}
                 onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -2897,6 +3080,7 @@ const Ordenes = () => {
                     )
                   )
                 }
+                autoComplete="off"
                 className="w-14 px-1.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm text-center outline-none"
               />
               <button
@@ -2933,7 +3117,122 @@ const Ordenes = () => {
         </Modal>
       )}
 
-      
+      {editingOrden && (
+        <div className="fixed inset-0 bg-background z-40 flex flex-col max-w-[480px] mx-auto">
+          <div className="bg-primary p-3.5 flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => setEditingOrden(null)}
+              className="bg-white/20 border-none text-white text-lg cursor-pointer rounded-full w-8 h-8 flex items-center justify-center"
+            >
+              X
+            </button>
+            <div className="flex-1">
+              <span className="text-white text-base font-bold block">Editar Orden #{editingOrden.num}</span>
+              <span className="text-white/80 text-xs">
+                {clienteFor(editingOrden.cli)?.nom || editingOrden.cli}
+              </span>
+            </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4">
+            <div className="flex gap-2 mb-3">
+              <input
+                type="date"
+                value={editForm.fecha}
+                onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
+                autoComplete="off"
+                className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+              />
+              <select
+                value={editForm.estado}
+                onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })}
+                className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option>Pendiente</option>
+                <option>En proceso</option>
+                <option>Entregado</option>
+                <option>Cancelado</option>
+              </select>
+            </div>
+            <input
+              type="search"
+              inputMode="search"
+              placeholder="Buscar por nombre, SKU o código de barras"
+              value={editSearch}
+              onChange={(e) => setEditSearch(e.target.value)}
+              autoComplete="off"
+              autoCorrect="off"
+              className="w-full mb-3 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+            <div className="grid grid-cols-2 gap-2.5">
+              {editProductosFiltrados.length ? (
+                editProductosFiltrados.map((p) => {
+                  const qty = editQtys[p.id] || 0;
+                  return (
+                    <div
+                      key={p.id}
+                      className={`bg-card border rounded-2xl p-3 flex flex-col h-full ${
+                        qty > 0 ? "border-primary" : "border-border"
+                      }`}
+                    >
+                      <div className="w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
+                        {p.foto ? (
+                          <img src={p.foto || "/placeholder.svg"} alt={p.nom} className="w-full h-full object-contain" />
+                        ) : (
+                          p.icon || "📦"
+                        )}
+                      </div>
+                      <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words min-h-[2.25rem]">
+                        {p.nom}
+                      </div>
+                      {p.sku && (
+                        <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">{p.sku}</div>
+                      )}
+                      <div className="text-sm font-bold text-secondary-foreground mt-1">{fmt(p.precio)}</div>
+                      <div className="mt-2 pt-2 border-t border-border">
+                        <label className="text-[10px] text-muted-foreground block mb-1">Cantidad</label>
+                        <input
+                          type="number"
+                          min={0}
+                          inputMode="numeric"
+                          autoComplete="off"
+                          placeholder="0"
+                          value={qty || ""}
+                          onChange={(e) => setEditQty(p.id, Number(e.target.value))}
+                          className="w-full px-2 py-2 rounded-lg border border-input bg-background text-card-foreground text-base text-center font-bold"
+                        />
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="col-span-2 text-center text-muted-foreground py-10 text-sm">
+                  No se encontraron productos
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 py-3.5 flex items-center justify-between gap-3 shrink-0">
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">{editTotalUnidades} uds.</p>
+              <p className="text-xl font-bold text-primary truncate">{fmt(editTotal)}</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <button
+                onClick={() => setEditingOrden(null)}
+                className="px-4 py-2.5 rounded-full bg-card border border-border text-card-foreground font-medium text-sm"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleSaveEdit}
+                className="px-5 py-2.5 rounded-full bg-primary text-primary-foreground font-bold text-sm"
+              >
+                Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {picking && (
         <div className="fixed inset-0 bg-background z-40 flex flex-col max-w-[480px] mx-auto">

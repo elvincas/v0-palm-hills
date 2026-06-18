@@ -73,6 +73,24 @@ const OrdenBadge = ({ e }: { e: string }) => (
   </span>
 );
 
+const ESTADO_CLIENTE_BADGE: Record<string, string> = {
+  Activo: "bg-green-100 text-green-800",
+  Inactivo: "bg-red-100 text-red-800",
+  "En espera": "bg-amber-100 text-amber-800",
+};
+
+const EstadoClienteBadge = ({ e }: { e: string }) => (
+  <span className={`px-3 py-1 rounded-full text-xs font-bold inline-flex ${ESTADO_CLIENTE_BADGE[e] || "bg-blue-100 text-blue-800"}`}>
+    {e || "No especificado"}
+  </span>
+);
+
+// Estilos de botones tipo "vidrio" (glassmorphism), reutilizables en esta pagina
+const GLASS_BTN =
+  "backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-card-foreground";
+const GLASS_BTN_PRIMARY =
+  "backdrop-blur-md bg-primary/85 border border-white/30 shadow-md hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground";
+
 export default function ClientePerfilPage() {
   const params = useParams();
   const clienteId = params.id as string;
@@ -162,8 +180,11 @@ export default function ClientePerfilPage() {
     return (
       <div className="p-6 max-w-md mx-auto text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button onClick={() => router.push("/?tab=cli")} className="text-sm text-muted-foreground underline">
-          Volver
+        <button
+          onClick={() => router.push("/?tab=cli")}
+          className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}
+        >
+          ← Volver
         </button>
       </div>
     );
@@ -177,7 +198,7 @@ export default function ClientePerfilPage() {
     <div className="p-4 pb-24 max-w-3xl mx-auto">
       <button
         onClick={() => router.push("/?tab=cli")}
-        className="text-sm text-muted-foreground mb-3"
+        className={`px-4 py-2 rounded-full text-sm font-medium mb-3 ${GLASS_BTN}`}
       >
         ← Volver
       </button>
@@ -196,8 +217,8 @@ export default function ClientePerfilPage() {
           {/* Encabezado: numero de cliente, nombre y boton de editar */}
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
-              <div className="mb-1">
-                <span className="text-xs uppercase tracking-wider text-muted-foreground">Número de Cliente</span>
+              <div className="mb-1.5">
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Número de Cliente</span>
                 {editando ? (
                   <input
                     value={form.codigo_cliente || ""}
@@ -205,7 +226,7 @@ export default function ClientePerfilPage() {
                     className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground font-mono text-lg outline-none focus:ring-2 focus:ring-ring"
                   />
                 ) : (
-                  <p className="font-mono text-xl font-bold text-primary">
+                  <p className="font-mono text-lg font-bold text-primary">
                     {cliente.codigo_cliente || "Sin asignar"}
                   </p>
                 )}
@@ -215,11 +236,15 @@ export default function ClientePerfilPage() {
                 <input
                   value={form.nom}
                   onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-lg font-bold outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-lg font-bold uppercase outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <h1 className="text-2xl font-bold text-card-foreground break-words">{cliente.nom}</h1>
+                <h1 className="text-2xl font-bold uppercase tracking-wide text-card-foreground break-words">{cliente.nom}</h1>
               )}
+
+              <div className="mt-2">
+                <EstadoClienteBadge e={cliente.estado} />
+              </div>
             </div>
 
             <button
@@ -227,7 +252,7 @@ export default function ClientePerfilPage() {
                 if (editando) setForm(cliente);
                 setEditando(!editando);
               }}
-              className="shrink-0 px-3 py-1.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
+              className={`shrink-0 px-4 py-2 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
               {editando ? "Cancelar" : "Editar"}
             </button>
@@ -236,7 +261,7 @@ export default function ClientePerfilPage() {
           {/* Informacion del cliente */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">📍 Dirección</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📍 Dirección</label>
               {editando ? (
                 <input
                   value={form.dir || ""}
@@ -244,12 +269,12 @@ export default function ClientePerfilPage() {
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="text-card-foreground">{cliente.dir || "No especificada"}</p>
+                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.dir || "No especificada"}</p>
               )}
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Ciudad</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ciudad</label>
               {editando ? (
                 <input
                   value={form.ciudad || ""}
@@ -257,12 +282,12 @@ export default function ClientePerfilPage() {
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="text-card-foreground">{cliente.ciudad || "No especificada"}</p>
+                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.ciudad || "No especificada"}</p>
               )}
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Estado</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</label>
               {editando ? (
                 <input
                   value={form.estado_dir || ""}
@@ -271,12 +296,12 @@ export default function ClientePerfilPage() {
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="text-card-foreground">{cliente.estado_dir || "No especificado"}</p>
+                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.estado_dir || "No especificado"}</p>
               )}
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Contacto</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacto</label>
               {editando ? (
                 <input
                   value={form.contacto || ""}
@@ -285,12 +310,12 @@ export default function ClientePerfilPage() {
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="text-card-foreground">{cliente.contacto || "No especificado"}</p>
+                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.contacto || "No especificado"}</p>
               )}
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">📞 Teléfono</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📞 Teléfono</label>
               {editando ? (
                 <input
                   type="tel"
@@ -299,12 +324,12 @@ export default function ClientePerfilPage() {
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="text-card-foreground">{cliente.tel || "No especificado"}</p>
+                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.tel || "No especificado"}</p>
               )}
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">✉️ Correo Electrónico</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">✉️ Correo Electrónico</label>
               {editando ? (
                 <input
                   type="email"
@@ -313,12 +338,12 @@ export default function ClientePerfilPage() {
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
-                <p className="text-card-foreground">{cliente.email || "No especificado"}</p>
+                <p className="text-sm font-medium text-card-foreground mt-0.5 break-all">{cliente.email || "No especificado"}</p>
               )}
             </div>
 
             <div>
-              <label className="text-xs uppercase tracking-wider text-muted-foreground">Estatus del Cliente</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estatus del Cliente</label>
               {editando ? (
                 <select
                   value={form.estado}
@@ -330,7 +355,9 @@ export default function ClientePerfilPage() {
                   <option>En espera</option>
                 </select>
               ) : (
-                <p className="text-card-foreground">{cliente.estado || "No especificado"}</p>
+                <div className="mt-0.5">
+                  <EstadoClienteBadge e={cliente.estado} />
+                </div>
               )}
             </div>
           </div>
@@ -362,7 +389,7 @@ export default function ClientePerfilPage() {
               <button
                 disabled={guardando}
                 onClick={handleGuardar}
-                className="px-5 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+                className={`px-5 py-2.5 rounded-full font-bold text-sm disabled:opacity-50 ${GLASS_BTN_PRIMARY}`}
               >
                 {guardando ? "Guardando..." : "💾 Guardar Cambios"}
               </button>
@@ -372,7 +399,7 @@ export default function ClientePerfilPage() {
           {/* Boton Nueva Orden */}
           <button
             onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
-            className="mt-6 w-full px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm flex items-center justify-center gap-2"
+            className={`mt-6 w-full px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 ${GLASS_BTN_PRIMARY}`}
           >
             <span className="text-xl leading-none">+</span> Nueva Orden
           </button>
