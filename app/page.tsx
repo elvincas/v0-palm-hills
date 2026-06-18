@@ -2812,12 +2812,6 @@ const Ordenes = () => {
   };
 
   const completePick = () => {
-    const done = pickItems.filter((i) => i.picked).length;
-    if (
-      done < pickItems.length &&
-      !confirm(`Faltan ${pickItems.length - done} productos por confirmar. Completar de todas formas?`)
-    )
-      return;
     if (picking) {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
       updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Entregado" });
@@ -2985,7 +2979,7 @@ const Ordenes = () => {
                     className="mt-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground border border-primary text-xs font-bold"
                     onClick={() => startPick(o)}
                   >
-                    📦 Picking
+                    📦 PICK
                   </button>
                 </>
               }
@@ -3243,8 +3237,10 @@ const Ordenes = () => {
             >
               X
             </button>
-            <div className="flex-1">
-              <span className="text-white text-base font-bold block">Pickear Orden #{picking.num}</span>
+            <div className="flex-1 min-w-0">
+              <span className="text-white text-base font-bold block truncate">
+                Orden #{picking.num} · {clienteFor(picking.cli)?.nom || picking.cli}
+              </span>
               <span className="text-white/80 text-xs">
                 {pickItems.filter((i) => i.picked).length}/{pickItems.length} productos confirmados
               </span>
@@ -3263,7 +3259,8 @@ const Ordenes = () => {
               {pickItems.map((item, i) => {
                 const prod = productos.find((p) => p.id === item.prodId);
                 const qtyEnviada = item.qtyEnviada ?? item.qty;
-                const parcial = qtyEnviada < item.qty;
+                const missing = qtyEnviada === 0;
+                const parcial = qtyEnviada > 0 && qtyEnviada < item.qty;
                 return (
                   <div
                     key={i}
@@ -3297,6 +3294,9 @@ const Ordenes = () => {
                         Pedido: {item.qty}
                         {item.sku ? ` · SKU ${item.sku}` : ""}
                       </div>
+                      {missing && (
+                        <div className="text-[11px] text-destructive font-bold mt-0.5">MISSING</div>
+                      )}
                       {parcial && (
                         <div className="text-[11px] text-amber-600 font-medium mt-0.5">Envío parcial</div>
                       )}
@@ -3339,7 +3339,7 @@ const Ordenes = () => {
             </button>
             <button
               onClick={completePick}
-              className={`flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm ${pickItems.every((i) => i.picked) ? "" : "opacity-70"}`}
+              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
             >
               Completar orden
             </button>
