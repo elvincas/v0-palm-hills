@@ -43,7 +43,7 @@ const fdate = (s: string) => {
 };
 
 // Filas de producto por hoja impresa (deja espacio para el encabezado completo en cada una)
-const FILAS_POR_HOJA = 20;
+const FILAS_POR_HOJA = 15;
 
 function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
   return (
@@ -187,7 +187,6 @@ export default function FacturaPage() {
                   <thead>
                     <tr className="border-b-2 border-[#1a1a18] text-left">
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Cant.</th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Cajas</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">SKU</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">
                         Descripción
@@ -207,9 +206,6 @@ export default function FacturaPage() {
                         return (
                           <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#f4f6f2]"}>
                             <td className="py-2 text-gray-700 text-xs">{l.qty}</td>
-                            <td className="py-2">
-                              <div className="w-10 border-b border-gray-300 h-4" />
-                            </td>
                             <td className="py-2 text-gray-400 font-mono text-[11px]">{l.sku || "—"}</td>
                             <td className="py-2 text-gray-800 text-xs">{l.prodNom}</td>
                             <td className="py-2 text-right text-xs">
@@ -241,7 +237,7 @@ export default function FacturaPage() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={6} className="py-6 text-center text-gray-400 text-sm">
+                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">
                           Sin detalle de productos
                         </td>
                       </tr>
