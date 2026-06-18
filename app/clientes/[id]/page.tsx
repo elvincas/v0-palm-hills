@@ -162,7 +162,7 @@ export default function ClientePerfilPage() {
     return (
       <div className="p-6 max-w-md mx-auto text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button onClick={() => router.push("/")} className="text-sm text-muted-foreground underline">
+        <button onClick={() => router.push("/?tab=cli")} className="text-sm text-muted-foreground underline">
           Volver
         </button>
       </div>
@@ -176,7 +176,7 @@ export default function ClientePerfilPage() {
   return (
     <div className="p-4 pb-24 max-w-3xl mx-auto">
       <button
-        onClick={() => router.push("/")}
+        onClick={() => router.push("/?tab=cli")}
         className="text-sm text-muted-foreground mb-3"
       >
         ← Volver

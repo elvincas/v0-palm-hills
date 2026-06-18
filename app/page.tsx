@@ -3559,6 +3559,8 @@ function AppContent() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
+  const mainRef = useRef<HTMLDivElement>(null);
+  const didSyncUrlRef = useRef(false);
 
   // Leer parámetro de URL para establecer el tab
   useEffect(() => {
@@ -3570,6 +3572,29 @@ function AppContent() {
       }
     }
   }, []);
+
+  // Mantener la URL en sync con la pestaña activa, para que "Volver" desde
+  // otras paginas regrese a la pestaña correcta. Se omite la primera
+  // ejecucion para no pisar el parametro "tab" leido al montar.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!didSyncUrlRef.current) {
+      didSyncUrlRef.current = true;
+      return;
+    }
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("tab") !== tab) {
+      router.replace(`/?tab=${tab}`, { scroll: false });
+    }
+  }, [tab, router]);
+
+  // Restaurar la posicion de scroll guardada al entrar/cambiar de pestaña
+  useEffect(() => {
+    const saved = sessionStorage.getItem(`ph_scroll_${tab}`);
+    if (mainRef.current) {
+      mainRef.current.scrollTop = saved ? Number(saved) : 0;
+    }
+  }, [tab]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ""));
@@ -3637,7 +3662,13 @@ function AppContent() {
           Cargando datos...
         </div>
       )}
-      <main className="flex-1 p-3 pb-20 overflow-y-auto">{panels[tab]}</main>
+      <main
+        ref={mainRef}
+        className="flex-1 p-3 pb-20 overflow-y-auto"
+        onScroll={(e) => sessionStorage.setItem(`ph_scroll_${tab}`, String(e.currentTarget.scrollTop))}
+      >
+        {panels[tab]}
+      </main>
       <BottomNav active={tab} onSelect={setTab} />
     </div>
   );
