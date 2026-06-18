@@ -23,6 +23,7 @@ interface Producto {
   reservado?: number
   icon?: string
   foto?: string | null
+  almacen?: 'palmhills' | 'castillo'
 }
 
 const today = () => new Date().toISOString().slice(0, 10)
@@ -52,6 +53,7 @@ export default function NuevaOrdenPage() {
     if (typeof window === 'undefined') return 2
     return (Number(localStorage.getItem('ph_columnas_orden')) as 2 | 3) || 2
   })
+  const [almacen, setAlmacen] = useState<'palmhills' | 'castillo'>('palmhills')
 
   const cambiarColumnas = (n: 2 | 3) => {
     setColumnas(n)
@@ -67,7 +69,7 @@ export default function NuevaOrdenPage() {
         // Datos livianos primero (sin foto) para no esperar varios MB de imagenes
         const { data: p } = await supabase
           .from('productos')
-          .select('id, nom, sku, barcode, fabricante, etiquetas, precio, stock, min, reservado')
+          .select('id, nom, sku, barcode, fabricante, etiquetas, precio, stock, min, reservado, almacen')
           .order('nom')
         if (p) setProductos(p as Producto[])
         setLoading(false)
@@ -99,15 +101,16 @@ export default function NuevaOrdenPage() {
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return productos.filter((p) => {
+      const matchAlmacen = (p.almacen || 'palmhills') === almacen
       const matchSearch =
         !q ||
         p.nom.toLowerCase().includes(q) ||
         (p.sku || '').toLowerCase().includes(q) ||
         (p.barcode || '').toLowerCase().includes(q)
       const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
-      return matchSearch && matchTag
+      return matchAlmacen && matchSearch && matchTag
     })
-  }, [productos, search, tagFilter])
+  }, [productos, search, tagFilter, almacen])
 
   const disponible = (p: Producto) => Number(p.stock || 0) - Number(p.reservado || 0)
 
@@ -169,6 +172,7 @@ export default function NuevaOrdenPage() {
         precioFinal: precioEfectivo(p),
         qty,
         qtyEnviada: qty,
+        almacen: p.almacen || 'palmhills',
       }))
 
       // Siguiente número de orden global
@@ -192,8 +196,9 @@ export default function NuevaOrdenPage() {
 
       if (ordenError) throw ordenError
 
-      // Reservar inventario: reservado += qty para cada producto
+      // Reservar inventario: reservado += qty para cada producto (Castillo no lleva stock en vivo)
       for (const { p, qty } of seleccionados) {
+        if ((p.almacen || 'palmhills') === 'castillo') continue
         const nuevoReservado = Number(p.reservado || 0) + qty
         await supabase.from('productos').update({ reservado: nuevoReservado }).eq('id', p.id)
       }
@@ -283,7 +288,25 @@ export default function NuevaOrdenPage() {
 
       {/* Catálogo de productos */}
       <div className="max-w-2xl mx-auto p-4 pb-44" style={{ paddingBottom: "calc(11rem + env(safe-area-inset-bottom))" }}>
-        <div className="flex justify-end mb-2.5">
+        <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+            <button
+              onClick={() => setAlmacen('palmhills')}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                almacen === 'palmhills' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              🌴 Palm Hills
+            </button>
+            <button
+              onClick={() => setAlmacen('castillo')}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                almacen === 'castillo' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              🏰 Castillo
+            </button>
+          </div>
           <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
             <button
               onClick={() => cambiarColumnas(2)}
@@ -308,9 +331,10 @@ export default function NuevaOrdenPage() {
         <div className={`grid gap-2.5 ${columnas === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {filtered.length ? (
             filtered.map((p) => {
+              const esCastillo = (p.almacen || 'palmhills') === 'castillo'
               const disp = disponible(p)
               const qty = cantidades[p.id] || 0
-              const excede = qty > disp
+              const excede = !esCastillo && qty > disp
               const min = Number(p.min || 5)
               const stockEstado = disp <= 0 ? 'Sin stock' : disp <= min ? 'Stock bajo' : 'En stock'
               const estadoColor =
@@ -357,8 +381,12 @@ export default function NuevaOrdenPage() {
                       )}
                     </div>
                   )}
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex mb-1 self-start ${estadoColor}`}>
-                    {stockEstado}
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex mb-1 self-start ${
+                      esCastillo ? 'bg-secondary text-secondary-foreground' : estadoColor
+                    }`}
+                  >
+                    {esCastillo ? '🏰 Castillo' : stockEstado}
                   </span>
                   <div className="flex items-center gap-1.5 mt-1">
                     {descuentos[p.id] !== undefined && descuentos[p.id] !== p.precio ? (
@@ -370,9 +398,11 @@ export default function NuevaOrdenPage() {
                       <span className="text-sm font-bold text-secondary-foreground">{fmt(p.precio)}</span>
                     )}
                   </div>
-                  <div className={`text-xs mt-0.5 ${disp <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                    Disponible: {disp} uds.
-                  </div>
+                  {!esCastillo && (
+                    <div className={`text-xs mt-0.5 ${disp <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
+                      Disponible: {disp} uds.
+                    </div>
+                  )}
 
                   {/* Aplicar descuento */}
                   {editandoDescuento === p.id ? (
@@ -490,8 +520,9 @@ export default function NuevaOrdenPage() {
 
               <div className="space-y-2 mb-4">
                 {seleccionados.map(({ p, qty }) => {
+                  const esCastillo = (p.almacen || 'palmhills') === 'castillo'
                   const disp = disponible(p)
-                  const excede = qty > disp
+                  const excede = !esCastillo && qty > disp
                   return (
                     <div
                       key={p.id}

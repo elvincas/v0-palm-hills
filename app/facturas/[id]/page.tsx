@@ -11,6 +11,7 @@ interface LineaFactura {
   qty: number;
   precio: number;
   precioOriginal?: number;
+  almacen?: "palmhills" | "castillo";
 }
 
 interface Factura {
@@ -206,7 +207,7 @@ export default function FacturaPage() {
                         return (
                           <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#f4f6f2]"}>
                             <td className="py-2 text-gray-700 text-xs">{l.qty}</td>
-                            <td className="py-2 text-gray-400 font-mono text-[11px]">{l.sku || "—"}</td>
+                            <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
                             <td className="py-2 text-gray-800 text-xs">{l.prodNom}</td>
                             <td className="py-2 text-right text-xs">
                               {tieneDescuento ? (

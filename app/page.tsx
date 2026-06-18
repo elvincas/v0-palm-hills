@@ -46,6 +46,7 @@ interface Producto {
   min: number;
   icon?: string;
   foto?: string | null;
+  almacen?: "palmhills" | "castillo";
 }
 
 interface LineaFactura {
@@ -55,6 +56,7 @@ interface LineaFactura {
   qty: number;
   precio: number;
   precioOriginal?: number;
+  almacen?: "palmhills" | "castillo";
 }
 
 interface Factura {
@@ -77,6 +79,7 @@ interface LineaOrden {
   qty: number;
   qtyEnviada?: number;
   picked?: boolean;
+  almacen?: "palmhills" | "castillo";
 }
 
 interface Orden {
@@ -293,7 +296,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const CLIENTE_COLS =
     "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, created_at";
   const PRODUCTO_COLS =
-    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, created_at";
+    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
   // timeout de la base de datos, asi que se piden en lotes pequenos.
@@ -1027,6 +1030,7 @@ const Facturas = () => {
         qty: Number(l.qty),
         precio: Number(p.precio),
         precioOriginal: Number(p.precio),
+        almacen: p.almacen || "palmhills",
       };
     });
     addFactura({
@@ -1981,6 +1985,8 @@ const Inventario = () => {
   const [etqInput, setEtqInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("nom");
+  const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [form, setForm] = useState({
     nom: "",
     sku: "",
@@ -1995,18 +2001,23 @@ const Inventario = () => {
     barcode: "",
   });
 
+  const productosAlmacen = useMemo(
+    () => productos.filter((p) => (p.almacen || "palmhills") === almacen),
+    [productos, almacen]
+  );
+
   // All unique tags across products, for the filter row
   const allTags = useMemo(() => {
     const set = new Set<string>();
-    productos.forEach((p) => (p.etiquetas || []).forEach((t) => set.add(t)));
+    productosAlmacen.forEach((p) => (p.etiquetas || []).forEach((t) => set.add(t)));
     return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
-  }, [productos]);
+  }, [productosAlmacen]);
 
   // Fuzzy search index over name, sku, barcode, and normalized tags
   const fuse = useMemo(
     () =>
       new Fuse(
-        productos.map((p) => ({
+        productosAlmacen.map((p) => ({
           ...p,
           _tags: (p.etiquetas || []).join(" "),
           _normTags: (p.etiquetas || []).map(normTag).join(" "),
@@ -2026,11 +2037,11 @@ const Inventario = () => {
           ],
         }
       ),
-    [productos]
+    [productosAlmacen]
   );
 
   const filtered = useMemo(() => {
-    let list = productos;
+    let list = productosAlmacen;
 
     // Text search: exact substring match takes priority (score 0),
     // then fuzzy results ordered by Fuse score (lower = better match).
@@ -2042,7 +2053,7 @@ const Inventario = () => {
       const scoreMap = new Map<string, number>();
 
       // 1. Exact substring matches — always included, highest priority
-      productos.forEach((p) => {
+      productosAlmacen.forEach((p) => {
         const nameNorm = normTag(p.nom || "");
         const skuNorm = normTag(p.sku || "");
         const barcodeNorm = normTag(p.barcode || "");
@@ -2066,7 +2077,7 @@ const Inventario = () => {
       });
 
       // Filter and sort: exact matches first, then by fuzzy score
-      list = productos
+      list = productosAlmacen
         .filter((p) => scoreMap.has(p.id))
         .sort((a, b) => (scoreMap.get(a.id) ?? 1) - (scoreMap.get(b.id) ?? 1));
     }
@@ -2118,7 +2129,7 @@ const Inventario = () => {
     }
 
     return sorted;
-  }, [productos, q, tagFilter, fuse, sortBy]);
+  }, [productosAlmacen, q, tagFilter, fuse, sortBy]);
 
   const addTag = (raw: string) => {
     const t = raw.trim().toLowerCase();
@@ -2143,6 +2154,7 @@ const Inventario = () => {
     setEditId(null);
     setFoto(null);
     setEtqInput("");
+    setFormAlmacen(almacen);
     setForm({
       nom: "",
       sku: "",
@@ -2164,6 +2176,7 @@ const Inventario = () => {
     setEditId(p.id);
     setFoto(p.foto || null);
     setEtqInput("");
+    setFormAlmacen(p.almacen || "palmhills");
     setForm({
       nom: p.nom || "",
       sku: p.sku || "",
@@ -2199,11 +2212,12 @@ const Inventario = () => {
       precio: Number(form.precio),
       costo: Number(form.costo),
       cajas: Number(form.cajas),
-      stock: Number(form.stock),
-      min: Number(form.min),
+      stock: formAlmacen === "castillo" ? 0 : Number(form.stock),
+      min: formAlmacen === "castillo" ? 0 : Number(form.min),
       icon: form.icon,
       barcode: form.barcode,
       foto,
+      almacen: formAlmacen,
     };
     if (editId) {
       updateProducto(editId, productData);
@@ -2463,6 +2477,24 @@ const Inventario = () => {
 
   return (
     <div>
+      <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-2.5">
+        <button
+          onClick={() => setAlmacen("palmhills")}
+          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+            almacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+          }`}
+        >
+          🌴 Palm Hills
+        </button>
+        <button
+          onClick={() => setAlmacen("castillo")}
+          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+            almacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+          }`}
+        >
+          🏰 Castillo
+        </button>
+      </div>
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
@@ -2591,7 +2623,13 @@ const Inventario = () => {
                   </div>
                 )}
                 <div className="mt-auto pt-1.5">
-                  <Badge e={estado} />
+                  {almacen === "castillo" ? (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex bg-secondary text-secondary-foreground">
+                      🏰 Castillo
+                    </span>
+                  ) : (
+                    <Badge e={estado} />
+                  )}
                   <div className="text-sm font-bold text-secondary-foreground mt-1">
                     {fmt(p.precio)}
                   </div>
@@ -2603,9 +2641,11 @@ const Inventario = () => {
                       </span>
                     </div>
                   )}
-                  <div className="text-xs text-muted-foreground mt-0.5">
-                    Stock: {stock} uds.
-                  </div>
+                  {almacen !== "castillo" && (
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      Stock: {stock} uds.
+                    </div>
+                  )}
                 </div>
               </div>
             );
@@ -2804,6 +2844,28 @@ const Inventario = () => {
           title={editId ? "Editar Producto" : "Nuevo Producto"}
           onClose={() => setShow(false)}
         >
+          <Field label="Almacén">
+            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+              <button
+                type="button"
+                onClick={() => setFormAlmacen("palmhills")}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  formAlmacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                🌴 Palm Hills
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormAlmacen("castillo")}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  formAlmacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                🏰 Castillo
+              </button>
+            </div>
+          </Field>
           <Field label="Foto">
             <div
               onClick={() => document.getElementById("fotoInput")?.click()}
@@ -2936,42 +2998,46 @@ const Inventario = () => {
               />
             </Field>
           </Row2>
+          {formAlmacen !== "castillo" && (
+            <>
+              <Row2>
+                <Field label="Stock (Inv. actual)">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={form.stock}
+                    onChange={(e) => setForm({ ...form, stock: e.target.value })}
+                    autoComplete="off"
+                    className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </Field>
+                <Field label="Cantidad por cajas">
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={form.cajas}
+                    onChange={(e) => setForm({ ...form, cajas: e.target.value })}
+                    autoComplete="off"
+                    className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </Field>
+              </Row2>
+              <Field label="Stock minimo">
+                <input
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  value={form.min}
+                  onChange={(e) => setForm({ ...form, min: e.target.value })}
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                />
+              </Field>
+            </>
+          )}
           <Row2>
-            <Field label="Stock (Inv. actual)">
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={form.stock}
-                onChange={(e) => setForm({ ...form, stock: e.target.value })}
-                autoComplete="off"
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-            <Field label="Cantidad por cajas">
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={form.cajas}
-                onChange={(e) => setForm({ ...form, cajas: e.target.value })}
-                autoComplete="off"
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-          </Row2>
-          <Row2>
-            <Field label="Stock minimo">
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={form.min}
-                onChange={(e) => setForm({ ...form, min: e.target.value })}
-                autoComplete="off"
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
             <Field label="Emoji">
               <input
                 value={form.icon}
@@ -3042,6 +3108,7 @@ const Ordenes = () => {
   const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden, addFactura } = useData();
   const [show, setShow] = useState(false);
   const [picking, setPicking] = useState<Orden | null>(null);
+  const [pickAlmacen, setPickAlmacen] = useState<"todos" | "palmhills" | "castillo">("todos");
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
     []
   );
@@ -3057,6 +3124,7 @@ const Ordenes = () => {
   const [editPrecios, setEditPrecios] = useState<Record<string, number>>({});
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
+  const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pendiente" });
 
   const clienteFor = (cli: string) =>
@@ -3106,6 +3174,7 @@ const Ordenes = () => {
       return;
     }
     setPicking(ord);
+    setPickAlmacen("todos");
     setPickItems(
       ord.lineas.map((l) => ({ ...l, qtyEnviada: l.qtyEnviada ?? l.qty, picked: false }))
     );
@@ -3138,6 +3207,7 @@ const Ordenes = () => {
           qty: it.qtyEnviada ?? it.qty,
           precio: it.precioFinal ?? it.precio,
           precioOriginal: it.precio,
+          almacen: it.almacen || "palmhills",
         }));
       const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
       const cInfo = clienteFor(picking.cli);
@@ -3167,6 +3237,7 @@ const Ordenes = () => {
     setEditingOrden(ord);
     setEditForm({ fecha: ord.fecha, estado: ord.estado });
     setEditSearch("");
+    setEditAlmacen("palmhills");
     const initialQtys: Record<string, number> = {};
     const initialPrecios: Record<string, number> = {};
     (ord.lineas || []).forEach((l) => {
@@ -3204,16 +3275,17 @@ const Ordenes = () => {
     .map((id) => productos.find((p) => p.id === id))
     .filter((p): p is Producto => !!p);
 
-  const editProductosFiltrados = editSearch.trim()
-    ? editProductosOrdenados.filter((p) => {
-        const q = editSearch.trim().toLowerCase();
-        return (
-          p.nom.toLowerCase().includes(q) ||
-          (p.sku || "").toLowerCase().includes(q) ||
-          (p.barcode || "").toLowerCase().includes(q)
-        );
-      })
-    : editProductosOrdenados;
+  const editProductosFiltrados = editProductosOrdenados
+    .filter((p) => (p.almacen || "palmhills") === editAlmacen)
+    .filter((p) => {
+      const q = editSearch.trim().toLowerCase();
+      if (!q) return true;
+      return (
+        p.nom.toLowerCase().includes(q) ||
+        (p.sku || "").toLowerCase().includes(q) ||
+        (p.barcode || "").toLowerCase().includes(q)
+      );
+    });
 
   const editTotalUnidades = Object.values(editQtys).reduce((a, b) => a + b, 0);
   const editTotal = editProductosOrdenados.reduce(
@@ -3240,6 +3312,7 @@ const Ordenes = () => {
         precioFinal,
         qty,
         qtyEnviada: qty,
+        almacen: p.almacen || "palmhills",
       };
     });
     updateOrden(editingOrden.id, {
@@ -3506,6 +3579,24 @@ const Ordenes = () => {
                 <option>Cancelado</option>
               </select>
             </div>
+            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
+              <button
+                onClick={() => setEditAlmacen("palmhills")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  editAlmacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                🌴 Palm Hills
+              </button>
+              <button
+                onClick={() => setEditAlmacen("castillo")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  editAlmacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                🏰 Castillo
+              </button>
+            </div>
             <input
               type="search"
               inputMode="search"
@@ -3618,9 +3709,29 @@ const Ordenes = () => {
               />
             </div>
           </div>
+          <div className="px-4 pb-2 shrink-0 flex justify-center">
+            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+              {(["todos", "palmhills", "castillo"] as const).map((a) => (
+                <button
+                  key={a}
+                  onClick={() => setPickAlmacen(a)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    pickAlmacen === a ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                >
+                  {a === "todos" ? "Todos" : a === "palmhills" ? "🌴 Palm Hills" : "🏰 Castillo"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="flex-1 overflow-y-auto p-4 pt-0">
             <div className="space-y-2.5">
-              {pickItems.map((item, i) => {
+              {pickItems
+                .map((item, i) => ({ item, i }))
+                .filter(
+                  ({ item }) => pickAlmacen === "todos" || (item.almacen || "palmhills") === pickAlmacen
+                )
+                .map(({ item, i }) => {
                 const prod = productos.find((p) => p.id === item.prodId);
                 const qtyEnviada = item.qtyEnviada ?? item.qty;
                 const missing = qtyEnviada === 0;
