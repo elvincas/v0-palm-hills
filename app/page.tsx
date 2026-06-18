@@ -47,6 +47,14 @@ interface Producto {
   foto?: string | null;
 }
 
+interface LineaFactura {
+  prodNom: string;
+  sku?: string;
+  barcode?: string;
+  qty: number;
+  precio: number;
+}
+
 interface Factura {
   id: string;
   num: number;
@@ -54,6 +62,7 @@ interface Factura {
   fecha: string;
   estado: string;
   total: number;
+  lineas?: LineaFactura[];
 }
 
 interface LineaOrden {
@@ -724,6 +733,7 @@ const Dashboard = () => {
 // ------------------------------
 const Facturas = () => {
   const { facturas, clientes, productos, addFactura, deleteFactura } = useData();
+  const router = useRouter();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
@@ -750,15 +760,27 @@ const Facturas = () => {
       alert("Selecciona un cliente");
       return;
     }
-    if (lineas.length === 0 || lineas.every((l) => !l.prodId)) {
+    const items = lineas.filter((l) => l.prodId);
+    if (items.length === 0) {
       alert("Agrega al menos un producto");
       return;
     }
+    const lineasDetalle: LineaFactura[] = items.map((l) => {
+      const p = productos.find((x) => x.id === l.prodId)!;
+      return {
+        prodNom: p.nom,
+        sku: p.sku || "",
+        barcode: p.barcode || "",
+        qty: Number(l.qty),
+        precio: Number(p.precio),
+      };
+    });
     addFactura({
       cli: clienteSeleccionado,
       fecha,
       estado,
       total: +total.toFixed(2),
+      lineas: lineasDetalle,
     });
     setShow(false);
     setLineas([{ prodId: "", qty: 1 }]);
@@ -775,42 +797,46 @@ const Facturas = () => {
         placeholder="Buscar factura..."
         className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
       />
-      <div className="bg-card rounded-2xl p-3.5 border border-border">
-        {filtered.length ? (
-          filtered.map((f) => (
-            <Li
+      {filtered.length ? (
+        <div className="grid grid-cols-2 gap-2.5">
+          {filtered.map((f) => (
+            <div
               key={f.id}
-              left={
-                <>
-                  <div className="text-sm font-semibold truncate text-card-foreground">
-                    {f.cli}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    #{f.num} - {fdate(f.fecha)}
-                  </div>
-                </>
-              }
-              right={
-                <>
-                  <div className="text-sm font-bold mb-0.5 text-card-foreground">{fmt(f.total)}</div>
-                  <Badge e={f.estado} />
-                  <br />
-                  <button
-                    className="mt-1.5 px-2.5 py-1 rounded-lg bg-red-50 text-destructive text-xs"
-                    onClick={() => {
-                      if (confirm("Eliminar factura?")) deleteFactura(f.id);
-                    }}
-                  >
-                    Eliminar
-                  </button>
-                </>
-              }
-            />
-          ))
-        ) : (
+              onClick={() => router.push(`/facturas/${f.id}`)}
+              className="bg-card border border-border rounded-2xl p-3.5 cursor-pointer hover:border-primary transition-colors relative"
+            >
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm("¿Eliminar esta factura? No podrá ser recuperada.")) deleteFactura(f.id);
+                }}
+                aria-label="Eliminar factura"
+                className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 z-[1]"
+              >
+                ×
+              </button>
+              <div className="w-full aspect-[4/5] rounded-xl bg-gradient-to-b from-[#fafaf7] to-[#f0efe9] border border-border flex flex-col items-center justify-center mb-2 gap-1.5 relative overflow-hidden">
+                <svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke="#4a6741" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                  <path d="M14 2v6h6" />
+                  <path d="M16 13H8M16 17H8M10 9H8" />
+                </svg>
+                <span className="text-[10px] font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
+              </div>
+              <div className="text-xs font-bold text-card-foreground truncate">{f.cli}</div>
+              <div className="text-xs text-muted-foreground mb-1.5">{fdate(f.fecha)}</div>
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-primary">{fmt(f.total)}</span>
+                <Badge e={f.estado} />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-card rounded-2xl p-3.5 border border-border">
           <Empty text="Sin facturas. Toca + para crear." />
-        )}
-      </div>
+        </div>
+      )}
       <button
         className="fixed bottom-[72px] right-4 w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg z-[6] flex items-center justify-center"
         onClick={() => setShow(true)}
@@ -2728,7 +2754,7 @@ const Inventario = () => {
 // Ordenes
 // ------------------------------
 const Ordenes = () => {
-  const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden } = useData();
+  const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden, addFactura } = useData();
   const [show, setShow] = useState(false);
   const [picking, setPicking] = useState<Orden | null>(null);
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
@@ -2815,6 +2841,26 @@ const Ordenes = () => {
     if (picking) {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
       updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Entregado" });
+
+      // Genera la factura solo con lo que realmente se envio (cantidad enviada > 0)
+      const facturaLineas: LineaFactura[] = pickItems
+        .filter((it) => (it.qtyEnviada ?? it.qty) > 0)
+        .map((it) => ({
+          prodNom: it.prodNom,
+          sku: it.sku,
+          barcode: it.barcode,
+          qty: it.qtyEnviada ?? it.qty,
+          precio: it.precio,
+        }));
+      const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
+      const cInfo = clienteFor(picking.cli);
+      addFactura({
+        cli: cInfo?.nom || picking.cli,
+        fecha: today(),
+        estado: "Pendiente",
+        total: +facturaTotal.toFixed(2),
+        lineas: facturaLineas,
+      });
     }
     setPicking(null);
   };
