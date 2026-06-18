@@ -53,6 +53,7 @@ interface LineaFactura {
   barcode?: string;
   qty: number;
   precio: number;
+  precioOriginal?: number;
 }
 
 interface Factura {
@@ -514,18 +515,29 @@ const useData = () => {
 // ------------------------------
 // Dashboard
 // ------------------------------
+const mesActualKey = () => new Date().toISOString().slice(0, 7); // "2026-06"
+const mesActualNombre = () => {
+  const nombre = new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+};
+
 const Dashboard = () => {
   const { facturas, clientes, productos, logs } = useData();
   const [meta, setMeta] = useState(() => {
     if (typeof window === "undefined") return 0;
-    return Number(localStorage.getItem("ph_meta") || 0);
+    return Number(localStorage.getItem(`ph_meta_${mesActualKey()}`) || 0);
   });
   const [editMeta, setEditMeta] = useState(false);
   const [metaInp, setMetaInp] = useState("");
 
-  const totalVentas = useMemo(
-    () => facturas.reduce((sum, f) => sum + Number(f.total), 0),
+  const facturasDelMes = useMemo(
+    () => facturas.filter((f) => (f.fecha || "").slice(0, 7) === mesActualKey()),
     [facturas]
+  );
+
+  const totalVentas = useMemo(
+    () => facturasDelMes.reduce((sum, f) => sum + Number(f.total), 0),
+    [facturasDelMes]
   );
   const lowStock = useMemo(
     () => productos.filter((p) => Number(p.stock) <= Number(p.min || 5)).length,
@@ -548,7 +560,7 @@ const Dashboard = () => {
   const saveMeta = () => {
     const v = Number(metaInp);
     if (!v) return;
-    localStorage.setItem("ph_meta", String(v));
+    localStorage.setItem(`ph_meta_${mesActualKey()}`, String(v));
     setMeta(v);
     setEditMeta(false);
   };
@@ -561,7 +573,7 @@ const Dashboard = () => {
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Meta de ventas
+              Meta de ventas · {mesActualNombre()}
             </div>
             {meta > 0 && (
               <div className="text-xs text-muted-foreground mt-0.5">
@@ -611,7 +623,7 @@ const Dashboard = () => {
 
       <div className="grid grid-cols-2 gap-2.5 mb-3.5">
         {[
-          ["Ventas totales", fmt(totalVentas), false],
+          ["Ventas del mes", fmt(totalVentas), false],
           ["Facturas", facturas.length, false],
           ["Clientes", clientes.length, false],
           ["Stock bajo", lowStock, true],
@@ -684,7 +696,7 @@ const Dashboard = () => {
       </div>
 
       {editMeta && (
-        <Modal title="Meta de ventas" onClose={() => setEditMeta(false)}>
+        <Modal title={`Meta de ventas · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
           <Field label="Monto objetivo ($)">
             <input
               type="number"
@@ -773,6 +785,7 @@ const Facturas = () => {
         barcode: p.barcode || "",
         qty: Number(l.qty),
         precio: Number(p.precio),
+        precioOriginal: Number(p.precio),
       };
     });
     addFactura({
@@ -823,7 +836,7 @@ const Facturas = () => {
                 </svg>
                 <span className="text-[10px] font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
               </div>
-              <div className="text-xs font-bold text-card-foreground truncate">{f.cli}</div>
+              <div className="text-xs font-bold text-card-foreground truncate uppercase">{f.cli}</div>
               <div className="text-xs text-muted-foreground mb-1.5">{fdate(f.fecha)}</div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-bold text-primary">{fmt(f.total)}</span>
@@ -2769,6 +2782,7 @@ const Ordenes = () => {
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
   const [editQtys, setEditQtys] = useState<Record<string, number>>({});
+  const [editPrecios, setEditPrecios] = useState<Record<string, number>>({});
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pendiente" });
@@ -2840,7 +2854,7 @@ const Ordenes = () => {
   const completePick = () => {
     if (picking) {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
-      updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Entregado" });
+      updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completada" });
 
       // Genera la factura solo con lo que realmente se envio (cantidad enviada > 0)
       const facturaLineas: LineaFactura[] = pickItems
@@ -2850,7 +2864,8 @@ const Ordenes = () => {
           sku: it.sku,
           barcode: it.barcode,
           qty: it.qtyEnviada ?? it.qty,
-          precio: it.precio,
+          precio: it.precioFinal ?? it.precio,
+          precioOriginal: it.precio,
         }));
       const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
       const cInfo = clienteFor(picking.cli);
@@ -2881,10 +2896,13 @@ const Ordenes = () => {
     setEditForm({ fecha: ord.fecha, estado: ord.estado });
     setEditSearch("");
     const initialQtys: Record<string, number> = {};
+    const initialPrecios: Record<string, number> = {};
     (ord.lineas || []).forEach((l) => {
       initialQtys[l.prodId] = l.qty;
+      initialPrecios[l.prodId] = l.precioFinal ?? l.precio;
     });
     setEditQtys(initialQtys);
+    setEditPrecios(initialPrecios);
     // Productos ya en la orden primero, luego el resto ordenado por codigo (SKU)
     const sorted = [...productos].sort((a, b) => {
       const aTiene = initialQtys[a.id] > 0 ? 0 : 1;
@@ -2927,7 +2945,7 @@ const Ordenes = () => {
 
   const editTotalUnidades = Object.values(editQtys).reduce((a, b) => a + b, 0);
   const editTotal = editProductosOrdenados.reduce(
-    (acc, p) => acc + (editQtys[p.id] || 0) * Number(p.precio),
+    (acc, p) => acc + (editQtys[p.id] || 0) * (editPrecios[p.id] ?? Number(p.precio)),
     0
   );
 
@@ -2940,13 +2958,16 @@ const Ordenes = () => {
     }
     const lineasDetalle = items.map(([prodId, qty]) => {
       const p = productos.find((x) => x.id === prodId)!;
+      const precioFinal = editPrecios[prodId] ?? Number(p.precio);
       return {
         prodId: p.id,
         prodNom: p.nom,
         barcode: p.barcode || "",
         sku: p.sku || "",
         precio: Number(p.precio),
+        precioFinal,
         qty,
+        qtyEnviada: qty,
       };
     });
     updateOrden(editingOrden.id, {
@@ -2959,11 +2980,17 @@ const Ordenes = () => {
     setEditingOrden(null);
   };
 
+  const ordenesOrdenadas = [...ordenes].sort((a, b) => {
+    const aDone = a.estado === "Completada" ? 1 : 0;
+    const bDone = b.estado === "Completada" ? 1 : 0;
+    return aDone - bDone;
+  });
+
   return (
     <div>
       <div className="bg-card rounded-2xl p-3.5 border border-border">
-        {ordenes.length ? (
-          ordenes.map((o) => {
+        {ordenesOrdenadas.length ? (
+          ordenesOrdenadas.map((o) => {
             const cInfo = clienteFor(o.cli);
             return (
             <Li
@@ -2971,7 +2998,7 @@ const Ordenes = () => {
               left={
                 <>
                   <div className="flex items-center gap-1.5">
-                    <div className="text-sm font-semibold truncate text-card-foreground">
+                    <div className="text-sm font-semibold truncate uppercase text-card-foreground">
                       {cInfo ? cInfo.nom : o.cli}
                     </div>
                     <div className="relative shrink-0">
@@ -2988,13 +3015,19 @@ const Ordenes = () => {
                       {menuOpenId === o.id && (
                         <>
                           <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                          <div className="absolute left-0 top-7 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden min-w-[140px]">
-                            <button
-                              onClick={() => startEdit(o)}
-                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
-                            >
-                              ✏️ Editar
-                            </button>
+                          <div className="absolute left-0 top-7 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden min-w-[160px]">
+                            {o.estado === "Completada" ? (
+                              <div className="px-3.5 py-2.5 text-[11px] text-muted-foreground leading-snug">
+                                No se puede editar: la factura ya fue generada.
+                              </div>
+                            ) : (
+                              <button
+                                onClick={() => startEdit(o)}
+                                className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
+                              >
+                                ✏️ Editar
+                              </button>
+                            )}
                             <div className="h-px bg-border mx-2" />
                             <button
                               onClick={() => {
@@ -3020,13 +3053,17 @@ const Ordenes = () => {
                 <>
                   <div className="text-sm font-bold mb-0.5 text-card-foreground">{fmt(o.total)}</div>
                   <Badge e={o.estado} />
-                  <br />
-                  <button
-                    className="mt-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground border border-primary text-xs font-bold"
-                    onClick={() => startPick(o)}
-                  >
-                    📦 PICK
-                  </button>
+                  {o.estado !== "Completada" && (
+                    <>
+                      <br />
+                      <button
+                        className="mt-1.5 px-3 py-1.5 rounded-lg bg-secondary text-secondary-foreground border border-primary text-xs font-bold"
+                        onClick={() => startPick(o)}
+                      >
+                        📦 PICK
+                      </button>
+                    </>
+                  )}
                 </>
               }
             />
@@ -3077,7 +3114,7 @@ const Ordenes = () => {
               >
                 <option>Pendiente</option>
                 <option>En proceso</option>
-                <option>Entregado</option>
+                <option>Completada</option>
               </select>
             </Field>
           </Row2>
@@ -3168,7 +3205,7 @@ const Ordenes = () => {
             </button>
             <div className="flex-1">
               <span className="text-white text-base font-bold block">Editar Orden #{editingOrden.num}</span>
-              <span className="text-white/80 text-xs">
+              <span className="text-white/80 text-xs uppercase">
                 {clienteFor(editingOrden.cli)?.nom || editingOrden.cli}
               </span>
             </div>
@@ -3189,7 +3226,7 @@ const Ordenes = () => {
               >
                 <option>Pendiente</option>
                 <option>En proceso</option>
-                <option>Entregado</option>
+                <option>Completada</option>
                 <option>Cancelado</option>
               </select>
             </div>
@@ -3284,7 +3321,7 @@ const Ordenes = () => {
               X
             </button>
             <div className="flex-1 min-w-0">
-              <span className="text-white text-base font-bold block truncate">
+              <span className="text-white text-base font-bold block truncate uppercase">
                 Orden #{picking.num} · {clienteFor(picking.cli)?.nom || picking.cli}
               </span>
               <span className="text-white/80 text-xs">
@@ -3292,8 +3329,8 @@ const Ordenes = () => {
               </span>
             </div>
           </div>
-          <div className="flex-1 overflow-y-auto p-4">
-            <div className="bg-muted rounded-full h-2.5 overflow-hidden mb-4">
+          <div className="px-4 pt-3 pb-2 shrink-0 bg-background">
+            <div className="bg-muted rounded-full h-2.5 overflow-hidden">
               <div
                 className="h-full rounded-full bg-primary transition-all duration-300"
                 style={{
@@ -3301,6 +3338,8 @@ const Ordenes = () => {
                 }}
               />
             </div>
+          </div>
+          <div className="flex-1 overflow-y-auto p-4 pt-0">
             <div className="space-y-2.5">
               {pickItems.map((item, i) => {
                 const prod = productos.find((p) => p.id === item.prodId);
@@ -3315,13 +3354,25 @@ const Ordenes = () => {
                     <button
                       onClick={() => togglePicked(i)}
                       aria-label={item.picked ? "Marcar como pendiente" : "Marcar como pickeado"}
-                      className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center text-base font-bold border-2 ${
+                      className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center backdrop-blur-md border transition-all active:scale-90 ${
                         item.picked
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "border-border text-transparent"
+                          ? "bg-primary/80 border-white/40 shadow-md"
+                          : "bg-white/30 border-border hover:bg-white/50"
                       }`}
                     >
-                      ✓
+                      <svg
+                        width={18}
+                        height={18}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={item.picked ? "white" : "transparent"}
+                        strokeWidth={3}
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        className="transition-opacity"
+                      >
+                        <polyline points="20 6 9 17 4 12" />
+                      </svg>
                     </button>
                     <div className="w-12 h-12 rounded-lg bg-white flex items-center justify-center text-xl shrink-0 overflow-hidden border border-border">
                       {prod?.foto ? (
@@ -3335,11 +3386,13 @@ const Ordenes = () => {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold text-card-foreground truncate">{item.prodNom}</div>
-                      <div className="text-xs text-muted-foreground">
-                        Pedido: {item.qty}
-                        {item.sku ? ` · SKU ${item.sku}` : ""}
+                      {item.sku && (
+                        <div className="text-sm font-bold font-mono text-primary leading-tight">{item.sku}</div>
+                      )}
+                      <div className="text-xs text-card-foreground leading-snug break-words mt-0.5">
+                        {item.prodNom}
                       </div>
+                      <div className="text-xs text-muted-foreground mt-0.5">Pedido: {item.qty}</div>
                       {missing && (
                         <div className="text-[11px] text-destructive font-bold mt-0.5">MISSING</div>
                       )}
@@ -3376,7 +3429,13 @@ const Ordenes = () => {
               })}
             </div>
           </div>
-          <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 py-3 flex gap-2.5 shrink-0">
+          <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 pt-3 pb-2 shrink-0">
+            {!pickItems.every((i) => i.picked) && (
+              <p className="text-[11px] text-amber-600 font-medium text-center mb-2">
+                Marca el cotejo de todos los productos para poder completar la orden
+              </p>
+            )}
+            <div className="flex gap-2.5">
             <button
               onClick={() => setPicking(null)}
               className="flex-1 px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm"
@@ -3385,10 +3444,17 @@ const Ordenes = () => {
             </button>
             <button
               onClick={completePick}
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm"
+              disabled={!pickItems.length || !pickItems.every((i) => i.picked)}
+              title={
+                !pickItems.every((i) => i.picked)
+                  ? "Marca el cotejo de todos los productos para poder completar la orden"
+                  : undefined
+              }
+              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Completar orden
             </button>
+            </div>
           </div>
           <div className="h-16 shrink-0" />
           <BottomNav active="ord" />

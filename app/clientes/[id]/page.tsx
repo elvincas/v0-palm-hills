@@ -63,7 +63,7 @@ const FacturaBadge = ({ e }: { e: string }) => (
 const ORDEN_BADGE: Record<string, string> = {
   Pendiente: "bg-amber-100 text-amber-800",
   "En proceso": "bg-blue-100 text-blue-800",
-  Entregado: "bg-green-100 text-green-800",
+  Completada: "bg-green-100 text-green-800",
   Cancelado: "bg-red-100 text-red-800",
 };
 
