@@ -380,10 +380,9 @@ export default function NuevaOrdenPage() {
                       <label className="text-[10px] text-muted-foreground block mb-1">Precio para esta orden</label>
                       <div className="flex gap-1">
                         <input
-                          type="number"
-                          min={0}
-                          step="0.01"
+                          type="text"
                           inputMode="decimal"
+                          pattern="[0-9]*[.,]?[0-9]*"
                           autoComplete="off"
                           defaultValue={descuentos[p.id] ?? p.precio}
                           autoFocus
@@ -422,9 +421,9 @@ export default function NuevaOrdenPage() {
                   <div className="mt-2 pt-2 border-t border-border">
                     <label className="text-[10px] text-muted-foreground block mb-1">Cantidad</label>
                     <input
-                      type="number"
-                      min={0}
+                      type="text"
                       inputMode="numeric"
+                      pattern="[0-9]*"
                       autoComplete="off"
                       placeholder="0"
                       value={qty || ''}

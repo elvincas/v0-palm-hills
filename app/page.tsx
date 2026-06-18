@@ -743,8 +743,9 @@ const Dashboard = () => {
         <Modal title={`Meta de ventas · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
           <Field label="Monto objetivo ($)">
             <input
-              type="number"
+              type="text"
               inputMode="decimal"
+              pattern="[0-9]*[.,]?[0-9]*"
               value={metaInp}
               onChange={(e) => setMetaInp(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && saveMeta()}
@@ -1161,8 +1162,9 @@ const Facturas = () => {
                 ))}
               </select>
               <input
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={l.qty}
                 onChange={(e) =>
                   setLineas((ls) =>
@@ -2913,8 +2915,9 @@ const Inventario = () => {
           <Row2>
             <Field label="Precio ($)">
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
                 value={form.precio}
                 onChange={(e) => setForm({ ...form, precio: e.target.value })}
                 autoComplete="off"
@@ -2923,8 +2926,9 @@ const Inventario = () => {
             </Field>
             <Field label="Costo ($)">
               <input
-                type="number"
-                step="0.01"
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*[.,]?[0-9]*"
                 value={form.costo}
                 onChange={(e) => setForm({ ...form, costo: e.target.value })}
                 autoComplete="off"
@@ -2935,7 +2939,9 @@ const Inventario = () => {
           <Row2>
             <Field label="Stock (Inv. actual)">
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={form.stock}
                 onChange={(e) => setForm({ ...form, stock: e.target.value })}
                 autoComplete="off"
@@ -2944,7 +2950,9 @@ const Inventario = () => {
             </Field>
             <Field label="Cantidad por cajas">
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={form.cajas}
                 onChange={(e) => setForm({ ...form, cajas: e.target.value })}
                 autoComplete="off"
@@ -2955,7 +2963,9 @@ const Inventario = () => {
           <Row2>
             <Field label="Stock minimo">
               <input
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={form.min}
                 onChange={(e) => setForm({ ...form, min: e.target.value })}
                 autoComplete="off"
@@ -3407,8 +3417,9 @@ const Ordenes = () => {
                 ))}
               </select>
               <input
-                type="number"
-                min={1}
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={l.qty}
                 onChange={(e) =>
                   setLineas((ls) =>
@@ -3533,9 +3544,9 @@ const Ordenes = () => {
                       <div className="mt-2 pt-2 border-t border-border">
                         <label className="text-[10px] text-muted-foreground block mb-1">Cantidad</label>
                         <input
-                          type="number"
-                          min={0}
+                          type="text"
                           inputMode="numeric"
+                          pattern="[0-9]*"
                           autoComplete="off"
                           placeholder="0"
                           value={qty || ""}
@@ -3677,10 +3688,9 @@ const Ordenes = () => {
                         −
                       </button>
                       <input
-                        type="number"
-                        min={0}
-                        max={item.qty}
+                        type="text"
                         inputMode="numeric"
+                        pattern="[0-9]*"
                         autoComplete="off"
                         value={qtyEnviada}
                         onChange={(e) => setQtyEnviada(i, Number(e.target.value))}
@@ -3987,8 +3997,10 @@ const Mejoras = () => {
           </Field>
           <Field label="Costo estimado ($)">
             <input
-              type="number"
-              step="0.01"
+              type="text"
+              inputMode="decimal"
+              pattern="[0-9]*[.,]?[0-9]*"
+              autoComplete="off"
               value={form.costo}
               onChange={(e) => setForm({ ...form, costo: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
