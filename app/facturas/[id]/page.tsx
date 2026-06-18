@@ -141,7 +141,13 @@ export default function FacturaPage() {
     );
   }
 
-  const lineas = factura.lineas || [];
+  const lineas = [...(factura.lineas || [])].sort((a, b) => {
+    const skuA = (a.sku || "").trim();
+    const skuB = (b.sku || "").trim();
+    if (!skuA && skuB) return 1;
+    if (skuA && !skuB) return -1;
+    return skuA.localeCompare(skuB, "es", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "es");
+  });
   const subtotal = lineas.reduce((acc, l) => acc + l.qty * (l.precioOriginal ?? l.precio), 0);
   const descuento = subtotal - factura.total;
 

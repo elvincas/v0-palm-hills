@@ -107,16 +107,24 @@ export default function NuevaOrdenPage() {
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
-    return productos.filter((p) => {
-      const matchAlmacen = (p.almacen || 'palmhills') === almacen
-      const matchSearch =
-        !q ||
-        p.nom.toLowerCase().includes(q) ||
-        (p.sku || '').toLowerCase().includes(q) ||
-        (p.barcode || '').toLowerCase().includes(q)
-      const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
-      return matchAlmacen && matchSearch && matchTag
-    })
+    return productos
+      .filter((p) => {
+        const matchAlmacen = (p.almacen || 'palmhills') === almacen
+        const matchSearch =
+          !q ||
+          p.nom.toLowerCase().includes(q) ||
+          (p.sku || '').toLowerCase().includes(q) ||
+          (p.barcode || '').toLowerCase().includes(q)
+        const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
+        return matchAlmacen && matchSearch && matchTag
+      })
+      .sort((a, b) => {
+        const skuA = (a.sku || '').trim()
+        const skuB = (b.sku || '').trim()
+        if (!skuA && skuB) return 1
+        if (skuA && !skuB) return -1
+        return skuA.localeCompare(skuB, 'es', { numeric: true }) || a.nom.localeCompare(b.nom, 'es')
+      })
   }, [productos, search, tagFilter, almacen])
 
   const disponible = (p: Producto) => Number(p.stock || 0) - Number(p.reservado || 0)

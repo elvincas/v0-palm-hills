@@ -1021,6 +1021,18 @@ const Facturas = () => {
   const [fecha, setFecha] = useState(today());
   const [estado, setEstado] = useState("Pendiente");
 
+  const productosPorSku = useMemo(
+    () =>
+      [...productos].sort((a, b) => {
+        const skuA = (a.sku || "").trim();
+        const skuB = (b.sku || "").trim();
+        if (!skuA && skuB) return 1;
+        if (skuA && !skuB) return -1;
+        return skuA.localeCompare(skuB, "es", { numeric: true }) || a.nom.localeCompare(b.nom, "es");
+      }),
+    [productos]
+  );
+
   const filtered = q
     ? facturas.filter(
         (f) =>
@@ -1187,9 +1199,9 @@ const Facturas = () => {
                 className="flex-[2] px-2.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none"
               >
                 <option value="">Selecciona...</option>
-                {productos.map((p) => (
+                {productosPorSku.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.nom} - {fmt(p.precio)}
+                    {p.sku ? `${p.sku} — ` : ""}{p.nom} - {fmt(p.precio)}
                   </option>
                 ))}
               </select>
@@ -2016,7 +2028,7 @@ const Inventario = () => {
   const [bulkSaving, setBulkSaving] = useState(false);
   const [etqInput, setEtqInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState<SortKey>("nom");
+  const [sortBy, setSortBy] = useState<SortKey>("sku");
   const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [form, setForm] = useState({
@@ -2148,15 +2160,15 @@ const Inventario = () => {
           blankLast(a.barcode || "") - blankLast(b.barcode || "") ||
           textCmp(a.barcode || "", b.barcode || "")
       );
-    } else if (sortBy === "sku") {
+    } else if (sortBy === "nom") {
+      sorted.sort((a, b) => textCmp(a.nom, b.nom));
+    } else if (!hasQuery) {
+      // Default: SKU A-Z (solo cuando no hay busqueda activa, para no pisar la relevancia)
       sorted.sort(
         (a, b) =>
           blankLast(a.sku || "") - blankLast(b.sku || "") ||
           textCmp(a.sku || "", b.sku || "")
       );
-    } else if (!hasQuery) {
-      // Default A-Z only when no search query — preserve relevance order otherwise
-      sorted.sort((a, b) => textCmp(a.nom, b.nom));
     }
 
     return sorted;
@@ -3165,6 +3177,18 @@ const Ordenes = () => {
   const clienteFor = (cli: string) =>
     clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
 
+  const productosPorSku = useMemo(
+    () =>
+      [...productos].sort((a, b) => {
+        const skuA = (a.sku || "").trim();
+        const skuB = (b.sku || "").trim();
+        if (!skuA && skuB) return 1;
+        if (skuA && !skuB) return -1;
+        return skuA.localeCompare(skuB, "es", { numeric: true }) || a.nom.localeCompare(b.nom, "es");
+      }),
+    [productos]
+  );
+
   const total = lineas.reduce((acc, l) => {
     const p = productos.find((x) => x.id === l.prodId);
     return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0);
@@ -3522,9 +3546,9 @@ const Ordenes = () => {
                 className="flex-[2] px-2.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none"
               >
                 <option value="">Selecciona...</option>
-                {productos.map((p) => (
+                {productosPorSku.map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.nom} - {fmt(p.precio)}
+                    {p.sku ? `${p.sku} — ` : ""}{p.nom} - {fmt(p.precio)}
                   </option>
                 ))}
               </select>
