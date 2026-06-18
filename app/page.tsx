@@ -288,10 +288,43 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await refreshLogs();
   };
 
+  // Columnas livianas: las fotos (base64) se cargan despues, en segundo plano,
+  // para que la app no tenga que esperar varios MB de imagenes antes de mostrar nada.
+  const CLIENTE_COLS =
+    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, created_at";
+  const PRODUCTO_COLS =
+    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, created_at";
+
+  // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
+  // timeout de la base de datos, asi que se piden en lotes pequenos.
+  const FOTO_CHUNK = 20;
+
+  const loadFotosProductos = async (ids: string[]) => {
+    for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
+      const lote = ids.slice(i, i + FOTO_CHUNK);
+      const { data } = await supabase.from("productos").select("id, foto").in("id", lote);
+      if (!data) continue;
+      const fotoMap = new Map(data.map((r) => [r.id, r.foto]));
+      setProductos((prev) => prev.map((p) => (fotoMap.has(p.id) ? { ...p, foto: fotoMap.get(p.id) } : p)));
+    }
+  };
+
+  const loadFotosClientes = async (ids: string[]) => {
+    for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
+      const lote = ids.slice(i, i + FOTO_CHUNK);
+      const { data } = await supabase.from("clientes").select("id, foto_local").in("id", lote);
+      if (!data) continue;
+      const fotoMap = new Map(data.map((r) => [r.id, r.foto_local]));
+      setClientes((prev) =>
+        prev.map((c) => (fotoMap.has(c.id) ? { ...c, foto_local: fotoMap.get(c.id) } : c))
+      );
+    }
+  };
+
   const loadAll = async () => {
     const [c, p, f, o, e] = await Promise.all([
-      supabase.from("clientes").select("*").order("created_at", { ascending: false }),
-      supabase.from("productos").select("*").order("created_at", { ascending: false }),
+      supabase.from("clientes").select(CLIENTE_COLS).order("created_at", { ascending: false }),
+      supabase.from("productos").select(PRODUCTO_COLS).order("created_at", { ascending: false }),
       supabase.from("facturas").select("*").order("num", { ascending: false }),
       supabase.from("ordenes").select("*").order("num", { ascending: false }),
       supabase.from("mejoras").select("*").order("created_at", { ascending: false }),
@@ -303,6 +336,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     if (e.data) setMejoras(e.data as Mejora[]);
     await refreshLogs();
     setLoading(false);
+    if (p.data) loadFotosProductos(p.data.map((r) => r.id));
+    if (c.data) loadFotosClientes(c.data.map((r) => r.id));
   };
 
   useEffect(() => {
@@ -1451,6 +1486,7 @@ const Clientes = () => {
                   <img
                     src={c.foto_local}
                     alt={c.nom}
+                    loading="lazy"
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -2183,8 +2219,7 @@ const Inventario = () => {
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
-        // Create a larger canvas for better quality (1024x1024)
-        const CANVAS_SIZE = 1024;
+        const CANVAS_SIZE = 800;
         const canvas = document.createElement("canvas");
         canvas.width = CANVAS_SIZE;
         canvas.height = CANVAS_SIZE;
@@ -2219,9 +2254,19 @@ const Inventario = () => {
         // Draw the complete, scaled image centered
         ctx.drawImage(img, x, y, scaledWidth, scaledHeight);
         
-        // Convert to WebP with high quality, fallback to JPEG
-        const optimized = canvas.toDataURL("image/webp", 0.9) || 
-                         canvas.toDataURL("image/jpeg", 0.9);
+        let optimized = canvas.toDataURL("image/jpeg", 0.75);
+        if (optimized.length > 300000) {
+          const small = document.createElement("canvas");
+          small.width = 500;
+          small.height = 500;
+          const sctx = small.getContext("2d");
+          if (sctx) {
+            sctx.fillStyle = "#ffffff";
+            sctx.fillRect(0, 0, 500, 500);
+            sctx.drawImage(canvas, 0, 0, 500, 500);
+            optimized = small.toDataURL("image/jpeg", 0.6);
+          }
+        }
         setFoto(optimized);
       };
       img.src = e.target?.result as string;
@@ -2503,6 +2548,7 @@ const Inventario = () => {
                     <img
                       src={p.foto}
                       alt={p.nom}
+                      loading="lazy"
                       className="w-full h-full object-contain"
                     />
                   ) : (
@@ -3472,7 +3518,7 @@ const Ordenes = () => {
                     >
                       <div className="w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
                         {p.foto ? (
-                          <img src={p.foto || "/placeholder.svg"} alt={p.nom} className="w-full h-full object-contain" />
+                          <img src={p.foto || "/placeholder.svg"} alt={p.nom} loading="lazy" className="w-full h-full object-contain" />
                         ) : (
                           p.icon || "📦"
                         )}
@@ -3601,6 +3647,7 @@ const Ordenes = () => {
                         <img
                           src={prod.foto || "/placeholder.svg"}
                           alt={item.prodNom}
+                          loading="lazy"
                           className="w-full h-full object-contain"
                         />
                       ) : (

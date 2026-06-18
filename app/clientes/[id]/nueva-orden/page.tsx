@@ -64,11 +64,26 @@ export default function NuevaOrdenPage() {
         const supabase = createClient()
         const { data: c } = await supabase.from('clientes').select('id, nom').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
-        const { data: p } = await supabase.from('productos').select('*').order('nom')
+        // Datos livianos primero (sin foto) para no esperar varios MB de imagenes
+        const { data: p } = await supabase
+          .from('productos')
+          .select('id, nom, sku, barcode, fabricante, etiquetas, precio, stock, min, reservado')
+          .order('nom')
         if (p) setProductos(p as Producto[])
+        setLoading(false)
+        // Fotos en segundo plano, en lotes (pesan varios MB en total y una sola
+        // consulta por todas supera el timeout de la base de datos)
+        const ids = (p || []).map((r) => r.id)
+        const CHUNK = 20
+        for (let i = 0; i < ids.length; i += CHUNK) {
+          const lote = ids.slice(i, i + CHUNK)
+          const { data: fotos } = await supabase.from('productos').select('id, foto').in('id', lote)
+          if (!fotos) continue
+          const fotoMap = new Map(fotos.map((r) => [r.id, r.foto]))
+          setProductos((prev) => prev.map((prod) => (fotoMap.has(prod.id) ? { ...prod, foto: fotoMap.get(prod.id) } : prod)))
+        }
       } catch (error) {
         console.log('[v0] Error loading nueva orden:', error)
-      } finally {
         setLoading(false)
       }
     }
@@ -313,7 +328,7 @@ export default function NuevaOrdenPage() {
                 >
                   <div className="w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
                     {p.foto ? (
-                      <img src={p.foto || "/placeholder.svg"} alt={p.nom} className="w-full h-full object-contain" />
+                      <img src={p.foto || "/placeholder.svg"} alt={p.nom} loading="lazy" className="w-full h-full object-contain" />
                     ) : (
                       p.icon || '📦'
                     )}
