@@ -111,6 +111,7 @@ export default function FacturaPage() {
         return;
       }
       setFactura(f as Factura);
+      document.title = `Factura-${String((f as Factura).num).padStart(3, "0")}`;
       const { data: c } = await supabase
         .from("clientes")
         .select("nom, codigo_cliente, dir, ciudad, estado_dir, tel, email")
