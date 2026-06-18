@@ -230,6 +230,8 @@ const Modal = ({
 // Data Context
 // ------------------------------
 interface DataContextType {
+  role: "admin" | "visitante";
+  readOnly: boolean;
   clientes: Cliente[];
   productos: Producto[];
   facturas: Factura[];
@@ -276,6 +278,14 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
+  const [role, setRole] = useState<"admin" | "visitante">("admin");
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      const r = data.user?.user_metadata?.role;
+      setRole(r === "visitante" ? "visitante" : "admin");
+    });
+  }, [supabase]);
 
   const refreshLogs = async () => {
     const { data } = await supabase
@@ -387,8 +397,16 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       cajas: Math.max(0, Number(prod.cajas) || 0),
       stock: Math.max(0, Number(prod.stock) || 0),
       min: Math.max(0, Number(prod.min) || 5),
+      // Cada etiqueta es una sola palabra (como las keywords de busqueda de
+      // Amazon); si llega una frase de varias palabras se separa en palabras sueltas.
       etiquetas: Array.isArray(prod.etiquetas)
-        ? Array.from(new Set(prod.etiquetas.map((t) => t.trim()).filter(Boolean)))
+        ? Array.from(
+            new Set(
+              prod.etiquetas
+                .flatMap((t) => String(t).trim().toLowerCase().split(/\s+/))
+                .filter(Boolean)
+            )
+          )
         : [],
       fabricante: (prod.fabricante || "").trim(),
     };
@@ -523,6 +541,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const value: DataContextType = {
+    role,
+    readOnly: role === "visitante",
     clientes,
     productos,
     facturas,
@@ -569,7 +589,7 @@ const mesActualNombre = () => {
 };
 
 const Dashboard = () => {
-  const { facturas, clientes, productos, logs } = useData();
+  const { facturas, clientes, productos, logs, readOnly } = useData();
   const [meta, setMeta] = useState(() => {
     if (typeof window === "undefined") return 0;
     return Number(localStorage.getItem(`ph_meta_${mesActualKey()}`) || 0);
@@ -628,15 +648,17 @@ const Dashboard = () => {
               </div>
             )}
           </div>
-          <button
-            className={`rounded-full px-3 py-1.5 text-xs font-bold ${GLASS_BTN}`}
-            onClick={() => {
-              setMetaInp(meta ? String(meta) : "");
-              setEditMeta(true);
-            }}
-          >
-            {meta > 0 ? "Cambiar" : "+ Fijar meta"}
-          </button>
+          {!readOnly && (
+            <button
+              className={`rounded-full px-3 py-1.5 text-xs font-bold ${GLASS_BTN}`}
+              onClick={() => {
+                setMetaInp(meta ? String(meta) : "");
+                setEditMeta(true);
+              }}
+            >
+              {meta > 0 ? "Cambiar" : "+ Fijar meta"}
+            </button>
+          )}
         </div>
         {meta > 0 ? (
           <>
@@ -798,7 +820,7 @@ const MESES = [
 const DIAS_CORTOS = ["D", "L", "M", "M", "J", "V", "S"];
 
 const Calendario = () => {
-  const { ordenes, clientes } = useData();
+  const { ordenes, clientes, readOnly } = useData();
   const [deliveryDays, setDeliveryDaysState] = useState<number[]>(() => getDeliveryDays());
   const [showConfig, setShowConfig] = useState(false);
   const [mesActual, setMesActual] = useState(() => {
@@ -871,9 +893,11 @@ const Calendario = () => {
               ›
             </button>
           </div>
-          <button onClick={() => setShowConfig(true)} className={`px-3 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN}`}>
-            ⚙️ Días de entrega
-          </button>
+          {!readOnly && (
+            <button onClick={() => setShowConfig(true)} className={`px-3 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN}`}>
+              ⚙️ Días de entrega
+            </button>
+          )}
         </div>
 
         <div className="grid grid-cols-7 gap-1 mb-1">
@@ -988,7 +1012,7 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, addFactura, deleteFactura } = useData();
+  const { facturas, clientes, productos, addFactura, deleteFactura, readOnly } = useData();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
@@ -1063,16 +1087,18 @@ const Facturas = () => {
               onClick={() => router.push(`/facturas/${f.id}`)}
               className="bg-card border border-border rounded-2xl p-3.5 cursor-pointer hover:border-primary transition-colors relative"
             >
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm("¿Eliminar esta factura? No podrá ser recuperada.")) deleteFactura(f.id);
-                }}
-                aria-label="Eliminar factura"
-                className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 z-[1]"
-              >
-                ×
-              </button>
+              {!readOnly && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (confirm("¿Eliminar esta factura? No podrá ser recuperada.")) deleteFactura(f.id);
+                  }}
+                  aria-label="Eliminar factura"
+                  className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 z-[1]"
+                >
+                  ×
+                </button>
+              )}
               <div className="w-full aspect-[4/5] rounded-xl bg-gradient-to-b from-[#fafaf7] to-[#f0efe9] border border-border flex flex-col items-center justify-center mb-2 gap-1.5 relative overflow-hidden">
                 <svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke="#4a6741" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -1095,14 +1121,16 @@ const Facturas = () => {
           <Empty text="Sin facturas. Toca + para crear." />
         </div>
       )}
-      <button
-        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-        onClick={() => setShow(true)}
-      >
-        +
-      </button>
+      {!readOnly && (
+        <button
+          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
+          onClick={() => setShow(true)}
+        >
+          +
+        </button>
+      )}
 
-      {show && (
+      {show && !readOnly && (
         <Modal title="Nueva Factura" onClose={() => setShow(false)}>
           <Field label="Cliente">
             <select
@@ -1226,7 +1254,7 @@ const Facturas = () => {
 // Clientes
 const Clientes = () => {
   const router = useRouter();
-  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente } = useData();
+  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, readOnly } = useData();
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("nom");
   const [show, setShow] = useState(false);
@@ -1428,41 +1456,43 @@ const Clientes = () => {
           autoComplete="off"
           className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
-        <div className="relative shrink-0" ref={addMenuRef}>
-          <button
-            onClick={() => setShowAddMenu((v) => !v)}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-light"
-            aria-label="Agregar cliente"
-          >
-            +
-          </button>
-          {showAddMenu && (
-            <div className="absolute right-0 top-12 z-20 bg-card border border-border rounded-2xl shadow-lg overflow-hidden min-w-[180px]"
-              onBlur={() => setShowAddMenu(false)}
+        {!readOnly && (
+          <div className="relative shrink-0" ref={addMenuRef}>
+            <button
+              onClick={() => setShowAddMenu((v) => !v)}
+              className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-light"
+              aria-label="Agregar cliente"
             >
-              <button
-                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
-                onClick={() => {
-                  setShowAddMenu(false);
-                  reset();
-                  setForm((f) => ({ ...f, codigo_cliente: nextCodigoCliente }));
-                  setShow(true);
-                }}
+              +
+            </button>
+            {showAddMenu && (
+              <div className="absolute right-0 top-12 z-20 bg-card border border-border rounded-2xl shadow-lg overflow-hidden min-w-[180px]"
+                onBlur={() => setShowAddMenu(false)}
               >
-                <span className="text-base">+</span>
-                Agregar manualmente
-              </button>
-              <div className="h-px bg-border mx-3" />
-              <button
-                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
-                onClick={() => { setShowAddMenu(false); setBulkRows([]); setBulkErr(""); setShowBulk(true); }}
-              >
-                <span className="text-base">↑</span>
-                Subir a granel
-              </button>
-            </div>
-          )}
-        </div>
+                <button
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
+                  onClick={() => {
+                    setShowAddMenu(false);
+                    reset();
+                    setForm((f) => ({ ...f, codigo_cliente: nextCodigoCliente }));
+                    setShow(true);
+                  }}
+                >
+                  <span className="text-base">+</span>
+                  Agregar manualmente
+                </button>
+                <div className="h-px bg-border mx-3" />
+                <button
+                  className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-card-foreground hover:bg-muted text-left"
+                  onClick={() => { setShowAddMenu(false); setBulkRows([]); setBulkErr(""); setShowBulk(true); }}
+                >
+                  <span className="text-base">↑</span>
+                  Subir a granel
+                </button>
+              </div>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex items-center gap-2 mb-3">
         <label htmlFor="sortByCliente" className="text-xs text-muted-foreground shrink-0">
@@ -1529,22 +1559,24 @@ const Clientes = () => {
                     Abierto los sábados
                   </div>
                 )}
-                <div className="flex gap-1.5">
-                  <button
-                    onClick={() => openEdit(c)}
-                    className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-primary/85 border border-white/30 shadow-sm hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground text-xs font-bold"
-                  >
-                    Editar
-                  </button>
-                  <button
-                    onClick={() => {
-                      if (confirm("Eliminar cliente?")) deleteCliente(c.id);
-                    }}
-                    className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
-                  >
-                    Eliminar
-                  </button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1.5">
+                    <button
+                      onClick={() => openEdit(c)}
+                      className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-primary/85 border border-white/30 shadow-sm hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground text-xs font-bold"
+                    >
+                      Editar
+                    </button>
+                    <button
+                      onClick={() => {
+                        if (confirm("Eliminar cliente?")) deleteCliente(c.id);
+                      }}
+                      className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
+                    >
+                      Eliminar
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           ))
@@ -1971,7 +2003,7 @@ const normTag = (s: string) =>
     .replace(/(.)\1+/g, "$1"); // collapse doubled letters
 
 const Inventario = () => {
-  const { productos, addProducto, addProductosBulk, updateProducto, deleteProducto } = useData();
+  const { productos, addProducto, addProductosBulk, updateProducto, deleteProducto, readOnly } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -1997,7 +2029,6 @@ const Inventario = () => {
     cajas: "",
     stock: "",
     min: "5",
-    icon: "",
     barcode: "",
   });
 
@@ -2131,14 +2162,27 @@ const Inventario = () => {
     return sorted;
   }, [productosAlmacen, q, tagFilter, fuse, sortBy]);
 
+  // Las etiquetas son palabras unicas separadas por espacio (como las keywords
+  // de busqueda de Amazon): cada palabra es una sugerencia de busqueda aparte,
+  // nunca una frase de varias palabras.
   const addTag = (raw: string) => {
-    const t = raw.trim().toLowerCase();
-    if (!t) return;
-    if (form.etiquetas.some((e) => normTag(e) === normTag(t))) {
-      setEtqInput("");
-      return;
-    }
-    setForm((f) => ({ ...f, etiquetas: [...f.etiquetas, t] }));
+    const palabras = raw
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
+    if (!palabras.length) return;
+    setForm((f) => {
+      const existentes = new Set(f.etiquetas.map((e) => normTag(e)));
+      const agregadas: string[] = [];
+      palabras.forEach((p) => {
+        if (!existentes.has(normTag(p))) {
+          existentes.add(normTag(p));
+          agregadas.push(p);
+        }
+      });
+      return { ...f, etiquetas: [...f.etiquetas, ...agregadas] };
+    });
     setEtqInput("");
   };
 
@@ -2165,7 +2209,6 @@ const Inventario = () => {
       cajas: "",
       stock: "",
       min: "5",
-      icon: "",
       barcode: "",
     });
     setMenuOpen(false);
@@ -2187,7 +2230,6 @@ const Inventario = () => {
       cajas: String(p.cajas ?? ""),
       stock: String(p.stock),
       min: String(p.min),
-      icon: p.icon || "",
       barcode: p.barcode || "",
     });
     setShow(true);
@@ -2198,12 +2240,13 @@ const Inventario = () => {
       alert("Ingresa el nombre");
       return;
     }
-    // Fold any pending tag still in the input box into the list
-    const etiquetas = etqInput.trim()
-      ? form.etiquetas.some((e) => normTag(e) === normTag(etqInput))
-        ? form.etiquetas
-        : [...form.etiquetas, etqInput.trim().toLowerCase()]
-      : form.etiquetas;
+    // Fold any pending word(s) still in the input box into the list
+    const pendientes = etqInput
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter((p) => p && !form.etiquetas.some((e) => normTag(e) === normTag(p)));
+    const etiquetas = [...form.etiquetas, ...pendientes];
     const productData = {
       nom: form.nom,
       sku: form.sku,
@@ -2214,7 +2257,6 @@ const Inventario = () => {
       cajas: Number(form.cajas),
       stock: formAlmacen === "castillo" ? 0 : Number(form.stock),
       min: formAlmacen === "castillo" ? 0 : Number(form.min),
-      icon: form.icon,
       barcode: form.barcode,
       foto,
       almacen: formAlmacen,
@@ -2568,12 +2610,14 @@ const Inventario = () => {
                 key={p.id}
                 className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full"
               >
-                <button
-                  onClick={() => openEdit(p)}
-                  className="absolute top-2 right-2 bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold cursor-pointer text-secondary-foreground z-[1]"
-                >
-                  Editar
-                </button>
+                {!readOnly && (
+                  <button
+                    onClick={() => openEdit(p)}
+                    className="absolute top-2 right-2 bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold cursor-pointer text-secondary-foreground z-[1]"
+                  >
+                    Editar
+                  </button>
+                )}
                 <div
                   onClick={() => p.foto && setFotoAmpliada(p.foto)}
                   className={`w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
@@ -2663,33 +2707,35 @@ const Inventario = () => {
           aria-hidden="true"
         />
       )}
-      <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
-        {menuOpen && (
-          <div className="flex flex-col gap-2 mb-1">
-            <button
-              onClick={openNew}
-              className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-            >
-              <span className="text-base" aria-hidden="true">✏️</span>
-              Agregar Manualmente
-            </button>
-            <button
-              onClick={openBulk}
-              className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-            >
-              <span className="text-base" aria-hidden="true">📄</span>
-              Subir A Granel
-            </button>
-          </div>
-        )}
-        <button
-          aria-label="Agregar producto"
-          className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
-          onClick={() => setMenuOpen((o) => !o)}
-        >
-          +
-        </button>
-      </div>
+      {!readOnly && (
+        <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
+          {menuOpen && (
+            <div className="flex flex-col gap-2 mb-1">
+              <button
+                onClick={openNew}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">✏️</span>
+                Agregar Manualmente
+              </button>
+              <button
+                onClick={openBulk}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">📄</span>
+                Subir A Granel
+              </button>
+            </div>
+          )}
+          <button
+            aria-label="Agregar producto"
+            className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
+            onClick={() => setMenuOpen((o) => !o)}
+          >
+            +
+          </button>
+        </div>
+      )}
 
       {showBulk && (
         <Modal title="Subir Inventario A Granel" onClose={() => setShowBulk(false)}>
@@ -2960,7 +3006,7 @@ const Inventario = () => {
                 value={etqInput}
                 onChange={(e) => setEtqInput(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === ",") {
+                  if (e.key === "Enter" || e.key === "," || e.key === " ") {
                     e.preventDefault();
                     addTag(etqInput);
                   } else if (e.key === "Backspace" && !etqInput && form.etiquetas.length) {
@@ -2968,7 +3014,7 @@ const Inventario = () => {
                   }
                 }}
                 onBlur={() => etqInput.trim() && addTag(etqInput)}
-                placeholder="Escribe y presiona Enter (ej. aceite, rizos, hair)"
+                placeholder="Una palabra por etiqueta (ej. aceite rizos hair)"
                 autoComplete="off"
                 className="w-full px-1 py-1 bg-transparent text-card-foreground text-base outline-none"
               />
@@ -3037,17 +3083,6 @@ const Inventario = () => {
               </Field>
             </>
           )}
-          <Row2>
-            <Field label="Emoji">
-              <input
-                value={form.icon}
-                maxLength={2}
-                onChange={(e) => setForm({ ...form, icon: e.target.value })}
-                autoComplete="off"
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
-            </Field>
-          </Row2>
           {editId && (
             <button
               onClick={() => {
@@ -3105,7 +3140,7 @@ const Inventario = () => {
 // Ordenes
 // ------------------------------
 const Ordenes = () => {
-  const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden, addFactura } = useData();
+  const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden, addFactura, readOnly } = useData();
   const [show, setShow] = useState(false);
   const [picking, setPicking] = useState<Orden | null>(null);
   const [pickAlmacen, setPickAlmacen] = useState<"todos" | "palmhills" | "castillo">("todos");
@@ -3346,47 +3381,49 @@ const Ordenes = () => {
                     <div className="text-sm font-semibold truncate uppercase text-card-foreground">
                       {cInfo ? cInfo.nom : o.cli}
                     </div>
-                    <div className="relative shrink-0">
-                      <button
-                        onClick={() => setMenuOpenId(menuOpenId === o.id ? null : o.id)}
-                        aria-label="Editar o eliminar orden"
-                        className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-card-foreground hover:bg-muted"
-                      >
-                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M12 20h9" />
-                          <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
-                        </svg>
-                      </button>
-                      {menuOpenId === o.id && (
-                        <>
-                          <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
-                          <div className="absolute left-0 top-7 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden min-w-[160px]">
-                            {o.estado === "Completada" ? (
-                              <div className="px-3.5 py-2.5 text-[11px] text-muted-foreground leading-snug">
-                                No se puede editar: la factura ya fue generada.
-                              </div>
-                            ) : (
+                    {!readOnly && (
+                      <div className="relative shrink-0">
+                        <button
+                          onClick={() => setMenuOpenId(menuOpenId === o.id ? null : o.id)}
+                          aria-label="Editar o eliminar orden"
+                          className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-card-foreground hover:bg-muted"
+                        >
+                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                          </svg>
+                        </button>
+                        {menuOpenId === o.id && (
+                          <>
+                            <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
+                            <div className="absolute left-0 top-7 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden min-w-[160px]">
+                              {o.estado === "Completada" ? (
+                                <div className="px-3.5 py-2.5 text-[11px] text-muted-foreground leading-snug">
+                                  No se puede editar: la factura ya fue generada.
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => startEdit(o)}
+                                  className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
+                                >
+                                  ✏️ Editar
+                                </button>
+                              )}
+                              <div className="h-px bg-border mx-2" />
                               <button
-                                onClick={() => startEdit(o)}
-                                className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
+                                onClick={() => {
+                                  setMenuOpenId(null);
+                                  handleDeleteOrden(o);
+                                }}
+                                className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-destructive hover:bg-red-50 text-left"
                               >
-                                ✏️ Editar
+                                🗑️ Borrar
                               </button>
-                            )}
-                            <div className="h-px bg-border mx-2" />
-                            <button
-                              onClick={() => {
-                                setMenuOpenId(null);
-                                handleDeleteOrden(o);
-                              }}
-                              className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-destructive hover:bg-red-50 text-left"
-                            >
-                              🗑️ Borrar
-                            </button>
-                          </div>
-                        </>
-                      )}
-                    </div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
@@ -3398,7 +3435,7 @@ const Ordenes = () => {
                 <>
                   <div className="text-sm font-bold mb-0.5 text-card-foreground">{fmt(o.total)}</div>
                   <Badge e={o.estado} />
-                  {o.estado !== "Completada" && (
+                  {o.estado !== "Completada" && !readOnly && (
                     <>
                       <br />
                       <button
@@ -3418,14 +3455,16 @@ const Ordenes = () => {
           <Empty text="Sin ordenes. Toca + para crear." />
         )}
       </div>
-      <button
-        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-        onClick={() => setShow(true)}
-      >
-        +
-      </button>
+      {!readOnly && (
+        <button
+          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
+          onClick={() => setShow(true)}
+        >
+          +
+        </button>
+      )}
 
-      {show && (
+      {show && !readOnly && (
         <Modal title="Nueva Orden" onClose={() => setShow(false)}>
           <Field label="Cliente">
             <select
@@ -3916,7 +3955,7 @@ const UpgradeIcon = ({ done = false }: { done?: boolean }) => (
 );
 
 const Mejoras = () => {
-  const { mejoras, addMejora, updateMejora, deleteMejora } = useData();
+  const { mejoras, addMejora, updateMejora, deleteMejora, readOnly } = useData();
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState({
@@ -4022,22 +4061,24 @@ const Mejoras = () => {
         <div className="text-sm font-bold text-secondary-foreground">
           {Number(m.costo) > 0 ? `Costo est.: ${fmt(Number(m.costo))}` : "Sin costo estimado"}
         </div>
-        <div className="flex gap-1.5">
-          <button
-            className="px-2.5 py-1 rounded-lg bg-card border border-border text-secondary-foreground text-xs font-bold"
-            onClick={() => openEdit(m)}
-          >
-            Editar
-          </button>
-          <button
-            className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold"
-            onClick={() => {
-              if (confirm("Eliminar esta mejora?")) deleteMejora(m.id);
-            }}
-          >
-            Eliminar
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="flex gap-1.5">
+            <button
+              className="px-2.5 py-1 rounded-lg bg-card border border-border text-secondary-foreground text-xs font-bold"
+              onClick={() => openEdit(m)}
+            >
+              Editar
+            </button>
+            <button
+              className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold"
+              onClick={() => {
+                if (confirm("Eliminar esta mejora?")) deleteMejora(m.id);
+              }}
+            >
+              Eliminar
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -4073,15 +4114,17 @@ const Mejoras = () => {
         </>
       )}
 
-      <button
-        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-        onClick={openNew}
-        aria-label="Agregar mejora"
-      >
-        +
-      </button>
+      {!readOnly && (
+        <button
+          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
+          onClick={openNew}
+          aria-label="Agregar mejora"
+        >
+          +
+        </button>
+      )}
 
-      {show && (
+      {show && !readOnly && (
         <Modal
           title={editId ? "Editar Mejora" : "Nueva Mejora"}
           onClose={() => {
@@ -4180,9 +4223,11 @@ const TITLES: Record<string, string> = {
 
 // Gestionar Usuarios component
 const GestionarUsuarios = () => {
-  const [users, setUsers] = useState<Array<{ id: string; email: string; created_at: string; last_sign_in_at: string | null }>>([]);
+  const [users, setUsers] = useState<
+    Array<{ id: string; email: string; created_at: string; last_sign_in_at: string | null; role: "admin" | "visitante" }>
+  >([]);
   const [show, setShow] = useState(false);
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ email: "", password: "", role: "visitante" as "admin" | "visitante" });
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
 
@@ -4213,20 +4258,35 @@ const GestionarUsuarios = () => {
       const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: form.email, password: form.password, action: "create" }),
+        body: JSON.stringify({ email: form.email, password: form.password, action: "create", role: form.role }),
       });
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error creating user");
 
       setMessage(`✓ Usuario creado: ${form.email}`);
-      setForm({ email: "", password: "" });
+      setForm({ email: "", password: "", role: "visitante" });
       setShow(false);
       await fetchUsers();
     } catch (e) {
       setMessage(`✗ ${e instanceof Error ? e.message : "Error"}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangeRole = async (email: string, role: "admin" | "visitante") => {
+    try {
+      const res = await fetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, action: "setRole", role }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al cambiar el rol");
+      await fetchUsers();
+    } catch (e) {
+      alert("No se pudo cambiar el rol:\n\n" + (e instanceof Error ? e.message : "Error desconocido"));
     }
   };
 
@@ -4277,9 +4337,17 @@ const GestionarUsuarios = () => {
             <div key={u.id} className="bg-background rounded-xl p-2.5 mb-2.5 flex items-center justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-card-foreground truncate">{u.email}</div>
-                <div className="text-xs text-muted-foreground">
+                <div className="text-xs text-muted-foreground mb-1">
                   Creado: {new Date(u.created_at).toLocaleDateString("es-ES")}
                 </div>
+                <button
+                  onClick={() => handleChangeRole(u.email, u.role === "admin" ? "visitante" : "admin")}
+                  className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    u.role === "admin" ? "bg-secondary text-secondary-foreground" : "bg-amber-100 text-amber-800"
+                  }`}
+                >
+                  {u.role === "admin" ? "Admin (todo)" : "Visitante (solo ver)"} · cambiar
+                </button>
               </div>
               <button
                 onClick={() => handleDeleteUser(u.email)}
@@ -4305,7 +4373,7 @@ const GestionarUsuarios = () => {
           title="Crear Nuevo Usuario"
           onClose={() => {
             setShow(false);
-            setForm({ email: "", password: "" });
+            setForm({ email: "", password: "", role: "visitante" });
             setMessage("");
           }}
         >
@@ -4327,6 +4395,32 @@ const GestionarUsuarios = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
+          <Field label="Permisos *">
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, role: "admin" })}
+                className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-bold border ${
+                  form.role === "admin"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-secondary-foreground border-border"
+                }`}
+              >
+                Admin (todo)
+              </button>
+              <button
+                type="button"
+                onClick={() => setForm({ ...form, role: "visitante" })}
+                className={`flex-1 px-3 py-2.5 rounded-xl text-sm font-bold border ${
+                  form.role === "visitante"
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-card text-secondary-foreground border-border"
+                }`}
+              >
+                Visitante (solo ver)
+              </button>
+            </div>
+          </Field>
           {message && (
             <div className={`text-sm ${message.startsWith("✓") ? "text-green-600" : "text-destructive"}`}>
               {message}
@@ -4336,7 +4430,7 @@ const GestionarUsuarios = () => {
             <button
               onClick={() => {
                 setShow(false);
-                setForm({ email: "", password: "" });
+                setForm({ email: "", password: "", role: "visitante" });
                 setMessage("");
               }}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
@@ -4359,7 +4453,7 @@ const GestionarUsuarios = () => {
 
 function AppContent() {
   const [tab, setTab] = useState("dash");
-  const { loading } = useData();
+  const { loading, role } = useData();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
@@ -4404,6 +4498,11 @@ function AppContent() {
     supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ""));
   }, [supabase]);
 
+  // Un visitante no tiene acceso a Usuarios; si quedo esa pestaña activa, regresa a Inicio
+  useEffect(() => {
+    if (role === "visitante" && tab === "usr") setTab("dash");
+  }, [role, tab]);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     router.replace("/auth/login");
@@ -4417,7 +4516,7 @@ function AppContent() {
     inv: <Inventario />,
     ord: <Ordenes />,
     mej: <Mejoras />,
-    usr: <GestionarUsuarios />,
+    usr: role === "admin" ? <GestionarUsuarios /> : <Dashboard />,
   };
 
   return (
@@ -4477,7 +4576,7 @@ function AppContent() {
       >
         {panels[tab]}
       </main>
-      <BottomNav active={tab} onSelect={setTab} />
+      <BottomNav active={tab} onSelect={setTab} hiddenTabs={role === "visitante" ? ["usr"] : []} />
     </div>
   );
 }

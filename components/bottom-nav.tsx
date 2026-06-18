@@ -28,9 +28,11 @@ export const NAV_TABS = [
 export function BottomNav({
   active,
   onSelect,
+  hiddenTabs,
 }: {
   active: string;
   onSelect?: (id: string) => void;
+  hiddenTabs?: string[];
 }) {
   const router = useRouter();
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -47,6 +49,8 @@ export function BottomNav({
     }
   };
 
+  const tabs = NAV_TABS.filter((t) => !hiddenTabs?.includes(t.id));
+
   return (
     <nav
       className="bg-card border-t border-border fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[5]"
@@ -56,7 +60,7 @@ export function BottomNav({
         className="flex overflow-x-auto no-scrollbar"
         style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
       >
-        {NAV_TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             ref={(el) => {

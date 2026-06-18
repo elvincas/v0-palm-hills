@@ -15,7 +15,7 @@ const supabaseAdmin = createClient(
 
 export async function POST(request: Request) {
   try {
-    const { email, password, action } = await request.json()
+    const { email, password, action, role } = await request.json()
 
     // Validate email for all actions
     if (!email) {
@@ -39,6 +39,7 @@ export async function POST(request: Request) {
         email,
         password,
         email_confirm: true,
+        user_metadata: { role: role === 'visitante' ? 'visitante' : 'admin' },
       })
 
       if (error) {
@@ -93,6 +94,41 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         { message: 'Contraseña cambiada exitosamente' },
+        { status: 200 }
+      )
+    }
+
+    if (action === 'setRole') {
+      const { data: allUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+
+      if (listError) {
+        return NextResponse.json(
+          { error: 'Error al obtener usuarios' },
+          { status: 400 }
+        )
+      }
+
+      const userToUpdate = allUsers.users.find((u) => u.email === email)
+      if (!userToUpdate) {
+        return NextResponse.json(
+          { error: 'Usuario no encontrado' },
+          { status: 404 }
+        )
+      }
+
+      const { error } = await supabaseAdmin.auth.admin.updateUserById(userToUpdate.id, {
+        user_metadata: { ...userToUpdate.user_metadata, role: role === 'visitante' ? 'visitante' : 'admin' },
+      })
+
+      if (error) {
+        return NextResponse.json(
+          { error: 'Error al cambiar el rol' },
+          { status: 400 }
+        )
+      }
+
+      return NextResponse.json(
+        { message: 'Rol actualizado exitosamente' },
         { status: 200 }
       )
     }
@@ -176,6 +212,7 @@ export async function GET() {
       email: user.email,
       created_at: user.created_at,
       last_sign_in_at: user.last_sign_in_at,
+      role: user.user_metadata?.role === 'visitante' ? 'visitante' : 'admin',
     }))
 
     return NextResponse.json({ users: safeUsers })

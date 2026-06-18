@@ -104,12 +104,19 @@ export default function ClientePerfilPage() {
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
     cargarCliente();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId]);
+
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setReadOnly(data.user?.user_metadata?.role === "visitante");
+    });
+  }, [supabase]);
 
   const cargarCliente = async () => {
     setError("");
@@ -247,15 +254,17 @@ export default function ClientePerfilPage() {
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                if (editando) setForm(cliente);
-                setEditando(!editando);
-              }}
-              className={`shrink-0 px-4 py-2 rounded-full font-medium text-sm ${GLASS_BTN}`}
-            >
-              {editando ? "Cancelar" : "Editar"}
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => {
+                  if (editando) setForm(cliente);
+                  setEditando(!editando);
+                }}
+                className={`shrink-0 px-4 py-2 rounded-full font-medium text-sm ${GLASS_BTN}`}
+              >
+                {editando ? "Cancelar" : "Editar"}
+              </button>
+            )}
           </div>
 
           {/* Informacion del cliente */}
@@ -397,12 +406,14 @@ export default function ClientePerfilPage() {
           )}
 
           {/* Boton Nueva Orden */}
-          <button
-            onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
-            className={`mt-6 w-full px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 ${GLASS_BTN_PRIMARY}`}
-          >
-            <span className="text-xl leading-none">+</span> Nueva Orden
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
+              className={`mt-6 w-full px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 ${GLASS_BTN_PRIMARY}`}
+            >
+              <span className="text-xl leading-none">+</span> Nueva Orden
+            </button>
+          )}
 
           {/* Seccion Ordenes */}
           <div className="mt-6">

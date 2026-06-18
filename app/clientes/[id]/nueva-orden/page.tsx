@@ -54,6 +54,7 @@ export default function NuevaOrdenPage() {
     return (Number(localStorage.getItem('ph_columnas_orden')) as 2 | 3) || 2
   })
   const [almacen, setAlmacen] = useState<'palmhills' | 'castillo'>('palmhills')
+  const [readOnly, setReadOnly] = useState(false)
 
   const cambiarColumnas = (n: 2 | 3) => {
     setColumnas(n)
@@ -64,6 +65,12 @@ export default function NuevaOrdenPage() {
     const load = async () => {
       try {
         const supabase = createClient()
+        const { data: userData } = await supabase.auth.getUser()
+        if (userData.user?.user_metadata?.role === 'visitante') {
+          setReadOnly(true)
+          setLoading(false)
+          return
+        }
         const { data: c } = await supabase.from('clientes').select('id, nom').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
         // Datos livianos primero (sin foto) para no esperar varios MB de imagenes
@@ -216,6 +223,20 @@ export default function NuevaOrdenPage() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <p className="text-muted-foreground">Cargando productos...</p>
+      </div>
+    )
+  }
+
+  if (readOnly) {
+    return (
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center gap-3">
+        <p className="text-card-foreground font-medium">No tienes permiso para crear órdenes.</p>
+        <button
+          onClick={() => router.push(`/clientes/${clienteId}`)}
+          className="text-sm text-primary underline"
+        >
+          ← Volver al cliente
+        </button>
       </div>
     )
   }
