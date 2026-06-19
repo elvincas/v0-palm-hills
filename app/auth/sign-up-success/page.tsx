@@ -15,16 +15,16 @@ export default function Page() {
         </div>
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">¡Gracias por registrarte!</CardTitle>
-            <CardDescription>Revisa tu correo para confirmar tu cuenta</CardDescription>
+            <CardTitle className="text-2xl">Thanks for signing up!</CardTitle>
+            <CardDescription>Check your email to confirm your account</CardDescription>
           </CardHeader>
           <CardContent className="flex flex-col gap-4">
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Te has registrado correctamente. Por favor revisa tu correo electrónico y confirma tu cuenta antes de
-              iniciar sesión.
+              You've signed up successfully. Please check your email and confirm your account before
+              signing in.
             </p>
             <Button asChild variant="outline" className="w-full bg-transparent">
-              <Link href="/auth/login">Volver a iniciar sesión</Link>
+              <Link href="/auth/login">Back to sign in</Link>
             </Button>
           </CardContent>
         </Card>

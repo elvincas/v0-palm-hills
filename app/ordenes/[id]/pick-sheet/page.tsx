@@ -64,7 +64,7 @@ export default function PickSheetPage() {
   }, [ordenId, supabase])
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen text-muted-foreground">Cargando...</div>
+    return <div className="flex items-center justify-center h-screen text-muted-foreground">Loading...</div>
   }
 
   if (!orden || !orden.pick_sheet) {
@@ -92,7 +92,7 @@ export default function PickSheetPage() {
             onClick={() => router.back()}
             className="text-blue-600 text-sm font-medium hover:text-blue-800"
           >
-            ← Volver
+            ← Back
           </button>
           <div className="flex gap-3">
             <button
@@ -109,7 +109,7 @@ export default function PickSheetPage() {
       <div className="max-w-5xl mx-auto p-8 print:p-4">
         {/* Encabezado */}
         <div className="mb-8 text-center border-b-4 border-black pb-6">
-          <h1 className="text-4xl font-black tracking-wide">HOJA DE RECOLECCIÓN</h1>
+          <h1 className="text-4xl font-black tracking-wide">PICK SHEET</h1>
           <h2 className="text-2xl font-bold mt-2">PICK SHEET</h2>
           <p className="text-gray-600 mt-2">Orden #{orden.num}</p>
         </div>
@@ -117,15 +117,15 @@ export default function PickSheetPage() {
         {/* Información de la Orden */}
         <div className="mb-8 grid grid-cols-4 gap-6 bg-gray-50 border-2 border-black p-6">
           <div>
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Orden</p>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Order</p>
             <p className="text-2xl font-black">#{orden.num}</p>
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Fecha</p>
-            <p className="text-2xl font-black">{new Date(orden.fecha).toLocaleDateString('es-ES')}</p>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Date</p>
+            <p className="text-2xl font-black">{new Date(orden.fecha).toLocaleDateString('en-US')}</p>
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Cliente</p>
+            <p className="text-xs font-bold text-gray-700 uppercase tracking-wide">Client</p>
             <p className="text-lg font-bold">{cliente?.nom || 'N/A'}</p>
           </div>
           <div>
@@ -140,8 +140,8 @@ export default function PickSheetPage() {
             <tr className="bg-black text-white">
               <th className="border-2 border-black p-4 text-left font-black text-sm">✓</th>
               <th className="border-2 border-black p-4 text-left font-black text-sm">COD</th>
-              <th className="border-2 border-black p-4 text-left font-black text-sm">PRODUCTO</th>
-              <th className="border-2 border-black p-4 text-center font-black text-sm w-20">CANTIDAD</th>
+              <th className="border-2 border-black p-4 text-left font-black text-sm">PRODUCT</th>
+              <th className="border-2 border-black p-4 text-center font-black text-sm w-20">QUANTITY</th>
               <th className="border-2 border-black p-4 text-left font-black text-sm">OBSERVACIONES</th>
             </tr>
           </thead>
@@ -173,11 +173,11 @@ export default function PickSheetPage() {
         {/* Resumen */}
         <div className="mb-8 bg-gray-50 border-2 border-black p-6 flex justify-between items-center">
           <div>
-            <p className="text-xs font-bold text-gray-700 uppercase">Total de productos</p>
+            <p className="text-xs font-bold text-gray-700 uppercase">Total products</p>
             <p className="text-3xl font-black">{items.length}</p>
           </div>
           <div>
-            <p className="text-xs font-bold text-gray-700 uppercase">Total de unidades</p>
+            <p className="text-xs font-bold text-gray-700 uppercase">Total units</p>
             <p className="text-3xl font-black">{totalUnidades}</p>
           </div>
           <div className="print:hidden">
@@ -190,24 +190,24 @@ export default function PickSheetPage() {
         <div className="hidden print:grid grid-cols-3 gap-12 mt-16">
           <div className="text-center">
             <div className="border-t-4 border-black pt-4 h-24"></div>
-            <p className="font-bold text-sm mt-2">Preparado por</p>
-            <p className="text-xs text-gray-600">Nombre y firma</p>
+            <p className="font-bold text-sm mt-2">Prepared by</p>
+            <p className="text-xs text-gray-600">Name and signature</p>
           </div>
           <div className="text-center">
             <div className="border-t-4 border-black pt-4 h-24"></div>
-            <p className="font-bold text-sm mt-2">Verificado por</p>
-            <p className="text-xs text-gray-600">Nombre y firma</p>
+            <p className="font-bold text-sm mt-2">Verified by</p>
+            <p className="text-xs text-gray-600">Name and signature</p>
           </div>
           <div className="text-center">
             <div className="border-t-4 border-black pt-4 h-24"></div>
-            <p className="font-bold text-sm mt-2">Recibido por</p>
-            <p className="text-xs text-gray-600">Nombre y firma</p>
+            <p className="font-bold text-sm mt-2">Received by</p>
+            <p className="text-xs text-gray-600">Name and signature</p>
           </div>
         </div>
 
         {/* Nota al pie */}
         <div className="hidden print:block mt-8 text-center text-xs text-gray-600 border-t border-gray-300 pt-4">
-          <p>Impreso: {new Date().toLocaleString('es-ES')}</p>
+          <p>Impreso: {new Date().toLocaleString('en-US')}</p>
         </div>
       </div>
     </div>

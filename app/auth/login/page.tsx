@@ -21,7 +21,7 @@ export default function LoginPage() {
     console.log("[v0] Login attempt with:", email)
     
     if (!email || !password) {
-      setError("Por favor completa todos los campos")
+      setError("Please fill in all fields")
       return
     }
 
@@ -48,7 +48,7 @@ export default function LoginPage() {
       
       if (!data?.session) {
         console.error("[v0] No session returned after login")
-        throw new Error("No se pudo crear la sesión. Por favor intenta de nuevo.")
+        throw new Error("Couldn't create the session. Please try again.")
       }
       
       console.log("[v0] Login successful, redirecting...")
@@ -57,20 +57,20 @@ export default function LoginPage() {
     } catch (error: unknown) {
       console.error("[v0] Login error:", error)
       
-      let errorMessage = "Ocurrió un error al iniciar sesión"
-      
+      let errorMessage = "An error occurred while signing in"
+
       if (error instanceof Error) {
         errorMessage = error.message
-        
-        // Mensajes de error más específicos
+
+        // More specific error messages
         if (error.message.includes("Invalid login credentials")) {
-          errorMessage = "Correo o contraseña incorrectos"
+          errorMessage = "Incorrect email or password"
         } else if (error.message.includes("Email not confirmed")) {
-          errorMessage = "Por favor confirma tu correo antes de iniciar sesión"
+          errorMessage = "Please confirm your email before signing in"
         } else if (error.message.includes("User not found")) {
-          errorMessage = "Este correo no está registrado"
+          errorMessage = "This email is not registered"
         } else if (error.message.includes("Password")) {
-          errorMessage = "La contraseña es incorrecta"
+          errorMessage = "The password is incorrect"
         }
       }
       
@@ -102,8 +102,8 @@ export default function LoginPage() {
         <div className="rounded-3xl bg-white/40 backdrop-blur-2xl border border-white/60 shadow-2xl overflow-hidden">
           <div className="px-6 py-8 md:px-8 md:py-10">
             <div className="mb-6">
-              <h2 className="text-2xl font-bold text-foreground">Iniciar sesión</h2>
-              <p className="text-sm text-muted-foreground mt-1">Ingresa tus datos para acceder al sistema</p>
+              <h2 className="text-2xl font-bold text-foreground">Sign In</h2>
+              <p className="text-sm text-muted-foreground mt-1">Enter your details to access the system</p>
             </div>
             <form onSubmit={handleLogin}>
               <div className="flex flex-col gap-5">
@@ -114,11 +114,11 @@ export default function LoginPage() {
                   </div>
                 )}
                 <div className="grid gap-2">
-                  <Label htmlFor="email" className="text-sm font-medium text-foreground">Correo electrónico</Label>
+                  <Label htmlFor="email" className="text-sm font-medium text-foreground">Email</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="correo@ejemplo.com"
+                    placeholder="email@example.com"
                     required
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
@@ -126,7 +126,7 @@ export default function LoginPage() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="password" className="text-sm font-medium text-foreground">Contraseña</Label>
+                  <Label htmlFor="password" className="text-sm font-medium text-foreground">Password</Label>
                   <Input
                     id="password"
                     type="password"
@@ -141,7 +141,7 @@ export default function LoginPage() {
                   className="w-full mt-2 rounded-xl bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 text-white font-semibold shadow-lg transition-all duration-300 h-11" 
                   disabled={isLoading}
                 >
-                  {isLoading ? "Ingresando..." : "Iniciar sesión"}
+                  {isLoading ? "Signing in..." : "Sign In"}
                 </Button>
               </div>
             </form>

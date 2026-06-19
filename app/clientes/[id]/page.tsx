@@ -39,7 +39,7 @@ interface Orden {
 }
 
 const fmt = (n: number) =>
-  "$" + Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fdate = (s: string) => {
   if (!s) return "";
@@ -48,10 +48,9 @@ const fdate = (s: string) => {
 };
 
 const FACTURA_BADGE: Record<string, string> = {
-  Pagada: "bg-green-100 text-green-800",
-  Pendiente: "bg-amber-100 text-amber-800",
-  "En revision": "bg-blue-100 text-blue-800",
-  "En revisión": "bg-blue-100 text-blue-800",
+  Paid: "bg-green-100 text-green-800",
+  Pending: "bg-amber-100 text-amber-800",
+  "In Review": "bg-blue-100 text-blue-800",
 };
 
 const FacturaBadge = ({ e }: { e: string }) => (
@@ -61,10 +60,10 @@ const FacturaBadge = ({ e }: { e: string }) => (
 );
 
 const ORDEN_BADGE: Record<string, string> = {
-  Pendiente: "bg-amber-100 text-amber-800",
-  "En proceso": "bg-blue-100 text-blue-800",
-  Completada: "bg-green-100 text-green-800",
-  Cancelado: "bg-red-100 text-red-800",
+  Pending: "bg-amber-100 text-amber-800",
+  "In Progress": "bg-blue-100 text-blue-800",
+  Completed: "bg-green-100 text-green-800",
+  Cancelled: "bg-red-100 text-red-800",
 };
 
 const OrdenBadge = ({ e }: { e: string }) => (
@@ -74,14 +73,14 @@ const OrdenBadge = ({ e }: { e: string }) => (
 );
 
 const ESTADO_CLIENTE_BADGE: Record<string, string> = {
-  Activo: "bg-green-100 text-green-800",
-  Inactivo: "bg-red-100 text-red-800",
-  "En espera": "bg-amber-100 text-amber-800",
+  Active: "bg-green-100 text-green-800",
+  Inactive: "bg-red-100 text-red-800",
+  Waiting: "bg-amber-100 text-amber-800",
 };
 
 const EstadoClienteBadge = ({ e }: { e: string }) => (
   <span className={`px-3 py-1 rounded-full text-xs font-bold inline-flex ${ESTADO_CLIENTE_BADGE[e] || "bg-blue-100 text-blue-800"}`}>
-    {e || "No especificado"}
+    {e || "Not specified"}
   </span>
 );
 
@@ -126,7 +125,7 @@ export default function ClientePerfilPage() {
       .eq("id", clienteId)
       .single();
     if (error || !data) {
-      setError("No se pudo cargar este cliente. Verifica que el enlace sea correcto.");
+      setError("Couldn't load this client. Check that the link is correct.");
       return;
     }
     setCliente(data as Cliente);
@@ -160,11 +159,11 @@ export default function ClientePerfilPage() {
   const handleGuardar = async () => {
     if (!form) return;
     if (!form.nom?.trim()) {
-      alert("Ingresa el nombre");
+      alert("Enter the name");
       return;
     }
     if (!form.codigo_cliente?.trim()) {
-      alert("Ingresa el numero de cliente");
+      alert("Enter the client number");
       return;
     }
     setGuardando(true);
@@ -191,14 +190,14 @@ export default function ClientePerfilPage() {
           onClick={() => router.push("/?tab=cli")}
           className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}
         >
-          ← Volver
+          ← Back
         </button>
       </div>
     );
   }
 
   if (!cliente || !form) {
-    return <div className="p-6 text-sm text-muted-foreground">Cargando...</div>;
+    return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
   }
 
   return (
@@ -207,7 +206,7 @@ export default function ClientePerfilPage() {
         onClick={() => router.push("/?tab=cli")}
         className={`px-4 py-2 rounded-full text-sm font-medium mb-3 ${GLASS_BTN}`}
       >
-        ← Volver
+        ← Back
       </button>
 
       <div className="bg-card rounded-2xl border border-border overflow-hidden">
@@ -225,7 +224,7 @@ export default function ClientePerfilPage() {
           <div className="flex items-start gap-4">
             <div className="flex-1 min-w-0">
               <div className="mb-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Número de Cliente</span>
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client Number</span>
                 {editando ? (
                   <input
                     value={form.codigo_cliente || ""}
@@ -234,7 +233,7 @@ export default function ClientePerfilPage() {
                   />
                 ) : (
                   <p className="font-mono text-lg font-bold text-primary">
-                    {cliente.codigo_cliente || "Sin asignar"}
+                    {cliente.codigo_cliente || "Not assigned"}
                   </p>
                 )}
               </div>
@@ -262,7 +261,7 @@ export default function ClientePerfilPage() {
                 }}
                 className={`shrink-0 px-4 py-2 rounded-full font-medium text-sm ${GLASS_BTN}`}
               >
-                {editando ? "Cancelar" : "Editar"}
+                {editando ? "Cancel" : "Edit"}
               </button>
             )}
           </div>
@@ -270,7 +269,7 @@ export default function ClientePerfilPage() {
           {/* Informacion del cliente */}
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📍 Dirección</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📍 Address</label>
               {editando ? (
                 <input
                   value={form.dir || ""}
@@ -315,7 +314,7 @@ export default function ClientePerfilPage() {
                 <input
                   value={form.contacto || ""}
                   onChange={(e) => setForm({ ...form, contacto: e.target.value })}
-                  placeholder="Nombre de la persona de contacto"
+                  placeholder="Contact person's name"
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 />
               ) : (
@@ -324,7 +323,7 @@ export default function ClientePerfilPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📞 Teléfono</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📞 Phone</label>
               {editando ? (
                 <input
                   type="tel"
@@ -338,7 +337,7 @@ export default function ClientePerfilPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">✉️ Correo Electrónico</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">✉️ Email</label>
               {editando ? (
                 <input
                   type="email"
@@ -352,16 +351,16 @@ export default function ClientePerfilPage() {
             </div>
 
             <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estatus del Cliente</label>
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client Status</label>
               {editando ? (
                 <select
                   value={form.estado}
                   onChange={(e) => setForm({ ...form, estado: e.target.value })}
                   className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option>Activo</option>
-                  <option>Inactivo</option>
-                  <option>En espera</option>
+                  <option>Active</option>
+                  <option>Inactive</option>
+                  <option>Waiting</option>
                 </select>
               ) : (
                 <div className="mt-0.5">
@@ -374,8 +373,8 @@ export default function ClientePerfilPage() {
           {/* Toggle: Abierto los sabados */}
           <div className="mt-6 p-4 bg-muted rounded-xl flex items-center justify-between">
             <div>
-              <span className="font-medium text-card-foreground">📅 Abierto los sábados</span>
-              <p className="text-sm text-muted-foreground">¿Este cliente recibe pedidos los sábados?</p>
+              <span className="font-medium text-card-foreground">📅 Open on Saturdays</span>
+              <p className="text-sm text-muted-foreground">Does this client receive orders on Saturdays?</p>
             </div>
             <button
               disabled={!editando}
@@ -400,7 +399,7 @@ export default function ClientePerfilPage() {
                 onClick={handleGuardar}
                 className={`px-5 py-2.5 rounded-full font-bold text-sm disabled:opacity-50 ${GLASS_BTN_PRIMARY}`}
               >
-                {guardando ? "Guardando..." : "💾 Guardar Cambios"}
+                {guardando ? "Saving..." : "💾 Save Changes"}
               </button>
             </div>
           )}
@@ -411,15 +410,15 @@ export default function ClientePerfilPage() {
               onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
               className={`mt-6 w-full px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 ${GLASS_BTN_PRIMARY}`}
             >
-              <span className="text-xl leading-none">+</span> Nueva Orden
+              <span className="text-xl leading-none">+</span> New Order
             </button>
           )}
 
           {/* Seccion Ordenes */}
           <div className="mt-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Órdenes</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Orders</h2>
             {loadingOrdenes ? (
-              <p className="text-sm text-muted-foreground">Cargando órdenes...</p>
+              <p className="text-sm text-muted-foreground">Loading orders...</p>
             ) : ordenes.length ? (
               <div className="space-y-2">
                 {ordenes.map((o) => (
@@ -439,19 +438,19 @@ export default function ClientePerfilPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Sin órdenes registradas.</p>
+              <p className="text-sm text-muted-foreground">No orders recorded.</p>
             )}
           </div>
 
           {/* Seccion Facturas */}
           <div className="mt-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Facturas</h2>
+            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Invoices</h2>
             {loadingFacturas ? (
-              <p className="text-sm text-muted-foreground">Cargando facturas...</p>
+              <p className="text-sm text-muted-foreground">Loading invoices...</p>
             ) : facturas.length ? (
               <div className="space-y-2">
                 {facturas.map((f) => {
-                  const balance = f.estado === "Pagada" ? 0 : f.total;
+                  const balance = f.estado === "Paid" ? 0 : f.total;
                   return (
                     <div
                       key={f.id}
@@ -471,7 +470,7 @@ export default function ClientePerfilPage() {
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">Sin facturas registradas.</p>
+              <p className="text-sm text-muted-foreground">No invoices recorded.</p>
             )}
           </div>
         </div>

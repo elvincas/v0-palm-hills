@@ -112,7 +112,7 @@ interface LogEntry {
 // ------------------------------
 const fmt = (n: number) =>
   "$" +
-  Number(n).toLocaleString("es-MX", {
+  Number(n).toLocaleString("en-US", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -137,25 +137,24 @@ const GLASS_BTN_DESTRUCTIVE =
 // Badge component
 // ------------------------------
 const BM: Record<string, string> = {
-  Pagada: "bg-green-100 text-green-800",
-  Pendiente: "bg-amber-100 text-amber-800",
-  "En revisión": "bg-blue-100 text-blue-800",
-  "En proceso": "bg-blue-100 text-blue-800",
-  Entregado: "bg-green-100 text-green-800",
-  Cancelado: "bg-red-100 text-red-800",
-  "Al corriente": "bg-green-100 text-green-800",
-  Incidencia: "bg-amber-100 text-amber-800",
-  Activo: "bg-green-100 text-green-800",
-  Inactivo: "bg-red-100 text-red-800",
-  "En espera": "bg-amber-100 text-amber-800",
-  "Sin stock": "bg-red-100 text-red-800",
-  "Stock bajo": "bg-amber-100 text-amber-800",
-  "En stock": "bg-green-100 text-green-800",
-  Alta: "bg-red-100 text-red-800",
-  Media: "bg-amber-100 text-amber-800",
-  Baja: "bg-blue-100 text-blue-800",
-  Completada: "bg-green-100 text-green-800",
-  "En progreso": "bg-blue-100 text-blue-800",
+  Paid: "bg-green-100 text-green-800",
+  Pending: "bg-amber-100 text-amber-800",
+  "In Review": "bg-blue-100 text-blue-800",
+  "In Progress": "bg-blue-100 text-blue-800",
+  Delivered: "bg-green-100 text-green-800",
+  Cancelled: "bg-red-100 text-red-800",
+  Current: "bg-green-100 text-green-800",
+  Issue: "bg-amber-100 text-amber-800",
+  Active: "bg-green-100 text-green-800",
+  Inactive: "bg-red-100 text-red-800",
+  Waiting: "bg-amber-100 text-amber-800",
+  "Out of stock": "bg-red-100 text-red-800",
+  "Low stock": "bg-amber-100 text-amber-800",
+  "In Stock": "bg-green-100 text-green-800",
+  High: "bg-red-100 text-red-800",
+  Medium: "bg-amber-100 text-amber-800",
+  Low: "bg-blue-100 text-blue-800",
+  Completed: "bg-green-100 text-green-800",
 };
 
 const Badge = ({ e }: { e: string }) => (
@@ -264,7 +263,7 @@ interface DataContextType {
 const DataContext = createContext<DataContextType | null>(null);
 
 const fmtTime = (iso: string) =>
-  new Date(iso).toLocaleTimeString("es-MX", {
+  new Date(iso).toLocaleTimeString("en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });
@@ -437,7 +436,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
     // Si hay duplicados y no queremos saltarlos, retorna info sobre duplicados
     if (duplicados.length > 0 && !skipDuplicates) {
-      throw new Error(`${duplicados.length} productos ya existen (por SKU). Verifica los SKU duplicados.`);
+      throw new Error(`${duplicados.length} products already exist (by SKU). Check the duplicate SKUs.`);
     }
 
     // Filtrar productos que ya existen si skipDuplicates es true
@@ -447,7 +446,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       : payload;
 
     if (payloadFiltrado.length === 0) {
-      throw new Error("Todos los productos ya existen en la base de datos.");
+      throw new Error("All products already exist in the database.");
     }
 
     try {
@@ -518,8 +517,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     titulo: (m.titulo || "").trim(),
     descripcion: (m.descripcion || "").trim(),
     costo: Math.max(0, Number(m.costo) || 0),
-    prioridad: m.prioridad || "Media",
-    estado: m.estado || "Pendiente",
+    prioridad: m.prioridad || "Medium",
+    estado: m.estado || "Pending",
   });
 
   const addMejora = async (m: Omit<Mejora, "id">) => {
@@ -584,7 +583,7 @@ const useData = () => {
 // ------------------------------
 const mesActualKey = () => new Date().toISOString().slice(0, 7); // "2026-06"
 const mesActualNombre = () => {
-  const nombre = new Date().toLocaleDateString("es-MX", { month: "long", year: "numeric" });
+  const nombre = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
 };
 
@@ -622,7 +621,7 @@ const Dashboard = () => {
           : "bg-gradient-to-r from-slate-400 to-slate-300";
 
   const statusLabel =
-    pct >= 100 ? "Meta alcanzada!" : pct >= 70 ? "Muy cerca!" : pct >= 40 ? "En camino" : "Comenzando";
+    pct >= 100 ? "Meta alcanzada!" : pct >= 70 ? "Muy cerca!" : pct >= 40 ? "On track" : "Comenzando";
 
   const saveMeta = () => {
     const v = Number(metaInp);
@@ -640,7 +639,7 @@ const Dashboard = () => {
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              Meta de ventas · {mesActualNombre()}
+              Sales goal · {mesActualNombre()}
             </div>
             {meta > 0 && (
               <div className="text-xs text-muted-foreground mt-0.5">
@@ -686,16 +685,16 @@ const Dashboard = () => {
             )}
           </>
         ) : (
-          <Empty text="Toca '+ Fijar meta' para tu objetivo" />
+          <Empty text="Tap '+ Set goal' for your target" />
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-2.5 mb-3.5">
         {[
-          ["Ventas del mes", fmt(totalVentas), false],
-          ["Facturas", facturas.length, false],
+          ["Sales this month", fmt(totalVentas), false],
+          ["Invoices", facturas.length, false],
           ["Clientes", clientes.length, false],
-          ["Stock bajo", lowStock, true],
+          ["Low stock", lowStock, true],
         ].map(([label, val, red]) => (
           <div
             key={label as string}
@@ -713,7 +712,7 @@ const Dashboard = () => {
 
       <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
         <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-          Ultimas facturas
+          Recent invoices
         </div>
         {ultimasFacturas.length ? (
           ultimasFacturas.map((f) => (
@@ -738,7 +737,7 @@ const Dashboard = () => {
             />
           ))
         ) : (
-          <Empty text="Sin facturas aun" />
+          <Empty text="No invoices yet" />
         )}
       </div>
 
@@ -760,13 +759,13 @@ const Dashboard = () => {
             </div>
           ))
         ) : (
-          <Empty text="Sin actividad" />
+          <Empty text="No activity" />
         )}
       </div>
 
       {editMeta && (
-        <Modal title={`Meta de ventas · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
-          <Field label="Monto objetivo ($)">
+        <Modal title={`Sales goal · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
+          <Field label="Target amount ($)">
             <input
               type="text"
               inputMode="decimal"
@@ -795,13 +794,13 @@ const Dashboard = () => {
               onClick={() => setEditMeta(false)}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={saveMeta}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              Guardar meta
+              Save goal
             </button>
           </div>
         </Modal>
@@ -895,7 +894,7 @@ const Calendario = () => {
           </div>
           {!readOnly && (
             <button onClick={() => setShowConfig(true)} className={`px-3 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN}`}>
-              ⚙️ Días de entrega
+              ⚙️ Delivery days
             </button>
           )}
         </div>
@@ -941,7 +940,7 @@ const Calendario = () => {
         </div>
         {deliveryDays.length > 0 && (
           <div className="text-[11px] text-muted-foreground mt-2">
-            🚚 Entregas: {deliveryDays.map((d) => DIAS_SEMANA[d]).join(", ")}
+            🚚 Deliveries: {deliveryDays.map((d) => DIAS_SEMANA[d]).join(", ")}
           </div>
         )}
       </div>
@@ -970,16 +969,15 @@ const Calendario = () => {
               );
             })
           ) : (
-            <Empty text="Sin entregas programadas este día." />
+            <Empty text="No deliveries scheduled for this day." />
           )}
         </div>
       )}
 
       {showConfig && (
-        <Modal title="Días de entrega" onClose={() => setShowConfig(false)}>
+        <Modal title="Delivery days" onClose={() => setShowConfig(false)}>
           <p className="text-sm text-muted-foreground mb-3">
-            Marca los días en que haces entregas. Las órdenes creadas después del mediodía del día anterior
-            se programan automáticamente para el siguiente día de entrega disponible.
+            Mark the days you make deliveries. Orders created after noon the day before are automatically scheduled for the next available delivery day.
           </p>
           <div className="flex flex-wrap gap-2 mb-4">
             {DIAS_SEMANA.map((nombre, i) => (
@@ -1019,7 +1017,7 @@ const Facturas = () => {
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [fecha, setFecha] = useState(today());
-  const [estado, setEstado] = useState("Pendiente");
+  const [estado, setEstado] = useState("Pending");
 
   const productosPorSku = useMemo(
     () =>
@@ -1028,7 +1026,7 @@ const Facturas = () => {
         const skuB = (b.sku || "").trim();
         if (!skuA && skuB) return 1;
         if (skuA && !skuB) return -1;
-        return skuA.localeCompare(skuB, "es", { numeric: true }) || a.nom.localeCompare(b.nom, "es");
+        return skuA.localeCompare(skuB, "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
       }),
     [productos]
   );
@@ -1049,12 +1047,12 @@ const Facturas = () => {
 
   const handleSave = () => {
     if (!clienteSeleccionado) {
-      alert("Selecciona un cliente");
+      alert("Select a client");
       return;
     }
     const items = lineas.filter((l) => l.prodId);
     if (items.length === 0) {
-      alert("Agrega al menos un producto");
+      alert("Add at least one product");
       return;
     }
     const lineasDetalle: LineaFactura[] = items.map((l) => {
@@ -1080,7 +1078,7 @@ const Facturas = () => {
     setLineas([{ prodId: "", qty: 1 }]);
     setClienteSeleccionado("");
     setFecha(today());
-    setEstado("Pendiente");
+    setEstado("Pending");
   };
 
   return (
@@ -1088,7 +1086,7 @@ const Facturas = () => {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar factura..."
+        placeholder="Search invoices..."
         className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
       />
       {filtered.length ? (
@@ -1103,9 +1101,9 @@ const Facturas = () => {
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (confirm("¿Eliminar esta factura? No podrá ser recuperada.")) deleteFactura(f.id);
+                    if (confirm("Delete this invoice? It cannot be recovered.")) deleteFactura(f.id);
                   }}
-                  aria-label="Eliminar factura"
+                  aria-label="Delete invoice"
                   className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 z-[1]"
                 >
                   ×
@@ -1130,7 +1128,7 @@ const Facturas = () => {
         </div>
       ) : (
         <div className="bg-card rounded-2xl p-3.5 border border-border">
-          <Empty text="Sin facturas. Toca + para crear." />
+          <Empty text="No invoices. Tap + to create one." />
         </div>
       )}
       {!readOnly && (
@@ -1143,8 +1141,8 @@ const Facturas = () => {
       )}
 
       {show && !readOnly && (
-        <Modal title="Nueva Factura" onClose={() => setShow(false)}>
-          <Field label="Cliente">
+        <Modal title="New Invoice" onClose={() => setShow(false)}>
+          <Field label="Client">
             <select
               value={clienteSeleccionado}
               onChange={(e) => setClienteSeleccionado(e.target.value)}
@@ -1159,7 +1157,7 @@ const Facturas = () => {
             </select>
           </Field>
           <Row2>
-            <Field label="Fecha">
+            <Field label="Date">
               <input
                 type="date"
                 value={fecha}
@@ -1167,20 +1165,20 @@ const Facturas = () => {
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
-            <Field label="Estado">
+            <Field label="Status">
               <select
                 value={estado}
                 onChange={(e) => setEstado(e.target.value)}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               >
-                <option>Pendiente</option>
-                <option>Pagada</option>
-                <option>En revision</option>
+                <option>Pending</option>
+                <option>Paid</option>
+                <option>In Review</option>
               </select>
             </Field>
           </Row2>
           <div className="text-sm font-semibold text-muted-foreground mb-2">
-            Productos
+            Products
           </div>
           {lineas.map((l, i) => (
             <div
@@ -1234,7 +1232,7 @@ const Facturas = () => {
             onClick={() => setLineas((l) => [...l, { prodId: "", qty: 1 }])}
             className="w-full px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm mb-3"
           >
-            + Agregar linea
+            + Add line
           </button>
           <div className="border-t border-border pt-2.5 text-right mb-3">
             <div className="text-sm text-muted-foreground mb-0.5">
@@ -1247,13 +1245,13 @@ const Facturas = () => {
               onClick={() => setShow(false)}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              Guardar Factura
+              Save Invoice
             </button>
           </div>
         </Modal>
@@ -1292,7 +1290,7 @@ const Clientes = () => {
     ciudad: "",
     estado_dir: "",
     contacto: "",
-    estado: "Activo",
+    estado: "Active",
     abierto_sabados: false,
     foto_local: "",
   });
@@ -1326,10 +1324,10 @@ const Clientes = () => {
     const sorted = [...base];
     if (sortBy === "codigo_cliente") {
       sorted.sort((a, b) =>
-        (a.codigo_cliente || "").localeCompare(b.codigo_cliente || "", "es", { numeric: true })
+        (a.codigo_cliente || "").localeCompare(b.codigo_cliente || "", "en", { numeric: true })
       );
     } else {
-      sorted.sort((a, b) => a.nom.localeCompare(b.nom, "es"));
+      sorted.sort((a, b) => a.nom.localeCompare(b.nom, "en"));
     }
     return sorted;
   }, [clientes, q, sortBy]);
@@ -1351,7 +1349,7 @@ const Clientes = () => {
 
   const processCroppedImage = async () => {
     if (!cropImage) {
-      alert("Por favor carga una imagen primero");
+      alert("Please upload an image first");
       return;
     }
 
@@ -1396,12 +1394,12 @@ const Clientes = () => {
       setCropImage("");
     } catch (err) {
       console.error("[v0] Error:", err);
-      alert("Error al procesar la imagen. Intenta de nuevo.");
+      alert("Error processing image. Please try again.");
     }
   };
 
   const reset = () => {
-    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Activo", abierto_sabados: false, foto_local: "" });
+    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Active", abierto_sabados: false, foto_local: "" });
     setFotoLocal("");
     setEditId(null);
     setShowCropModal(false);
@@ -1441,11 +1439,11 @@ const Clientes = () => {
 
   const handleSave = () => {
     if (!form.nom.trim()) {
-      alert("Ingresa el nombre");
+      alert("Enter the name");
       return;
     }
     if (!form.codigo_cliente.trim()) {
-      alert("Ingresa el numero de cliente");
+      alert("Enter the client number");
       return;
     }
     if (editId) {
@@ -1464,7 +1462,7 @@ const Clientes = () => {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar cliente..."
+          placeholder="Search clients..."
           autoComplete="off"
           className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
@@ -1473,7 +1471,7 @@ const Clientes = () => {
             <button
               onClick={() => setShowAddMenu((v) => !v)}
               className="w-10 h-10 flex items-center justify-center rounded-xl bg-primary text-primary-foreground text-xl font-light"
-              aria-label="Agregar cliente"
+              aria-label="Add client"
             >
               +
             </button>
@@ -1491,7 +1489,7 @@ const Clientes = () => {
                   }}
                 >
                   <span className="text-base">+</span>
-                  Agregar manualmente
+                  Add manually
                 </button>
                 <div className="h-px bg-border mx-3" />
                 <button
@@ -1508,7 +1506,7 @@ const Clientes = () => {
       </div>
       <div className="flex items-center gap-2 mb-3">
         <label htmlFor="sortByCliente" className="text-xs text-muted-foreground shrink-0">
-          Ordenar por
+          Sort by
         </label>
         <select
           id="sortByCliente"
@@ -1516,8 +1514,8 @@ const Clientes = () => {
           onChange={(e) => setSortBy(e.target.value as "codigo_cliente" | "nom")}
           className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
         >
-          <option value="nom">Nombre A-Z</option>
-          <option value="codigo_cliente">Número de Cliente A-Z</option>
+          <option value="nom">Name A-Z</option>
+          <option value="codigo_cliente">Client Number A-Z</option>
         </select>
         <span className="text-xs text-muted-foreground shrink-0">{filtered.length} cli.</span>
       </div>
@@ -1553,7 +1551,7 @@ const Clientes = () => {
                       <div className="text-xs font-mono text-muted-foreground">#{c.codigo_cliente}</div>
                     )}
                     <div className="text-xs text-muted-foreground">
-                      {c.email || c.tel || "Sin contacto"}
+                      {c.email || c.tel || "No contact"}
                     </div>
                   </div>
                   <Badge e={c.estado} />
@@ -1568,7 +1566,7 @@ const Clientes = () => {
                 )}
                 {c.abierto_sabados && (
                   <div className="inline-block text-xs font-medium text-primary bg-secondary px-2 py-0.5 rounded-full mb-2.5">
-                    Abierto los sábados
+                    Open on Saturdays
                   </div>
                 )}
                 {!readOnly && (
@@ -1577,15 +1575,15 @@ const Clientes = () => {
                       onClick={() => openEdit(c)}
                       className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-primary/85 border border-white/30 shadow-sm hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground text-xs font-bold"
                     >
-                      Editar
+                      Edit
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm("Eliminar cliente?")) deleteCliente(c.id);
+                        if (confirm("Delete client?")) deleteCliente(c.id);
                       }}
                       className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
                     >
-                      Eliminar
+                      Delete
                     </button>
                   </div>
                 )}
@@ -1594,14 +1592,14 @@ const Clientes = () => {
           ))
         ) : (
           <div className="bg-card rounded-2xl p-3.5 border border-border">
-            <Empty text="Sin clientes. Toca + para agregar." />
+            <Empty text="No clients. Tap + to add one." />
           </div>
         )}
       </div>
 
       {show && (
-        <Modal title={editId ? "Editar Cliente" : "Nuevo Cliente"} onClose={() => { reset(); setShow(false); }}>
-          <Field label="Foto del local">
+        <Modal title={editId ? "Edit Client" : "New Client"} onClose={() => { reset(); setShow(false); }}>
+          <Field label="Store photo">
             <div
               onClick={() => document.getElementById("fotoClienteInput")?.click()}
               className="w-full h-24 rounded-xl border-2 border-dashed border-border flex items-center justify-center cursor-pointer bg-white mb-1"
@@ -1619,7 +1617,7 @@ const Clientes = () => {
               ) : (
                 <div className="text-center">
                   <div className="text-2xl">📸</div>
-                  <div className="text-xs text-muted-foreground mt-1">Toca para agregar foto</div>
+                  <div className="text-xs text-muted-foreground mt-1">Tap to add photo</div>
                 </div>
               )}
             </div>
@@ -1631,7 +1629,7 @@ const Clientes = () => {
               className="hidden"
             />
           </Field>
-          <Field label="Nombre *">
+          <Field label="Name *">
             <input
               value={form.nom}
               onChange={(e) => setForm({ ...form, nom: e.target.value })}
@@ -1640,7 +1638,7 @@ const Clientes = () => {
             />
           </Field>
           <Row2>
-            <Field label="Número de Cliente *">
+            <Field label="Client Number *">
               <input
                 value={form.codigo_cliente}
                 onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
@@ -1652,10 +1650,10 @@ const Clientes = () => {
                 }`}
               />
               {!editId && (
-                <p className="text-[11px] text-muted-foreground mt-1">Se asigna automáticamente</p>
+                <p className="text-[11px] text-muted-foreground mt-1">Assigned automatically</p>
               )}
             </Field>
-            <Field label="Telefono">
+            <Field label="Phone">
               <input
                 value={form.tel}
                 onChange={(e) => setForm({ ...form, tel: e.target.value })}
@@ -1672,7 +1670,7 @@ const Clientes = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Direccion">
+          <Field label="Address">
             <input
               value={form.dir}
               onChange={(e) => setForm({ ...form, dir: e.target.value })}
@@ -1689,38 +1687,38 @@ const Clientes = () => {
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
-            <Field label="Estado">
+            <Field label="State">
               <input
                 value={form.estado_dir}
                 onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
-                placeholder="Ej. New York"
+                placeholder="E.g. New York"
                 autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
           </Row2>
-          <Field label="Contacto">
+          <Field label="Contact">
             <input
               value={form.contacto}
               onChange={(e) => setForm({ ...form, contacto: e.target.value })}
-              placeholder="Nombre de la persona de contacto"
+              placeholder="Contact person's name"
               autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Estatus del Cliente">
+          <Field label="Client Status">
             <select
               value={form.estado}
               onChange={(e) => setForm({ ...form, estado: e.target.value })}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             >
-              <option>Activo</option>
-              <option>Inactivo</option>
-              <option>En espera</option>
+              <option>Active</option>
+              <option>Inactive</option>
+              <option>Waiting</option>
             </select>
           </Field>
           <div className="mt-1 p-3 bg-muted rounded-xl flex items-center justify-between">
-            <span className="text-sm font-medium text-card-foreground">Abierto los sábados</span>
+            <span className="text-sm font-medium text-card-foreground">Open on Saturdays</span>
             <button
               type="button"
               onClick={() => setForm({ ...form, abierto_sabados: !form.abierto_sabados })}
@@ -1740,13 +1738,13 @@ const Clientes = () => {
               onClick={() => { reset(); setShow(false); }}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              {editId ? "Guardar Cambios" : "Guardar Cliente"}
+              {editId ? "Save Changes" : "Save Client"}
             </button>
           </div>
         </Modal>
@@ -1784,13 +1782,13 @@ const Clientes = () => {
                 onClick={() => setShowCropModal(false)}
                 className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={processCroppedImage}
                 className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
               >
-                Guardar foto
+                Save photo
               </button>
             </div>
           </div>
@@ -1799,19 +1797,19 @@ const Clientes = () => {
 
       {/* Modal Subir Clientes A Granel */}
       {showBulk && (
-        <Modal title="Subir Clientes A Granel" onClose={() => setShowBulk(false)}>
+        <Modal title="Bulk Upload Clients" onClose={() => setShowBulk(false)}>
           <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
-            Sube un archivo Excel (.xlsx) con estas columnas:{" "}
+            Upload an Excel file (.xlsx) with these columns:{" "}
             <span className="font-medium text-card-foreground">
-              Numero de Cliente, Nombre, Direccion, Ciudad, Estado, Contacto, Telefono, Email, Abierto Sabados
-            </span>. (Estado = estado/provincia de la dirección, ej. "NY").
+              Client Number, Name, Address, City, State, Contact, Phone, Email, Open Saturdays
+            </span>. (State = the address state/province, e.g. "NY").
           </div>
           <button
             onClick={async () => {
               const XLSX = await import("xlsx");
               const ws = XLSX.utils.aoa_to_sheet([
-                ["Numero de Cliente", "Nombre", "Direccion", "Ciudad", "Estado", "Contacto", "Telefono", "Email", "Abierto Sabados"],
-                ["CLI-0001", "Hamilton Meat Market", "123 St Nicholas Ave", "New York", "NY", "Hamilton Diaz", "2125550199", "hamilton@example.com", "Si"],
+                ["Client Number", "Name", "Address", "City", "State", "Contact", "Phone", "Email", "Open Saturdays"],
+                ["CLI-0001", "Hamilton Meat Market", "123 St Nicholas Ave", "New York", "NY", "Hamilton Diaz", "2125550199", "hamilton@example.com", "Yes"],
               ]);
               const wb = XLSX.utils.book_new();
               XLSX.utils.book_append_sheet(wb, ws, "Clientes");
@@ -1819,14 +1817,14 @@ const Clientes = () => {
             }}
             className="w-full px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-medium text-sm mb-3"
           >
-            Descargar plantilla de ejemplo
+            Download sample template
           </button>
           <div
             onClick={() => document.getElementById("clienteExcelInput")?.click()}
             className="w-full h-28 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer bg-muted mb-3"
           >
             <div className="text-2xl">📊</div>
-            <div className="text-sm text-muted-foreground mt-1">Toca para seleccionar archivo Excel</div>
+            <div className="text-sm text-muted-foreground mt-1">Tap to select Excel file</div>
           </div>
           <input
             id="clienteExcelInput"
@@ -1843,28 +1841,28 @@ const Clientes = () => {
                 const wb = XLSX.read(buf, { type: "array" });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
-                if (!json.length) { setBulkErr("El archivo esta vacio."); return; }
+                if (!json.length) { setBulkErr("The file is empty."); return; }
                 const normH = (s: string) => String(s || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]/g, "");
                 const headers = Object.keys(json[0]);
                 const find = (aliases: string[]) => headers.find(h => aliases.includes(normH(h))) ?? null;
-                const kNom = find(["nombre", "nom", "cliente", "razon"]);
-                if (!kNom) { setBulkErr("No se encontro la columna 'Nombre'. Verifica los encabezados o descarga la plantilla."); return; }
-                const kCod = find(["numerodecliente", "numerocliente", "codigodecliente", "codigocliente", "codigo", "numero", "rfc"]);
-                if (!kCod) { setBulkErr("No se encontro la columna 'Numero de Cliente'. Verifica los encabezados o descarga la plantilla."); return; }
+                const kNom = find(["nombre", "nom", "name", "cliente", "client", "razon"]);
+                if (!kNom) { setBulkErr("Couldn't find the 'Name' column. Check the headers or download the template."); return; }
+                const kCod = find(["numerodecliente", "numerocliente", "codigodecliente", "codigocliente", "codigo", "numero", "rfc", "clientnumber", "clientno", "number"]);
+                if (!kCod) { setBulkErr("Couldn't find the 'Client Number' column. Check the headers or download the template."); return; }
                 const kTel = find(["telefono", "tel", "phone"]);
                 const kEmail = find(["email", "correo"]);
                 const kDir = find(["direccion", "dir", "address"]);
                 const kCiudad = find(["ciudad", "city"]);
                 const kEstDir = find(["estado", "state", "provincia"]);
-                const kContacto = find(["contacto", "persona", "personadecontacto"]);
-                const kSab = find(["abiertosabados", "abiertolossabados", "sabados", "sabado"]);
+                const kContacto = find(["contacto", "persona", "personadecontacto", "contact"]);
+                const kSab = find(["abiertosabados", "abiertolossabados", "sabados", "sabado", "opensaturdays", "saturdays"]);
                 const rows: ClienteBulkRow[] = json.map((r) => {
                   const nom = String(kNom ? r[kNom] : "").trim();
                   const codigo_cliente = String(kCod ? r[kCod] : "").trim();
                   const sabVal = normH(String(kSab ? r[kSab] : ""));
                   let err: string | undefined;
-                  if (!nom) err = "Falta nombre";
-                  else if (!codigo_cliente) err = "Falta numero de cliente";
+                  if (!nom) err = "Missing name";
+                  else if (!codigo_cliente) err = "Missing client number";
                   return {
                     nom,
                     codigo_cliente,
@@ -1874,7 +1872,7 @@ const Clientes = () => {
                     ciudad: String(kCiudad ? r[kCiudad] : "").trim(),
                     estado_dir: String(kEstDir ? r[kEstDir] : "").trim(),
                     contacto: String(kContacto ? r[kContacto] : "").trim(),
-                    estado: "Activo",
+                    estado: "Active",
                     abierto_sabados: ["si", "s", "yes", "y", "true", "1", "x"].includes(sabVal),
                     foto_local: "",
                     _error: err,
@@ -1882,7 +1880,7 @@ const Clientes = () => {
                 });
                 setBulkRows(rows);
               } catch {
-                setBulkErr("No se pudo leer el archivo. Asegurate de que sea un Excel valido (.xlsx).");
+                setBulkErr("Couldn't read the file. Make sure it's a valid Excel file (.xlsx).");
               }
             }}
           />
@@ -1892,16 +1890,16 @@ const Clientes = () => {
           {bulkRows.length > 0 && (
             <>
               <div className="text-sm font-semibold text-card-foreground mb-2">
-                Vista previa ({bulkRows.filter(r => !r._error).length} de {bulkRows.length} validos)
+                Preview ({bulkRows.filter(r => !r._error).length} of {bulkRows.length} valid)
               </div>
               <div className="max-h-60 overflow-auto rounded-xl border border-border mb-3">
                 <table className="w-full text-xs">
                   <thead className="bg-muted sticky top-0">
                     <tr className="text-left text-muted-foreground">
-                      <th className="px-2 py-1.5 font-medium">Estado</th>
-                      <th className="px-2 py-1.5 font-medium">Nombre</th>
-                      <th className="px-2 py-1.5 font-medium">No. Cliente</th>
-                      <th className="px-2 py-1.5 font-medium">Telefono</th>
+                      <th className="px-2 py-1.5 font-medium">Status</th>
+                      <th className="px-2 py-1.5 font-medium">Name</th>
+                      <th className="px-2 py-1.5 font-medium">Client No.</th>
+                      <th className="px-2 py-1.5 font-medium">Phone</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1911,7 +1909,7 @@ const Clientes = () => {
                           {r._error ? <span className="text-destructive">✕</span> : <span className="text-green-600">✓</span>}
                         </td>
                         <td className="px-2 py-1.5 text-card-foreground max-w-[120px] truncate">
-                          {r.nom || <span className="text-destructive italic">Sin nombre</span>}
+                          {r.nom || <span className="text-destructive italic">No name</span>}
                           {r._error && <div className="text-xs text-destructive">{r._error}</div>}
                         </td>
                         <td className="px-2 py-1.5 text-muted-foreground font-mono">{r.codigo_cliente || "—"}</td>
@@ -1928,18 +1926,18 @@ const Clientes = () => {
                   setBulkSaving(true);
                   try {
                     const n = await addClientesBulk(valid.map(({ _error, ...rest }) => rest));
-                    alert(`Se importaron ${n} clientes correctamente.`);
+                    alert(`${n} clients imported successfully.`);
                     setShowBulk(false);
                     setBulkRows([]);
                   } catch (err) {
-                    setBulkErr(`Error al guardar: ${err instanceof Error ? err.message : "Error desconocido"}`);
+                    setBulkErr(`Error saving: ${err instanceof Error ? err.message : "Unknown error"}`);
                   } finally {
                     setBulkSaving(false);
                   }
                 }}
                 className="w-full px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
               >
-                {bulkSaving ? "Importando..." : `Importar ${bulkRows.filter(r => !r._error).length} clientes`}
+                {bulkSaving ? "Importing..." : `Import ${bulkRows.filter(r => !r._error).length} clients`}
               </button>
             </>
           )}
@@ -1985,10 +1983,10 @@ type ClienteBulkRow = {
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "nom", label: "A-Z Descripcion" },
-  { key: "precio", label: "Precio" },
-  { key: "stock", label: "Inventario Actual" },
+  { key: "precio", label: "Price" },
+  { key: "stock", label: "Current Stock" },
   { key: "fabricante", label: "Fabricante" },
-  { key: "barcode", label: "Codigo de Barras" },
+  { key: "barcode", label: "Barcode" },
   { key: "sku", label: "SKU" },
 ];
 
@@ -2053,7 +2051,7 @@ const Inventario = () => {
   const allTags = useMemo(() => {
     const set = new Set<string>();
     productosAlmacen.forEach((p) => (p.etiquetas || []).forEach((t) => set.add(t)));
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "es"));
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "en"));
   }, [productosAlmacen]);
 
   // Fuzzy search index over name, sku, barcode, and normalized tags
@@ -2138,7 +2136,7 @@ const Inventario = () => {
     // Only apply column sort when the user explicitly chooses one.
     const sorted = [...list];
     const textCmp = (a: string, b: string) =>
-      (a || "").localeCompare(b || "", "es", { sensitivity: "base", numeric: true });
+      (a || "").localeCompare(b || "", "en", { sensitivity: "base", numeric: true });
     const blankLast = (v: string) => (v && v.trim() ? 0 : 1);
 
     const hasQuery = q.trim().length > 0;
@@ -2249,7 +2247,7 @@ const Inventario = () => {
 
   const handleSave = () => {
     if (!form.nom.trim()) {
-      alert("Ingresa el nombre");
+      alert("Enter the name");
       return;
     }
     // Fold any pending word(s) still in the input box into the list
@@ -2361,14 +2359,14 @@ const Inventario = () => {
 
   const COLS: Record<keyof Omit<BulkRow, "_error" | "_warning">, string[]> = {
     sku: ["sku"],
-    nom: ["descripcion", "descripcionn", "nombre", "producto"],
-    fabricante: ["fabricante", "marca", "proveedor", "manufacturer"],
-    stock: ["inventarioactual", "inventario", "stock", "existencia"],
-    cajas: ["cantidadporcajas", "cantidadcajas", "cajas", "porcaja", "unidadesporcaja"],
+    nom: ["descripcion", "descripcionn", "nombre", "producto", "description", "name", "product"],
+    fabricante: ["fabricante", "marca", "proveedor", "manufacturer", "brand", "supplier"],
+    stock: ["inventarioactual", "inventario", "stock", "existencia", "currentstock", "inventory", "qty", "quantity"],
+    cajas: ["cantidadporcajas", "cantidadcajas", "cajas", "porcaja", "unidadesporcaja", "unitsperbox", "perbox", "boxqty"],
     barcode: ["codigodebarras", "codigobarras", "barcode", "cb"],
-    precio: ["precio", "precioventa", "venta"],
-    costo: ["costo", "preciocosto"],
-    min: ["inventariominimo", "minimo", "stockminimo", "min"],
+    precio: ["precio", "precioventa", "venta", "price", "saleprice"],
+    costo: ["costo", "preciocosto", "cost"],
+    min: ["inventariominimo", "minimo", "stockminimo", "min", "minimumstock", "minstock"],
   };
 
   const findKey = (headers: string[], aliases: string[]) => {
@@ -2390,7 +2388,7 @@ const Inventario = () => {
       const ws = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "" });
       if (!json.length) {
-        setBulkErr("El archivo esta vacio o no tiene filas de datos.");
+        setBulkErr("The file is empty or has no data rows.");
         setBulkRows([]);
         return;
       }
@@ -2408,7 +2406,7 @@ const Inventario = () => {
       };
       if (!keyMap.nom) {
         setBulkErr(
-          "No se encontro la columna 'Descripcion'. Verifica los encabezados o descarga la plantilla."
+          "Couldn't find the 'Description' column. Check the headers or download the template."
         );
         setBulkRows([]);
         return;
@@ -2427,16 +2425,16 @@ const Inventario = () => {
         let warning: string | undefined;
         
         if (!nom) {
-          error = "Falta descripci������n";
+          error = "Missing description";
         } else if (costo < 0) {
-          error = "Costo inválido";
+          error = "Invalid cost";
         } else if (stock < 0) {
-          error = "Inventario no puede ser negativo";
+          error = "Stock cannot be negative";
         }
         
         // Precio en 0 es advertencia, no error
         if (precio === 0) {
-          warning = "Precio en 0";
+          warning = "Price is $0";
         }
 
         return {
@@ -2455,7 +2453,7 @@ const Inventario = () => {
       });
       setBulkRows(rows);
     } catch {
-      setBulkErr("No se pudo leer el archivo. Asegurate de que sea un Excel valido (.xlsx).");
+      setBulkErr("Couldn't read the file. Make sure it's a valid Excel file (.xlsx).");
       setBulkRows([]);
     }
   };
@@ -2467,24 +2465,24 @@ const Inventario = () => {
         "SKU",
         "Descripcion",
         "Fabricante",
-        "Inventario Actual",
-        "Cantidad por cajas",
-        "Codigo de Barras",
-        "Precio",
+        "Current Stock",
+        "Units per box",
+        "Barcode",
+        "Price",
         "Costo",
-        "Inventario minimo",
+        "Minimum stock",
       ],
       ["SHP-001", "Shampoo Hidratante Pro", "Acromona", 45, 12, "7503000123401", 850, 520, 10],
     ]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Productos");
+    XLSX.utils.book_append_sheet(wb, ws, "Products");
     XLSX.writeFile(wb, "plantilla_inventario.xlsx");
   };
 
   const confirmBulk = async (skipDuplicates = false) => {
     const valid = bulkRows.filter((r) => !r._error);
     if (!valid.length) {
-      setBulkErr("No hay filas validas para importar.");
+      setBulkErr("No valid rows to import.");
       return;
     }
     setBulkSaving(true);
@@ -2515,14 +2513,14 @@ const Inventario = () => {
         setBulkRows([]);
       }
     } catch (error: unknown) {
-      const errorMsg = error instanceof Error ? error.message : "Error desconocido";
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
       console.error("[v0] Bulk upload failed:", errorMsg);
-      
-      // Si es error de duplicados, mostrar opción para saltar
-      if (errorMsg.includes("ya existen")) {
-        setBulkErr(`${errorMsg} ¿Quieres saltar los duplicados e importar solo los nuevos?`);
+
+      // If it's a duplicates error, show the option to skip them
+      if (errorMsg.includes("already exist")) {
+        setBulkErr(`${errorMsg} Do you want to skip the duplicates and import only the new ones?`);
       } else {
-        setBulkErr(`Error al guardar: ${errorMsg}. Por favor revisa la consola.`);
+        setBulkErr(`Error saving: ${errorMsg}. Please check the console.`);
       }
     } finally {
       setBulkSaving(false);
@@ -2552,7 +2550,7 @@ const Inventario = () => {
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
-        placeholder="Buscar por nombre, codigo o etiqueta..."
+        placeholder="Search by name, code or tag..."
         autoComplete="off"
         className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-2.5 outline-none focus:ring-2 focus:ring-ring"
       />
@@ -2561,7 +2559,7 @@ const Inventario = () => {
           htmlFor="sortBy"
           className="text-xs text-muted-foreground shrink-0"
         >
-          Ordenar por
+          Sort by
         </label>
         <select
           id="sortBy"
@@ -2616,7 +2614,7 @@ const Inventario = () => {
             const stock = Number(p.stock);
             const min = Number(p.min || 5);
             const estado =
-              stock <= 0 ? "Sin stock" : stock <= min ? "Stock bajo" : "En stock";
+              stock <= 0 ? "Out of stock" : stock <= min ? "Low stock" : "In Stock";
             return (
               <div
                 key={p.id}
@@ -2627,7 +2625,7 @@ const Inventario = () => {
                     onClick={() => openEdit(p)}
                     className="absolute top-2 right-2 bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold cursor-pointer text-secondary-foreground z-[1]"
                   >
-                    Editar
+                    Edit
                   </button>
                 )}
                 <div
@@ -2708,7 +2706,7 @@ const Inventario = () => {
           })
         ) : (
           <div className="col-span-2">
-            <Empty text="Sin productos. Toca + para agregar." />
+            <Empty text="No products. Tap + to add one." />
           </div>
         )}
       </div>
@@ -2728,19 +2726,19 @@ const Inventario = () => {
                 className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
               >
                 <span className="text-base" aria-hidden="true">✏️</span>
-                Agregar Manualmente
+                Add Manually
               </button>
               <button
                 onClick={openBulk}
                 className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
               >
                 <span className="text-base" aria-hidden="true">📄</span>
-                Subir A Granel
+                Bulk Upload
               </button>
             </div>
           )}
           <button
-            aria-label="Agregar producto"
+            aria-label="Add product"
             className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
             onClick={() => setMenuOpen((o) => !o)}
           >
@@ -2750,12 +2748,11 @@ const Inventario = () => {
       )}
 
       {showBulk && (
-        <Modal title="Subir Inventario A Granel" onClose={() => setShowBulk(false)}>
+        <Modal title="Bulk Upload Inventory" onClose={() => setShowBulk(false)}>
           <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
-            Sube un archivo Excel (.xlsx) con estas columnas:{" "}
+            Upload an Excel file (.xlsx) with these columns:{" "}
             <span className="font-medium text-card-foreground">
-              SKU, Descripcion, Fabricante, Inventario Actual, Cantidad por cajas,
-              Codigo de Barras, Precio, Costo, Inventario minimo
+              SKU, Description, Manufacturer, Current Stock, Units per box, Barcode, Price, Cost, Minimum stock
             </span>
             .
           </div>
@@ -2763,7 +2760,7 @@ const Inventario = () => {
             onClick={downloadTemplate}
             className="w-full px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-medium text-sm mb-3"
           >
-            Descargar plantilla de ejemplo
+            Download sample template
           </button>
           <div
             onClick={() => document.getElementById("excelInput")?.click()}
@@ -2771,7 +2768,7 @@ const Inventario = () => {
           >
             <div className="text-2xl">📊</div>
             <div className="text-sm text-muted-foreground mt-1">
-              Toca para seleccionar archivo Excel
+              Tap to select Excel file
             </div>
           </div>
           <input
@@ -2791,18 +2788,18 @@ const Inventario = () => {
           {bulkRows.length > 0 && (
             <>
               <div className="text-sm font-semibold text-card-foreground mb-2">
-                Vista previa ({bulkRows.filter((r) => !r._error).length} de{" "}
-                {bulkRows.length} válidos)
+                Preview ({bulkRows.filter((r) => !r._error).length} of{" "}
+                {bulkRows.length} valid)
               </div>
               <div className="max-h-60 overflow-auto rounded-xl border border-border mb-3">
                 <table className="w-full text-xs">
                   <thead className="bg-muted sticky top-0">
                     <tr className="text-left text-muted-foreground">
-                      <th className="px-2 py-1.5 font-medium">Estado</th>
-                      <th className="px-2 py-1.5 font-medium">Descripción</th>
+                      <th className="px-2 py-1.5 font-medium">Status</th>
+                      <th className="px-2 py-1.5 font-medium">Description</th>
                       <th className="px-2 py-1.5 font-medium">SKU</th>
                       <th className="px-2 py-1.5 font-medium text-right">Inv.</th>
-                      <th className="px-2 py-1.5 font-medium text-right">Precio</th>
+                      <th className="px-2 py-1.5 font-medium text-right">Price</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -2816,7 +2813,7 @@ const Inventario = () => {
                             ? "bg-yellow-50 hover:bg-yellow-100"
                             : "bg-green-50 hover:bg-green-100"
                         }`}
-                        title={r._error || r._warning || "Válido para importar"}
+                        title={r._error || r._warning || "Valid for import"}
                       >
                         <td className="px-2 py-1.5 font-medium whitespace-nowrap">
                           {r._error ? (
@@ -2829,7 +2826,7 @@ const Inventario = () => {
                         </td>
                         <td className="px-2 py-1.5 text-card-foreground max-w-xs truncate">
                           {r.nom || (
-                            <span className="text-destructive italic">Sin nombre</span>
+                            <span className="text-destructive italic">No name</span>
                           )}
                           {r._error && (
                             <div className="text-xs text-destructive mt-0.5">
@@ -2857,8 +2854,8 @@ const Inventario = () => {
                 </table>
               </div>
               <div className="text-xs text-muted-foreground bg-muted rounded-lg px-3 py-2 mb-3">
-                <strong>Campos requeridos:</strong> Descripción, Inventario Actual, Precio,
-                Costo. Los campos vacíos deben ser 0 o números válidos.
+                <strong>Required fields:</strong> Description, Current Stock, Price,
+                Cost. Empty fields must be 0 or valid numbers.
               </div>
             </>
           )}
@@ -2871,15 +2868,15 @@ const Inventario = () => {
               }}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
-            {bulkErr && bulkErr.includes("ya existen") && (
+            {bulkErr && bulkErr.includes("already exist") && (
               <button
                 onClick={() => confirmBulk(true)}
                 disabled={bulkSaving || !bulkRows.some((r) => !r._error)}
                 className="flex-1 px-4 py-2.5 rounded-xl bg-orange-600 text-white font-bold text-sm disabled:opacity-50"
               >
-                {bulkSaving ? "Importando..." : "Saltar duplicados"}
+                {bulkSaving ? "Importing..." : "Skip duplicates"}
               </button>
             )}
             <button
@@ -2890,8 +2887,8 @@ const Inventario = () => {
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
             >
               {bulkSaving
-                ? "Importando..."
-                : `Importar ${bulkRows.filter((r) => !r._error).length}`}
+                ? "Importing..."
+                : `Import ${bulkRows.filter((r) => !r._error).length}`}
             </button>
           </div>
         </Modal>
@@ -2899,10 +2896,10 @@ const Inventario = () => {
 
       {show && (
         <Modal
-          title={editId ? "Editar Producto" : "Nuevo Producto"}
+          title={editId ? "Edit Product" : "New Product"}
           onClose={() => setShow(false)}
         >
-          <Field label="Almacén">
+          <Field label="Warehouse">
             <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
               <button
                 type="button"
@@ -2960,7 +2957,7 @@ const Inventario = () => {
               </button>
             )}
           </Field>
-          <Field label="Codigo de barras">
+          <Field label="Barcode">
             <input
               value={form.barcode}
               onChange={(e) => setForm({ ...form, barcode: e.target.value })}
@@ -2968,7 +2965,7 @@ const Inventario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Nombre *">
+          <Field label="Name *">
             <input
               value={form.nom}
               onChange={(e) => setForm({ ...form, nom: e.target.value })}
@@ -3026,14 +3023,14 @@ const Inventario = () => {
                   }
                 }}
                 onBlur={() => etqInput.trim() && addTag(etqInput)}
-                placeholder="Una palabra por etiqueta (ej. aceite rizos hair)"
+                placeholder="One word per tag (e.g. oil curls hair)"
                 autoComplete="off"
                 className="w-full px-1 py-1 bg-transparent text-card-foreground text-base outline-none"
               />
             </div>
           </Field>
           <Row2>
-            <Field label="Precio ($)">
+            <Field label="Price ($)">
               <input
                 type="text"
                 inputMode="decimal"
@@ -3059,7 +3056,7 @@ const Inventario = () => {
           {formAlmacen !== "castillo" && (
             <>
               <Row2>
-                <Field label="Stock (Inv. actual)">
+                <Field label="Stock (current)">
                   <input
                     type="text"
                     inputMode="numeric"
@@ -3070,7 +3067,7 @@ const Inventario = () => {
                     className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
                   />
                 </Field>
-                <Field label="Cantidad por cajas">
+                <Field label="Units per box">
                   <input
                     type="text"
                     inputMode="numeric"
@@ -3082,7 +3079,7 @@ const Inventario = () => {
                   />
                 </Field>
               </Row2>
-              <Field label="Stock minimo">
+              <Field label="Minimum stock">
                 <input
                   type="text"
                   inputMode="numeric"
@@ -3098,14 +3095,14 @@ const Inventario = () => {
           {editId && (
             <button
               onClick={() => {
-                if (confirm("Eliminar producto?")) {
+                if (confirm("Delete product?")) {
                   deleteProducto(editId);
                   setShow(false);
                 }
               }}
               className="w-full px-4 py-2.5 rounded-xl backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive font-medium text-sm mb-3"
             >
-              Eliminar producto
+              Delete product
             </button>
           )}
           <div className="flex gap-2.5 mt-3.5">
@@ -3113,13 +3110,13 @@ const Inventario = () => {
               onClick={() => setShow(false)}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              {editId ? "Actualizar" : "Guardar"} Producto
+              {editId ? "Actualizar" : "Save"} Producto
             </button>
           </div>
         </Modal>
@@ -3137,7 +3134,7 @@ const Inventario = () => {
           />
           <button
             onClick={() => setFotoAmpliada(null)}
-            aria-label="Cerrar"
+            aria-label="Close"
             className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/20 text-white text-xl flex items-center justify-center"
           >
             X
@@ -3164,7 +3161,7 @@ const Ordenes = () => {
   const [form, setForm] = useState({
     cli: "",
     fecha: today(),
-    estado: "Pendiente",
+    estado: "Pending",
   });
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
@@ -3174,7 +3171,7 @@ const Ordenes = () => {
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
-  const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pendiente" });
+  const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pending" });
 
   const clienteFor = (cli: string) =>
     clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
@@ -3186,7 +3183,7 @@ const Ordenes = () => {
         const skuB = (b.sku || "").trim();
         if (!skuA && skuB) return 1;
         if (skuA && !skuB) return -1;
-        return skuA.localeCompare(skuB, "es", { numeric: true }) || a.nom.localeCompare(b.nom, "es");
+        return skuA.localeCompare(skuB, "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
       }),
     [productos]
   );
@@ -3198,12 +3195,12 @@ const Ordenes = () => {
 
   const handleSave = () => {
     if (!form.cli) {
-      alert("Selecciona un cliente");
+      alert("Select a client");
       return;
     }
     const items = lineas.filter((l) => l.prodId);
     if (items.length === 0) {
-      alert("Agrega al menos un producto");
+      alert("Add at least one product");
       return;
     }
     const lineasDetalle = items.map((l) => {
@@ -3226,12 +3223,12 @@ const Ordenes = () => {
     });
     setShow(false);
     setLineas([{ prodId: "", qty: 1 }]);
-    setForm({ cli: "", fecha: today(), estado: "Pendiente" });
+    setForm({ cli: "", fecha: today(), estado: "Pending" });
   };
 
   const startPick = (ord: Orden) => {
     if (!ord.lineas?.length) {
-      alert("Esta orden no tiene productos detallados.");
+      alert("This order has no detailed products.");
       return;
     }
     setPicking(ord);
@@ -3256,7 +3253,7 @@ const Ordenes = () => {
   const completePick = () => {
     if (picking) {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
-      updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completada" });
+      updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completed" });
 
       // Genera la factura solo con lo que realmente se envio (cantidad enviada > 0)
       const facturaLineas: LineaFactura[] = pickItems
@@ -3275,7 +3272,7 @@ const Ordenes = () => {
       addFactura({
         cli: cInfo?.nom || picking.cli,
         fecha: today(),
-        estado: "Pendiente",
+        estado: "Pending",
         total: +facturaTotal.toFixed(2),
         lineas: facturaLineas,
       });
@@ -3293,14 +3290,14 @@ const Ordenes = () => {
 
   const guardarParcial = () => {
     if (!picking || !puedeGuardarParcial) return;
-    updateOrden(picking.id, { ...picking, lineas: pickItems, estado: "En proceso" });
+    updateOrden(picking.id, { ...picking, lineas: pickItems, estado: "In Progress" });
     setPicking(null);
   };
 
   const handleDeleteOrden = (ord: Orden) => {
     if (
       confirm(
-        `¿Eliminar la orden #${ord.num}? Esta acción no se puede deshacer y la orden no podrá ser recuperada.`
+        `Delete order #${ord.num}? This action cannot be undone and the order cannot be recovered.`
       )
     ) {
       deleteOrden(ord.id);
@@ -3328,8 +3325,8 @@ const Ordenes = () => {
       const bTiene = initialQtys[b.id] > 0 ? 0 : 1;
       if (aTiene !== bTiene) return aTiene - bTiene;
       return (
-        (a.sku || "").localeCompare(b.sku || "", "es", { numeric: true }) ||
-        a.nom.localeCompare(b.nom, "es")
+        (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) ||
+        a.nom.localeCompare(b.nom, "en")
       );
     });
     setEditProductOrder(sorted.map((p) => p.id));
@@ -3385,7 +3382,7 @@ const Ordenes = () => {
     if (!editingOrden) return;
     const items = Object.entries(editQtys).filter(([, qty]) => qty > 0);
     if (items.length === 0) {
-      alert("Agrega al menos un producto");
+      alert("Add at least one product");
       return;
     }
     const lineasDetalle = items.map(([prodId, qty]) => {
@@ -3414,8 +3411,8 @@ const Ordenes = () => {
   };
 
   const ordenesOrdenadas = [...ordenes].sort((a, b) => {
-    const aDone = a.estado === "Completada" ? 1 : 0;
-    const bDone = b.estado === "Completada" ? 1 : 0;
+    const aDone = a.estado === "Completed" ? 1 : 0;
+    const bDone = b.estado === "Completed" ? 1 : 0;
     return aDone - bDone;
   });
 
@@ -3438,7 +3435,7 @@ const Ordenes = () => {
                       <div className="relative shrink-0">
                         <button
                           onClick={() => setMenuOpenId(menuOpenId === o.id ? null : o.id)}
-                          aria-label="Editar o eliminar orden"
+                          aria-label="Edit or delete order"
                           className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-card-foreground hover:bg-muted"
                         >
                           <svg width={14} height={14} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
@@ -3450,16 +3447,16 @@ const Ordenes = () => {
                           <>
                             <div className="fixed inset-0 z-10" onClick={() => setMenuOpenId(null)} />
                             <div className="absolute left-0 top-7 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden min-w-[160px]">
-                              {o.estado === "Completada" ? (
+                              {o.estado === "Completed" ? (
                                 <div className="px-3.5 py-2.5 text-[11px] text-muted-foreground leading-snug">
-                                  No se puede editar: la factura ya fue generada.
+                                  Can't be edited: the invoice has already been generated.
                                 </div>
                               ) : (
                                 <button
                                   onClick={() => startEdit(o)}
                                   className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
                                 >
-                                  ✏️ Editar
+                                  ✏️ Edit
                                 </button>
                               )}
                               <div className="h-px bg-border mx-2" />
@@ -3470,7 +3467,7 @@ const Ordenes = () => {
                                 }}
                                 className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-destructive hover:bg-red-50 text-left"
                               >
-                                🗑️ Borrar
+                                🗑️ Delete
                               </button>
                             </div>
                           </>
@@ -3493,9 +3490,9 @@ const Ordenes = () => {
                     className="mt-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md bg-white/50 border border-white/60 text-[#4a6741] text-xs font-bold"
                     onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
                   >
-                    📋 Estimado
+                    📋 Estimate
                   </button>
-                  {o.estado !== "Completada" && !readOnly && (
+                  {o.estado !== "Completed" && !readOnly && (
                     <>
                       <br />
                       <button
@@ -3512,7 +3509,7 @@ const Ordenes = () => {
             );
           })
         ) : (
-          <Empty text="Sin ordenes. Toca + para crear." />
+          <Empty text="No orders. Tap + to create one." />
         )}
       </div>
       {!readOnly && (
@@ -3525,8 +3522,8 @@ const Ordenes = () => {
       )}
 
       {show && !readOnly && (
-        <Modal title="Nueva Orden" onClose={() => setShow(false)}>
-          <Field label="Cliente">
+        <Modal title="New Order" onClose={() => setShow(false)}>
+          <Field label="Client">
             <select
               value={form.cli}
               onChange={(e) => setForm({ ...form, cli: e.target.value })}
@@ -3541,7 +3538,7 @@ const Ordenes = () => {
             </select>
           </Field>
           <Row2>
-            <Field label="Entrega">
+            <Field label="Delivery">
               <input
                 type="date"
                 value={form.fecha}
@@ -3556,14 +3553,14 @@ const Ordenes = () => {
                 onChange={(e) => setForm({ ...form, estado: e.target.value })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               >
-                <option>Pendiente</option>
-                <option>En proceso</option>
-                <option>Completada</option>
+                <option>Pending</option>
+                <option>In Progress</option>
+                <option>Completed</option>
               </select>
             </Field>
           </Row2>
           <div className="text-sm font-semibold text-muted-foreground mb-2">
-            Productos
+            Products
           </div>
           {lineas.map((l, i) => (
             <div
@@ -3617,7 +3614,7 @@ const Ordenes = () => {
             onClick={() => setLineas((l) => [...l, { prodId: "", qty: 1 }])}
             className="w-full px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm mb-3"
           >
-            + Agregar manualmente
+            + Add manually
           </button>
           <div className="text-right border-t border-border pt-2.5 mb-3">
             <strong className="text-base text-card-foreground">Total: {fmt(total)}</strong>
@@ -3627,13 +3624,13 @@ const Ordenes = () => {
               onClick={() => setShow(false)}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              Guardar Orden
+              Save Order
             </button>
           </div>
         </Modal>
@@ -3672,10 +3669,10 @@ const Ordenes = () => {
                 onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })}
                 className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
               >
-                <option>Pendiente</option>
-                <option>En proceso</option>
-                <option>Completada</option>
-                <option>Cancelado</option>
+                <option>Pending</option>
+                <option>In Progress</option>
+                <option>Completed</option>
+                <option>Cancelled</option>
               </select>
             </div>
             <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
@@ -3699,7 +3696,7 @@ const Ordenes = () => {
             <input
               type="search"
               inputMode="search"
-              placeholder="Buscar por nombre, SKU o código de barras"
+              placeholder="Search by name, SKU or barcode"
               value={editSearch}
               onChange={(e) => setEditSearch(e.target.value)}
               autoComplete="off"
@@ -3743,7 +3740,7 @@ const Ordenes = () => {
 
                       {editandoDescuentoId === p.id ? (
                         <div className="mt-1.5">
-                          <label className="text-[10px] text-muted-foreground block mb-1">Precio para esta orden</label>
+                          <label className="text-[10px] text-muted-foreground block mb-1">Price for this order</label>
                           <input
                             type="text"
                             inputMode="decimal"
@@ -3769,7 +3766,7 @@ const Ordenes = () => {
                           onClick={() => setEditandoDescuentoId(p.id)}
                           className="mt-1.5 text-[11px] font-medium text-primary underline self-start"
                         >
-                          🏷️ Aplicar descuento
+                          🏷️ Apply discount
                         </button>
                       )}
                       {editPrecios[p.id] !== undefined && (
@@ -3777,12 +3774,12 @@ const Ordenes = () => {
                           onClick={() => quitarEditPrecio(p.id)}
                           className="mt-1 text-[11px] text-destructive underline self-start"
                         >
-                          Quitar descuento
+                          Remove discount
                         </button>
                       )}
 
                       <div className="mt-2 pt-2 border-t border-border">
-                        <label className="text-[10px] text-muted-foreground block mb-1">Cantidad</label>
+                        <label className="text-[10px] text-muted-foreground block mb-1">Quantity</label>
                         <input
                           type="text"
                           inputMode="numeric"
@@ -3799,7 +3796,7 @@ const Ordenes = () => {
                 })
               ) : (
                 <div className="col-span-2 text-center text-muted-foreground py-10 text-sm">
-                  No se encontraron productos
+                  No products found
                 </div>
               )}
             </div>
@@ -3814,13 +3811,13 @@ const Ordenes = () => {
                 onClick={() => setEditingOrden(null)}
                 className="px-4 py-2.5 rounded-full bg-card border border-border text-card-foreground font-medium text-sm"
               >
-                Cancelar
+                Cancel
               </button>
               <button
                 onClick={handleSaveEdit}
                 className="px-5 py-2.5 rounded-full bg-primary text-primary-foreground font-bold text-sm"
               >
-                Guardar
+                Save
               </button>
             </div>
           </div>
@@ -3841,10 +3838,10 @@ const Ordenes = () => {
             </button>
             <div className="flex-1 min-w-0">
               <span className="text-white text-base font-bold block truncate uppercase">
-                Orden #{picking.num} · {clienteFor(picking.cli)?.nom || picking.cli}
+                Order #{picking.num} · {clienteFor(picking.cli)?.nom || picking.cli}
               </span>
               <span className="text-white/80 text-xs">
-                {pickItems.filter((i) => i.picked).length}/{pickItems.length} productos confirmados
+                {pickItems.filter((i) => i.picked).length}/{pickItems.length} products confirmed
               </span>
             </div>
           </div>
@@ -3868,7 +3865,7 @@ const Ordenes = () => {
                     pickAlmacen === a ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
                   }`}
                 >
-                  {a === "todos" ? "Todos" : a === "palmhills" ? "🌴 Palm Hills" : "🏰 Castillo"}
+                  {a === "todos" ? "All" : a === "palmhills" ? "🌴 Palm Hills" : "🏰 Castillo"}
                 </button>
               ))}
             </div>
@@ -3937,7 +3934,7 @@ const Ordenes = () => {
                         <div className="text-[11px] text-destructive font-bold mt-0.5">MISSING</div>
                       )}
                       {parcial && (
-                        <div className="text-[11px] text-amber-600 font-medium mt-0.5">Envío parcial</div>
+                        <div className="text-[11px] text-amber-600 font-medium mt-0.5">Partial shipment</div>
                       )}
                     </div>
                     <div className="shrink-0 flex items-center gap-1">
@@ -3972,8 +3969,8 @@ const Ordenes = () => {
             {!pickItems.every((i) => i.picked) && (
               <p className="text-[11px] text-amber-600 font-medium text-center mb-2">
                 {puedeGuardarParcial
-                  ? "Puedes guardar el progreso de este almacén, o marcar todo para completar la orden"
-                  : "Marca el cotejo de todos los productos para poder completar la orden"}
+                  ? "You can save this warehouse's progress, or check everything to complete the order"
+                  : "Check off all products to complete the order"}
               </p>
             )}
             <div className="flex gap-2 mb-2">
@@ -3981,14 +3978,14 @@ const Ordenes = () => {
                 onClick={() => setPicking(null)}
                 className={`flex-1 px-3 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
               >
-                Cerrar
+                Close
               </button>
               <button
                 onClick={guardarParcial}
                 disabled={!puedeGuardarParcial}
                 title={
                   !puedeGuardarParcial
-                    ? "Marca todos los cotejos de Palm Hills o de Castillo para poder guardar el progreso"
+                    ? "Check off all Palm Hills or all Castillo items to save progress"
                     : undefined
                 }
                 className="flex-1 px-3 py-2.5 rounded-full bg-amber-100 text-amber-800 font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
@@ -4001,12 +3998,12 @@ const Ordenes = () => {
               disabled={!pickItems.length || !pickItems.every((i) => i.picked)}
               title={
                 !pickItems.every((i) => i.picked)
-                  ? "Marca el cotejo de todos los productos para poder completar la orden"
+                  ? "Check off all products to complete the order"
                   : undefined
               }
               className="w-full px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Completar orden
+              Complete order
             </button>
           </div>
           <div className="h-16 shrink-0" />
@@ -4020,8 +4017,8 @@ const Ordenes = () => {
 // ------------------------------
 // Mejoras
 // ------------------------------
-const PRIORIDADES = ["Alta", "Media", "Baja"];
-const ESTADOS_MEJORA = ["Pendiente", "En progreso", "Completada"];
+const PRIORIDADES = ["High", "Medium", "Low"];
+const ESTADOS_MEJORA = ["Pending", "In Progress", "Completed"];
 const PRIO_ORDER: Record<string, number> = { Alta: 0, Media: 1, Baja: 2 };
 
 // Game-style "upgrade" icon: a stocked shelving rack (trameria) with a
@@ -4086,15 +4083,15 @@ const Mejoras = () => {
     titulo: "",
     descripcion: "",
     costo: "",
-    prioridad: "Media",
-    estado: "Pendiente",
+    prioridad: "Medium",
+    estado: "Pending",
   });
 
   // Pending improvements (not completed), sorted by priority
   const pendientes = useMemo(
     () =>
       mejoras
-        .filter((m) => m.estado !== "Completada")
+        .filter((m) => m.estado !== "Completed")
         .sort(
           (a, b) =>
             (PRIO_ORDER[a.prioridad] ?? 1) - (PRIO_ORDER[b.prioridad] ?? 1)
@@ -4102,13 +4099,13 @@ const Mejoras = () => {
     [mejoras]
   );
   const completadas = useMemo(
-    () => mejoras.filter((m) => m.estado === "Completada"),
+    () => mejoras.filter((m) => m.estado === "Completed"),
     [mejoras]
   );
   const costoTotal = useMemo(
     () =>
       mejoras
-        .filter((m) => m.estado !== "Completada")
+        .filter((m) => m.estado !== "Completed")
         .reduce((sum, m) => sum + Number(m.costo || 0), 0),
     [mejoras]
   );
@@ -4118,8 +4115,8 @@ const Mejoras = () => {
       titulo: "",
       descripcion: "",
       costo: "",
-      prioridad: "Media",
-      estado: "Pendiente",
+      prioridad: "Medium",
+      estado: "Pending",
     });
     setEditId(null);
   };
@@ -4135,15 +4132,15 @@ const Mejoras = () => {
       titulo: m.titulo || "",
       descripcion: m.descripcion || "",
       costo: m.costo ? String(m.costo) : "",
-      prioridad: m.prioridad || "Media",
-      estado: m.estado || "Pendiente",
+      prioridad: m.prioridad || "Medium",
+      estado: m.estado || "Pending",
     });
     setShow(true);
   };
 
   const handleSave = () => {
     if (!form.titulo.trim()) {
-      alert("Ingresa el titulo de la mejora");
+      alert("Enter the improvement title");
       return;
     }
     const payload = {
@@ -4174,7 +4171,7 @@ const Mejoras = () => {
             <Badge e={m.estado} />
           </div>
         </div>
-        <UpgradeIcon done={m.estado === "Completada"} />
+        <UpgradeIcon done={m.estado === "Completed"} />
       </div>
       {m.descripcion && (
         <div className="text-xs text-muted-foreground leading-relaxed break-words mb-2">
@@ -4183,7 +4180,7 @@ const Mejoras = () => {
       )}
       <div className="flex items-center justify-between gap-2.5">
         <div className="text-sm font-bold text-secondary-foreground">
-          {Number(m.costo) > 0 ? `Costo est.: ${fmt(Number(m.costo))}` : "Sin costo estimado"}
+          {Number(m.costo) > 0 ? `Costo est.: ${fmt(Number(m.costo))}` : "No estimated cost"}
         </div>
         {!readOnly && (
           <div className="flex gap-1.5">
@@ -4191,15 +4188,15 @@ const Mejoras = () => {
               className="px-2.5 py-1 rounded-lg bg-card border border-border text-secondary-foreground text-xs font-bold"
               onClick={() => openEdit(m)}
             >
-              Editar
+              Edit
             </button>
             <button
               className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold"
               onClick={() => {
-                if (confirm("Eliminar esta mejora?")) deleteMejora(m.id);
+                if (confirm("Delete this improvement?")) deleteMejora(m.id);
               }}
             >
-              Eliminar
+              Delete
             </button>
           </div>
         )}
@@ -4211,7 +4208,7 @@ const Mejoras = () => {
     <div>
       <div className="grid grid-cols-2 gap-2.5 mb-3.5">
         <div className="bg-card rounded-xl p-3.5 border border-border">
-          <div className="text-xs text-muted-foreground mb-1">Mejoras pendientes</div>
+          <div className="text-xs text-muted-foreground mb-1">Pending improvements</div>
           <div className="text-xl font-bold text-card-foreground">{pendientes.length}</div>
         </div>
         <div className="bg-card rounded-xl p-3.5 border border-border">
@@ -4222,7 +4219,7 @@ const Mejoras = () => {
 
       {mejoras.length === 0 ? (
         <div className="bg-card rounded-2xl p-3.5 border border-border">
-          <Empty text="Sin mejoras todavia. Toca + para agregar una idea para el negocio." />
+          <Empty text="No improvements yet. Tap + to add an idea for the business." />
         </div>
       ) : (
         <>
@@ -4230,7 +4227,7 @@ const Mejoras = () => {
           {completadas.length > 0 && (
             <>
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-4 mb-2">
-                Completadas
+                Completed
               </div>
               {completadas.map(card)}
             </>
@@ -4242,7 +4239,7 @@ const Mejoras = () => {
         <button
           className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
           onClick={openNew}
-          aria-label="Agregar mejora"
+          aria-label="Add improvement"
         >
           +
         </button>
@@ -4250,17 +4247,17 @@ const Mejoras = () => {
 
       {show && !readOnly && (
         <Modal
-          title={editId ? "Editar Mejora" : "Nueva Mejora"}
+          title={editId ? "Edit Improvement" : "New Improvement"}
           onClose={() => {
             reset();
             setShow(false);
           }}
         >
-          <Field label="Mejora *">
+          <Field label="Improvement *">
             <input
               value={form.titulo}
               onChange={(e) => setForm({ ...form, titulo: e.target.value })}
-              placeholder="Ej. Adquirir una van"
+              placeholder="E.g. Buy a van"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -4316,13 +4313,13 @@ const Mejoras = () => {
               }}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleSave}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              {editId ? "Guardar Cambios" : "Guardar Mejora"}
+              {editId ? "Save Changes" : "Save Improvement"}
             </button>
           </div>
         </Modal>
@@ -4339,7 +4336,7 @@ const TITLES: Record<string, string> = {
   cal: "Calendario",
   fact: "Facturacion",
   cli: "Clientes",
-  inv: "Inventario",
+  inv: "Inventory",
   ord: "Ordenes",
   mej: "Mejoras",
   usr: "Gestionar Usuarios",
@@ -4372,7 +4369,7 @@ const GestionarUsuarios = () => {
 
   const handleCreateUser = async () => {
     if (!form.email.trim() || !form.password.trim()) {
-      alert("Correo y contraseña son requeridos");
+      alert("Email and password are required");
       return;
     }
 
@@ -4388,7 +4385,7 @@ const GestionarUsuarios = () => {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error creating user");
 
-      setMessage(`✓ Usuario creado: ${form.email}`);
+      setMessage(`✓ User created: ${form.email}`);
       setForm({ email: "", password: "", role: "visitante" });
       setShow(false);
       await fetchUsers();
@@ -4407,15 +4404,15 @@ const GestionarUsuarios = () => {
         body: JSON.stringify({ email, action: "setRole", role }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Error al cambiar el rol");
+      if (!res.ok) throw new Error(data.error || "Error changing role");
       await fetchUsers();
     } catch (e) {
-      alert("No se pudo cambiar el rol:\n\n" + (e instanceof Error ? e.message : "Error desconocido"));
+      alert("Couldn't change the role:\n\n" + (e instanceof Error ? e.message : "Unknown error"));
     }
   };
 
   const handleDeleteUser = async (userId: string) => {
-    if (!confirm("¿Estás seguro que deseas eliminar este usuario de forma permanente?")) return;
+    if (!confirm("Are you sure you want to permanently delete this user?")) return;
     
     try {
       console.log("[v0] Attempting to delete user:", userId);
@@ -4429,18 +4426,18 @@ const GestionarUsuarios = () => {
       console.log("[v0] Delete response:", { ok: res.ok, data });
 
       if (!res.ok) {
-        const errorMessage = data.error || "No se pudo eliminar el usuario";
+        const errorMessage = data.error || "Couldn't delete the user";
         console.error("[v0] Delete failed:", errorMessage);
         throw new Error(errorMessage);
       }
       
       console.log("[v0] User deleted successfully, refreshing list");
       await fetchUsers();
-      alert("Usuario eliminado exitosamente");
+      alert("User deleted successfully");
     } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : "Error desconocido al eliminar el usuario";
+      const errorMessage = e instanceof Error ? e.message : "Unknown error deleting user";
       console.error("[v0] Delete user catch error:", errorMessage);
-      alert("No se pudo eliminar el usuario:\n\n" + errorMessage);
+      alert("Couldn't delete the user:\n\n" + errorMessage);
     }
   };
 
@@ -4448,21 +4445,21 @@ const GestionarUsuarios = () => {
     <div>
       <div className="grid grid-cols-1 gap-2.5 mb-3.5">
         <div className="bg-card rounded-xl p-3.5 border border-border">
-          <div className="text-xs text-muted-foreground mb-1">Usuarios activos</div>
+          <div className="text-xs text-muted-foreground mb-1">Active users</div>
           <div className="text-2xl font-bold text-card-foreground">{users.length}</div>
         </div>
       </div>
 
       <div className="bg-card rounded-2xl p-3.5 border border-border mb-20">
         {users.length === 0 ? (
-          <Empty text="No hay usuarios. Crea uno tocando el botón +." />
+          <Empty text="No users. Tap the + button to create one." />
         ) : (
           users.map((u) => (
             <div key={u.id} className="bg-background rounded-xl p-2.5 mb-2.5 flex items-center justify-between gap-2">
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-card-foreground truncate">{u.email}</div>
                 <div className="text-xs text-muted-foreground mb-1">
-                  Creado: {new Date(u.created_at).toLocaleDateString("es-ES")}
+                  Created: {new Date(u.created_at).toLocaleDateString("en-US")}
                 </div>
                 <button
                   onClick={() => handleChangeRole(u.email, u.role === "admin" ? "visitante" : "admin")}
@@ -4470,14 +4467,14 @@ const GestionarUsuarios = () => {
                     u.role === "admin" ? "bg-secondary text-secondary-foreground" : "bg-amber-100 text-amber-800"
                   }`}
                 >
-                  {u.role === "admin" ? "Admin (todo)" : "Visitante (solo ver)"} · cambiar
+                  {u.role === "admin" ? "Admin (full access)" : "Viewer (view only)"} · change
                 </button>
               </div>
               <button
                 onClick={() => handleDeleteUser(u.email)}
                 className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold shrink-0"
               >
-                Eliminar
+                Delete
               </button>
             </div>
           ))
@@ -4487,39 +4484,39 @@ const GestionarUsuarios = () => {
       <button
         className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
         onClick={() => setShow(true)}
-        aria-label="Crear usuario"
+        aria-label="Create user"
       >
         +
       </button>
 
       {show && (
         <Modal
-          title="Crear Nuevo Usuario"
+          title="Create New User"
           onClose={() => {
             setShow(false);
             setForm({ email: "", password: "", role: "visitante" });
             setMessage("");
           }}
         >
-          <Field label="Correo electrónico *">
+          <Field label="Email *">
             <input
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="usuario@ejemplo.com"
+              placeholder="user@example.com"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Contraseña *">
+          <Field label="Password *">
             <input
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder="Contraseña fuerte"
+              placeholder="Strong password"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Permisos *">
+          <Field label="Permissions *">
             <div className="flex gap-2">
               <button
                 type="button"
@@ -4530,7 +4527,7 @@ const GestionarUsuarios = () => {
                     : "bg-card text-secondary-foreground border-border"
                 }`}
               >
-                Admin (todo)
+                Admin (full access)
               </button>
               <button
                 type="button"
@@ -4541,7 +4538,7 @@ const GestionarUsuarios = () => {
                     : "bg-card text-secondary-foreground border-border"
                 }`}
               >
-                Visitante (solo ver)
+                Viewer (view only)
               </button>
             </div>
           </Field>
@@ -4559,14 +4556,14 @@ const GestionarUsuarios = () => {
               }}
               className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
             >
-              Cancelar
+              Cancel
             </button>
             <button
               onClick={handleCreateUser}
               disabled={loading}
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
             >
-              {loading ? "Creando..." : "Crear Usuario"}
+              {loading ? "Creando..." : "Create User"}
             </button>
           </div>
         </Modal>
@@ -4595,7 +4592,7 @@ function AppContent() {
     }
   }, []);
 
-  // Mantener la URL en sync con la pestaña activa, para que "Volver" desde
+  // Mantener la URL en sync con la pestaña activa, para que "Back" desde
   // otras paginas regrese a la pestaña correcta. Se omite la primera
   // ejecucion para no pisar el parametro "tab" leido al montar.
   useEffect(() => {
@@ -4690,7 +4687,7 @@ function AppContent() {
       </header>
       {loading && (
         <div className="bg-secondary text-secondary-foreground text-center text-xs py-1.5">
-          Cargando datos...
+          Loading data...
         </div>
       )}
       <main

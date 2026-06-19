@@ -35,7 +35,7 @@ interface Cliente {
 }
 
 const fmt = (n: number) =>
-  "$" + Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fdate = (s: string) => {
   if (!s) return "";
@@ -60,13 +60,13 @@ function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-base font-black tracking-wide text-[#b09060] leading-tight">ESTIMADO</div>
-          <div className="text-xs font-mono text-gray-600">Orden #{orden.num}</div>
+          <div className="text-base font-black tracking-wide text-[#b09060] leading-tight">ESTIMATE</div>
+          <div className="text-xs font-mono text-gray-600">Order #{orden.num}</div>
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
         <div>
-          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Cliente</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Client</div>
           <div className="text-xs font-bold text-[#1a1a18]">{cliente?.nom || orden.cli}</div>
           {cliente?.codigo_cliente && (
             <div className="text-[10px] font-mono text-gray-500">#{cliente.codigo_cliente}</div>
@@ -79,7 +79,7 @@ function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente
           {cliente?.tel && <div className="text-[10px] text-gray-600">📞 {cliente.tel}</div>}
         </div>
         <div className="text-right">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Fecha</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Date</div>
           <div className="text-xs font-medium text-[#1a1a18]">{fdate(orden.fecha)}</div>
         </div>
       </div>
@@ -106,12 +106,12 @@ export default function EstimadoPage() {
         .eq("id", ordenId)
         .single();
       if (oErr || !o) {
-        setError("No se pudo cargar esta orden.");
+        setError("Couldn't load this order.");
         setLoading(false);
         return;
       }
       setOrden(o as Orden);
-      document.title = `Estimado-Orden${(o as Orden).num}`;
+      document.title = `Estimate-Order${(o as Orden).num}`;
 
       // El cliente de una orden puede estar guardado por id o, en ordenes mas
       // antiguas, por nombre — se intenta de las dos formas.
@@ -136,7 +136,7 @@ export default function EstimadoPage() {
   }, [ordenId, supabase]);
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground text-center">Cargando estimado...</div>;
+    return <div className="p-6 text-sm text-muted-foreground text-center">Loading estimate...</div>;
   }
 
   if (error || !orden) {
@@ -147,7 +147,7 @@ export default function EstimadoPage() {
           onClick={() => router.push("/?tab=ord")}
           className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
         >
-          ← Volver
+          ← Back
         </button>
       </div>
     );
@@ -158,7 +158,7 @@ export default function EstimadoPage() {
     const skuB = (b.sku || "").trim();
     if (!skuA && skuB) return 1;
     if (skuA && !skuB) return -1;
-    return skuA.localeCompare(skuB, "es", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "es");
+    return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
   });
   const subtotal = lineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
   const total = lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0);
@@ -181,13 +181,13 @@ export default function EstimadoPage() {
             onClick={() => router.push("/?tab=ord")}
             className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
           >
-            ← Volver
+            ← Back
           </button>
           <button
             onClick={() => window.print()}
             className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
           >
-            🖨️ Imprimir / Guardar PDF
+            🖨️ Print / Save PDF
           </button>
         </div>
       </div>
@@ -207,16 +207,16 @@ export default function EstimadoPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b-2 border-[#1a1a18] text-left">
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Cant.</th>
+                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Qty.</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">SKU</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">
-                        Descripción
+                        Description
                       </th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">
-                        Precio
+                        Price
                       </th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">
-                        Monto
+                        Amount
                       </th>
                     </tr>
                   </thead>
@@ -258,7 +258,7 @@ export default function EstimadoPage() {
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">
-                          Sin detalle de productos
+                          No product details
                         </td>
                       </tr>
                     )}
@@ -274,12 +274,12 @@ export default function EstimadoPage() {
                       </div>
                       {descuento > 0.01 && (
                         <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
-                          <span>Descuento</span>
+                          <span>Discount</span>
                           <span>-{fmt(descuento)}</span>
                         </div>
                       )}
                       <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
-                        <span className="text-base font-bold text-[#1a1a18]">Total estimado</span>
+                        <span className="text-base font-bold text-[#1a1a18]">Estimated total</span>
                         <span className="text-xl font-black text-[#4a6741]">{fmt(total)}</span>
                       </div>
                     </div>
@@ -290,14 +290,14 @@ export default function EstimadoPage() {
               {esUltima && (
                 <div className="px-6 sm:px-10 py-4 border-t border-gray-200 text-center">
                   <p className="text-[11px] text-gray-500">
-                    Este es un estimado y puede variar según disponibilidad al momento de despachar el pedido.
+                    This is an estimate and may vary based on availability at the time of dispatch.
                   </p>
                 </div>
               )}
 
               {paginas.length > 1 && (
                 <div className="print:hidden px-6 sm:px-10 py-2 text-right text-[11px] text-gray-400 border-t border-gray-100">
-                  Página {pIdx + 1} de {paginas.length}
+                  Page {pIdx + 1} of {paginas.length}
                 </div>
               )}
             </div>

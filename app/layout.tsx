@@ -15,7 +15,7 @@ export const viewport: Viewport = {
 
 export const metadata: Metadata = {
   title: 'Palm Hills - Beauty & Health',
-  description: 'Sistema de gestión empresarial para negocios de belleza y salud',
+  description: 'Business management system for beauty and health businesses',
   generator: 'v0.app',
   metadataBase: new URL('https://v0-palm-hills.vercel.app'),
   appleWebApp: {
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'Palm Hills - Beauty & Health',
-    description: 'Sistema de gestión empresarial para negocios de belleza y salud',
+    description: 'Business management system for beauty and health businesses',
     url: 'https://v0-palm-hills.vercel.app',
     siteName: 'Palm Hills',
     images: [
@@ -36,13 +36,13 @@ export const metadata: Metadata = {
         alt: 'Palm Hills Beauty & Health',
       },
     ],
-    locale: 'es_US',
+    locale: 'en_US',
     type: 'website',
   },
   twitter: {
     card: 'summary_large_image',
     title: 'Palm Hills - Beauty & Health',
-    description: 'Sistema de gestión empresarial para negocios de belleza y salud',
+    description: 'Business management system for beauty and health businesses',
     images: ['/og-image.png'],
   },
   icons: {
@@ -62,7 +62,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="es" className="bg-background">
+    <html lang="en" className="bg-background">
       <body className="font-sans antialiased">
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}

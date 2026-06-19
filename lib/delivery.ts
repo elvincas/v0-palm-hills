@@ -4,7 +4,7 @@
 
 export const DELIVERY_DAYS_KEY = "ph_delivery_days";
 
-export const DIAS_SEMANA = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+export const DIAS_SEMANA = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
 export function getDeliveryDays(): number[] {
   if (typeof window === "undefined") return [];

@@ -28,7 +28,7 @@ interface Producto {
 
 const today = () => new Date().toISOString().slice(0, 10)
 const fmt = (n: number) =>
-  new Intl.NumberFormat('es-DO', { style: 'currency', currency: 'USD' }).format(n || 0)
+  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0)
 
 export default function NuevaOrdenPage() {
   const params = useParams()
@@ -123,7 +123,7 @@ export default function NuevaOrdenPage() {
         const skuB = (b.sku || '').trim()
         if (!skuA && skuB) return 1
         if (skuA && !skuB) return -1
-        return skuA.localeCompare(skuB, 'es', { numeric: true }) || a.nom.localeCompare(b.nom, 'es')
+        return skuA.localeCompare(skuB, 'en', { numeric: true }) || a.nom.localeCompare(b.nom, 'en')
       })
   }, [productos, search, tagFilter, almacen])
 
@@ -171,7 +171,7 @@ export default function NuevaOrdenPage() {
 
   const handleEnviar = async () => {
     if (seleccionados.length === 0) {
-      alert('Agrega al menos un producto')
+      alert('Add at least one product')
       return
     }
     setSaving(true)
@@ -201,7 +201,7 @@ export default function NuevaOrdenPage() {
         .insert({
           cli: clienteId,
           fecha,
-          estado: 'Pendiente',
+          estado: 'Pending',
           total: +total.toFixed(2),
           lineas: lineasDetalle,
           num,
@@ -218,11 +218,11 @@ export default function NuevaOrdenPage() {
         await supabase.from('productos').update({ reservado: nuevoReservado }).eq('id', p.id)
       }
 
-      alert(`Orden #${num} creada. Queda pendiente en Ordenes.`)
+      alert(`Order #${num} created. It's pending in Orders.`)
       router.push(`/clientes/${clienteId}`)
     } catch (error) {
-      console.log('[v0] Error creando orden:', error)
-      alert('Error al crear la orden. Intenta de nuevo.')
+      console.log('[v0] Error creating order:', error)
+      alert('Error creating the order. Please try again.')
       setSaving(false)
     }
   }
@@ -230,7 +230,7 @@ export default function NuevaOrdenPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <p className="text-muted-foreground">Cargando productos...</p>
+        <p className="text-muted-foreground">Loading products...</p>
       </div>
     )
   }
@@ -238,12 +238,12 @@ export default function NuevaOrdenPage() {
   if (readOnly) {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center gap-3">
-        <p className="text-card-foreground font-medium">No tienes permiso para crear órdenes.</p>
+        <p className="text-card-foreground font-medium">You don't have permission to create orders.</p>
         <button
           onClick={() => router.push(`/clientes/${clienteId}`)}
           className="text-sm text-primary underline"
         >
-          ← Volver al cliente
+          ← Back to client
         </button>
       </div>
     )
@@ -258,9 +258,9 @@ export default function NuevaOrdenPage() {
             onClick={() => router.push(`/clientes/${clienteId}`)}
             className="text-primary text-sm font-medium mb-2 cursor-pointer"
           >
-            ← Volver al cliente
+            ← Back to client
           </button>
-          <h1 className="text-xl font-bold text-card-foreground">Nueva Orden</h1>
+          <h1 className="text-xl font-bold text-card-foreground">New Order</h1>
           {cliente && <p className="text-sm text-muted-foreground">Cliente: {cliente.nom}</p>}
 
           <div className="mt-3 flex flex-col gap-2">
@@ -274,7 +274,7 @@ export default function NuevaOrdenPage() {
             <input
               type="search"
               inputMode="search"
-              placeholder="Buscar por nombre, SKU o código de barras"
+              placeholder="Search by name, SKU or barcode"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               autoComplete="off"
@@ -294,7 +294,7 @@ export default function NuevaOrdenPage() {
                       : 'bg-card text-secondary-foreground border-border'
                   }`}
                 >
-                  Todos
+                  All
                 </button>
                 {allTags.map((t) => (
                   <button
@@ -339,7 +339,7 @@ export default function NuevaOrdenPage() {
           <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
             <button
               onClick={() => cambiarColumnas(2)}
-              aria-label="2 columnas"
+              aria-label="2 columns"
               className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                 columnas === 2 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
               }`}
@@ -348,7 +348,7 @@ export default function NuevaOrdenPage() {
             </button>
             <button
               onClick={() => cambiarColumnas(3)}
-              aria-label="3 columnas"
+              aria-label="3 columns"
               className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
                 columnas === 3 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
               }`}
@@ -365,11 +365,11 @@ export default function NuevaOrdenPage() {
               const qty = cantidades[p.id] || 0
               const excede = !esCastillo && qty > disp
               const min = Number(p.min || 5)
-              const stockEstado = disp <= 0 ? 'Sin stock' : disp <= min ? 'Stock bajo' : 'En stock'
+              const stockEstado = disp <= 0 ? 'Out of stock' : disp <= min ? 'Low stock' : 'In Stock'
               const estadoColor =
-                stockEstado === 'Sin stock'
+                stockEstado === 'Out of stock'
                   ? 'bg-red-100 text-red-800'
-                  : stockEstado === 'Stock bajo'
+                  : stockEstado === 'Low stock'
                   ? 'bg-amber-100 text-amber-800'
                   : 'bg-green-100 text-green-800'
               return (
@@ -436,7 +436,7 @@ export default function NuevaOrdenPage() {
                   {/* Aplicar descuento */}
                   {editandoDescuento === p.id ? (
                     <div className="mt-2 pt-2 border-t border-border">
-                      <label className="text-[10px] text-muted-foreground block mb-1">Precio para esta orden</label>
+                      <label className="text-[10px] text-muted-foreground block mb-1">Price for this order</label>
                       <div className="flex gap-1">
                         <input
                           type="text"
@@ -464,7 +464,7 @@ export default function NuevaOrdenPage() {
                       onClick={() => setEditandoDescuento(p.id)}
                       className="mt-2 text-[11px] font-medium text-primary underline self-start"
                     >
-                      🏷️ Aplicar descuento
+                      🏷️ Apply discount
                     </button>
                   )}
                   {descuentos[p.id] !== undefined && (
@@ -472,13 +472,13 @@ export default function NuevaOrdenPage() {
                       onClick={() => quitarDescuento(p.id)}
                       className="mt-1 text-[11px] text-destructive underline self-start"
                     >
-                      Quitar descuento
+                      Remove discount
                     </button>
                   )}
 
                   {/* Casilla de cantidad */}
                   <div className="mt-2 pt-2 border-t border-border">
-                    <label className="text-[10px] text-muted-foreground block mb-1">Cantidad</label>
+                    <label className="text-[10px] text-muted-foreground block mb-1">Quantity</label>
                     <input
                       type="text"
                       inputMode="numeric"
@@ -500,7 +500,7 @@ export default function NuevaOrdenPage() {
             })
           ) : (
             <div className="col-span-2 text-center text-muted-foreground py-10 text-sm">
-              No se encontraron productos
+              No products found
             </div>
           )}
         </div>
@@ -515,7 +515,7 @@ export default function NuevaOrdenPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <p className="text-xs text-muted-foreground">
-                {seleccionados.length} productos · {totalUnidades} uds.
+                {seleccionados.length} products · {totalUnidades} units
               </p>
               <p className="text-xl font-bold text-primary truncate">{fmt(total)}</p>
             </div>
@@ -524,7 +524,7 @@ export default function NuevaOrdenPage() {
               disabled={seleccionados.length === 0}
               className="shrink-0 px-5 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50 shadow-md"
             >
-              Revisar orden
+              Review order
             </button>
           </div>
         </div>
@@ -536,14 +536,14 @@ export default function NuevaOrdenPage() {
           <div className="bg-card w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl border border-border max-h-[90vh] overflow-y-auto">
             <div className="p-4">
               <div className="flex items-center justify-between mb-4">
-                <h3 className="text-lg font-bold text-card-foreground">Revisar Orden</h3>
+                <h3 className="text-lg font-bold text-card-foreground">Review Order</h3>
                 <button onClick={() => setReviewing(false)} className="text-muted-foreground text-2xl leading-none">
                   ×
                 </button>
               </div>
 
               <p className="text-sm text-muted-foreground mb-1">
-                Cliente: <span className="font-medium text-card-foreground">{cliente?.nom}</span>
+                Client: <span className="font-medium text-card-foreground">{cliente?.nom}</span>
               </p>
               <p className="text-sm text-muted-foreground mb-4">Fecha: {fecha}</p>
 
@@ -590,14 +590,14 @@ export default function NuevaOrdenPage() {
                   onClick={() => setReviewing(false)}
                   className="flex-1 px-4 py-3 rounded-xl bg-secondary text-secondary-foreground font-bold"
                 >
-                  Seguir editando
+                  Keep editing
                 </button>
                 <button
                   onClick={handleEnviar}
                   disabled={saving}
                   className="flex-1 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-60"
                 >
-                  {saving ? 'Enviando...' : 'Enviar orden'}
+                  {saving ? 'Submitting...' : 'Submit order'}
                 </button>
               </div>
             </div>

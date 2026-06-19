@@ -15,14 +15,14 @@ export const NAV_ICONS: Record<string, string> = {
 };
 
 export const NAV_TABS = [
-  { id: "dash", label: "Inicio" },
-  { id: "cal", label: "Calendario" },
-  { id: "fact", label: "Facturas" },
-  { id: "cli", label: "Clientes" },
-  { id: "inv", label: "Inventario" },
-  { id: "ord", label: "Ordenes" },
-  { id: "mej", label: "Mejoras" },
-  { id: "usr", label: "Usuarios" },
+  { id: "dash", label: "Home" },
+  { id: "cal", label: "Calendar" },
+  { id: "fact", label: "Invoices" },
+  { id: "cli", label: "Clients" },
+  { id: "inv", label: "Inventory" },
+  { id: "ord", label: "Orders" },
+  { id: "mej", label: "Improvements" },
+  { id: "usr", label: "Users" },
 ];
 
 export function BottomNav({

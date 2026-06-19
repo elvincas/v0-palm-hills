@@ -35,7 +35,7 @@ interface Cliente {
 }
 
 const fmt = (n: number) =>
-  "$" + Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fdate = (s: string) => {
   if (!s) return "";
@@ -60,13 +60,13 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">FACTURA</div>
+          <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">INVOICE</div>
           <div className="text-xs font-mono text-gray-600">#{String(factura.num).padStart(3, "0")}</div>
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
         <div>
-          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Facturar a</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Bill to</div>
           <div className="text-xs font-bold text-[#1a1a18]">{cliente?.nom || factura.cli}</div>
           {cliente?.codigo_cliente && (
             <div className="text-[10px] font-mono text-gray-500">#{cliente.codigo_cliente}</div>
@@ -79,7 +79,7 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
           {cliente?.tel && <div className="text-[10px] text-gray-600">📞 {cliente.tel}</div>}
         </div>
         <div className="text-right">
-          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Fecha</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Date</div>
           <div className="text-xs font-medium text-[#1a1a18]">{fdate(factura.fecha)}</div>
         </div>
       </div>
@@ -106,12 +106,12 @@ export default function FacturaPage() {
         .eq("id", facturaId)
         .single();
       if (fErr || !f) {
-        setError("No se pudo cargar esta factura.");
+        setError("Couldn't load this invoice.");
         setLoading(false);
         return;
       }
       setFactura(f as Factura);
-      document.title = `Factura-${String((f as Factura).num).padStart(3, "0")}`;
+      document.title = `Invoice-${String((f as Factura).num).padStart(3, "0")}`;
       const { data: c } = await supabase
         .from("clientes")
         .select("nom, codigo_cliente, dir, ciudad, estado_dir, tel, email")
@@ -124,7 +124,7 @@ export default function FacturaPage() {
   }, [facturaId, supabase]);
 
   if (loading) {
-    return <div className="p-6 text-sm text-muted-foreground text-center">Cargando factura...</div>;
+    return <div className="p-6 text-sm text-muted-foreground text-center">Loading invoice...</div>;
   }
 
   if (error || !factura) {
@@ -135,7 +135,7 @@ export default function FacturaPage() {
           onClick={() => router.push("/?tab=fact")}
           className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
         >
-          ← Volver
+          ← Back
         </button>
       </div>
     );
@@ -146,7 +146,7 @@ export default function FacturaPage() {
     const skuB = (b.sku || "").trim();
     if (!skuA && skuB) return 1;
     if (skuA && !skuB) return -1;
-    return skuA.localeCompare(skuB, "es", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "es");
+    return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
   });
   const subtotal = lineas.reduce((acc, l) => acc + l.qty * (l.precioOriginal ?? l.precio), 0);
   const descuento = subtotal - factura.total;
@@ -168,13 +168,13 @@ export default function FacturaPage() {
             onClick={() => router.push("/?tab=fact")}
             className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
           >
-            ← Volver
+            ← Back
           </button>
           <button
             onClick={() => window.print()}
             className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
           >
-            🖨️ Imprimir / Guardar PDF
+            🖨️ Print / Save PDF
           </button>
         </div>
       </div>
@@ -194,16 +194,16 @@ export default function FacturaPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b-2 border-[#1a1a18] text-left">
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Cant.</th>
+                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Qty.</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">SKU</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">
-                        Descripción
+                        Description
                       </th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">
-                        Precio
+                        Price
                       </th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">
-                        Monto
+                        Amount
                       </th>
                     </tr>
                   </thead>
@@ -246,7 +246,7 @@ export default function FacturaPage() {
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">
-                          Sin detalle de productos
+                          No product details
                         </td>
                       </tr>
                     )}
@@ -262,7 +262,7 @@ export default function FacturaPage() {
                       </div>
                       {descuento > 0.01 && (
                         <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
-                          <span>Descuento</span>
+                          <span>Discount</span>
                           <span>-{fmt(descuento)}</span>
                         </div>
                       )}
@@ -278,20 +278,20 @@ export default function FacturaPage() {
               {esUltima && (
                 <div className="px-6 sm:px-10 py-3 border-t border-gray-200">
                   <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">
-                    Confirmación de entrega
+                    Delivery confirmation
                   </div>
                   <div className="flex flex-wrap gap-x-6 gap-y-2">
                     <div>
                       <div className="border-b border-gray-400 h-4 w-28" />
-                      <div className="text-[9px] text-gray-500 mt-0.5">Firma de orden recibida</div>
+                      <div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div>
                     </div>
                     <div>
                       <div className="border-b border-gray-400 h-4 w-20" />
-                      <div className="text-[9px] text-gray-500 mt-0.5">Fecha</div>
+                      <div className="text-[9px] text-gray-500 mt-0.5">Date</div>
                     </div>
                     <div>
                       <div className="border-b border-gray-400 h-4 w-40" />
-                      <div className="text-[9px] text-gray-500 mt-0.5">Nombre de quien recibió</div>
+                      <div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div>
                     </div>
                   </div>
                 </div>
@@ -299,13 +299,13 @@ export default function FacturaPage() {
 
               {esUltima && (
                 <div className="px-6 sm:px-10 py-6 border-t border-gray-200 text-center">
-                  <p className="text-sm font-semibold text-[#4a6741] tracking-wide">¡Gracias por su compra!</p>
+                  <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
                 </div>
               )}
 
               {paginas.length > 1 && (
                 <div className="print:hidden px-6 sm:px-10 py-2 text-right text-[11px] text-gray-400 border-t border-gray-100">
-                  Página {pIdx + 1} de {paginas.length}
+                  Page {pIdx + 1} of {paginas.length}
                 </div>
               )}
             </div>
