@@ -3235,7 +3235,7 @@ const Ordenes = () => {
     setPicking(ord);
     setPickAlmacen("todos");
     setPickItems(
-      ord.lineas.map((l) => ({ ...l, qtyEnviada: l.qtyEnviada ?? l.qty, picked: false }))
+      ord.lineas.map((l) => ({ ...l, qtyEnviada: l.qtyEnviada ?? l.qty, picked: l.picked ?? false }))
     );
   };
 
@@ -3278,6 +3278,20 @@ const Ordenes = () => {
         lineas: facturaLineas,
       });
     }
+    setPicking(null);
+  };
+
+  // Cuanto de cada almacen ya esta totalmente cotejado, para habilitar "Sacada parcialmente"
+  const pickAlmacenCompleto = (almacen: "palmhills" | "castillo") => {
+    const items = pickItems.filter((i) => (i.almacen || "palmhills") === almacen);
+    return items.length > 0 && items.every((i) => i.picked);
+  };
+
+  const puedeGuardarParcial = pickAlmacenCompleto("palmhills") || pickAlmacenCompleto("castillo");
+
+  const guardarParcial = () => {
+    if (!picking || !puedeGuardarParcial) return;
+    updateOrden(picking.id, { ...picking, lineas: pickItems, estado: "En proceso" });
     setPicking(null);
   };
 
@@ -3885,16 +3899,31 @@ const Ordenes = () => {
           <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 pt-3 pb-2 shrink-0">
             {!pickItems.every((i) => i.picked) && (
               <p className="text-[11px] text-amber-600 font-medium text-center mb-2">
-                Marca el cotejo de todos los productos para poder completar la orden
+                {puedeGuardarParcial
+                  ? "Puedes guardar el progreso de este almacén, o marcar todo para completar la orden"
+                  : "Marca el cotejo de todos los productos para poder completar la orden"}
               </p>
             )}
-            <div className="flex gap-2.5">
-            <button
-              onClick={() => setPicking(null)}
-              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
-            >
-              Cerrar
-            </button>
+            <div className="flex gap-2 mb-2">
+              <button
+                onClick={() => setPicking(null)}
+                className={`flex-1 px-3 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
+              >
+                Cerrar
+              </button>
+              <button
+                onClick={guardarParcial}
+                disabled={!puedeGuardarParcial}
+                title={
+                  !puedeGuardarParcial
+                    ? "Marca todos los cotejos de Palm Hills o de Castillo para poder guardar el progreso"
+                    : undefined
+                }
+                className="flex-1 px-3 py-2.5 rounded-full bg-amber-100 text-amber-800 font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                Sacada parcialmente
+              </button>
+            </div>
             <button
               onClick={completePick}
               disabled={!pickItems.length || !pickItems.every((i) => i.picked)}
@@ -3903,11 +3932,10 @@ const Ordenes = () => {
                   ? "Marca el cotejo de todos los productos para poder completar la orden"
                   : undefined
               }
-              className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
               Completar orden
             </button>
-            </div>
           </div>
           <div className="h-16 shrink-0" />
           <BottomNav active="ord" />
