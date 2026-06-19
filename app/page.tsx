@@ -3153,6 +3153,7 @@ const Inventario = () => {
 // ------------------------------
 const Ordenes = () => {
   const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden, addFactura, readOnly } = useData();
+  const router = useRouter();
   const [show, setShow] = useState(false);
   const [picking, setPicking] = useState<Orden | null>(null);
   const [pickAlmacen, setPickAlmacen] = useState<"todos" | "palmhills" | "castillo">("todos");
@@ -3487,6 +3488,13 @@ const Ordenes = () => {
                 <>
                   <div className="text-sm font-bold mb-0.5 text-card-foreground">{fmt(o.total)}</div>
                   <Badge e={o.estado} />
+                  <br />
+                  <button
+                    className="mt-1.5 px-3 py-1.5 rounded-lg backdrop-blur-md bg-white/50 border border-white/60 text-[#4a6741] text-xs font-bold"
+                    onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
+                  >
+                    📋 Estimado
+                  </button>
                   {o.estado !== "Completada" && !readOnly && (
                     <>
                       <br />
