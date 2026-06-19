@@ -3169,6 +3169,7 @@ const Ordenes = () => {
   const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
   const [editQtys, setEditQtys] = useState<Record<string, number>>({});
   const [editPrecios, setEditPrecios] = useState<Record<string, number>>({});
+  const [editandoDescuentoId, setEditandoDescuentoId] = useState<string | null>(null);
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
@@ -3311,6 +3312,7 @@ const Ordenes = () => {
     setEditForm({ fecha: ord.fecha, estado: ord.estado });
     setEditSearch("");
     setEditAlmacen("palmhills");
+    setEditandoDescuentoId(null);
     const initialQtys: Record<string, number> = {};
     const initialPrecios: Record<string, number> = {};
     (ord.lineas || []).forEach((l) => {
@@ -3340,6 +3342,18 @@ const Ordenes = () => {
       } else {
         next[prodId] = qty;
       }
+      return next;
+    });
+  };
+
+  const setEditPrecio = (prodId: string, precio: number) => {
+    setEditPrecios((prev) => ({ ...prev, [prodId]: Math.max(0, precio) }));
+  };
+
+  const quitarEditPrecio = (prodId: string) => {
+    setEditPrecios((prev) => {
+      const next = { ...prev };
+      delete next[prodId];
       return next;
     });
   };
@@ -3708,7 +3722,57 @@ const Ordenes = () => {
                       {p.sku && (
                         <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">{p.sku}</div>
                       )}
-                      <div className="text-sm font-bold text-secondary-foreground mt-1">{fmt(p.precio)}</div>
+                      <div className="flex items-center gap-1.5 mt-1">
+                        {editPrecios[p.id] !== undefined && editPrecios[p.id] !== p.precio ? (
+                          <>
+                            <span className="text-xs text-muted-foreground line-through">{fmt(p.precio)}</span>
+                            <span className="text-sm font-bold text-primary">{fmt(editPrecios[p.id])}</span>
+                          </>
+                        ) : (
+                          <span className="text-sm font-bold text-secondary-foreground">{fmt(p.precio)}</span>
+                        )}
+                      </div>
+
+                      {editandoDescuentoId === p.id ? (
+                        <div className="mt-1.5">
+                          <label className="text-[10px] text-muted-foreground block mb-1">Precio para esta orden</label>
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            pattern="[0-9]*[.,]?[0-9]*"
+                            autoComplete="off"
+                            defaultValue={editPrecios[p.id] ?? p.precio}
+                            autoFocus
+                            onBlur={(e) => {
+                              setEditPrecio(p.id, Number(e.target.value));
+                              setEditandoDescuentoId(null);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                setEditPrecio(p.id, Number((e.target as HTMLInputElement).value));
+                                setEditandoDescuentoId(null);
+                              }
+                            }}
+                            className="w-full px-2 py-1.5 rounded-lg border border-input bg-background text-card-foreground text-sm text-center font-bold"
+                          />
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setEditandoDescuentoId(p.id)}
+                          className="mt-1.5 text-[11px] font-medium text-primary underline self-start"
+                        >
+                          🏷️ Aplicar descuento
+                        </button>
+                      )}
+                      {editPrecios[p.id] !== undefined && (
+                        <button
+                          onClick={() => quitarEditPrecio(p.id)}
+                          className="mt-1 text-[11px] text-destructive underline self-start"
+                        >
+                          Quitar descuento
+                        </button>
+                      )}
+
                       <div className="mt-2 pt-2 border-t border-border">
                         <label className="text-[10px] text-muted-foreground block mb-1">Cantidad</label>
                         <input
