@@ -111,7 +111,7 @@ export default function PickSheetPage() {
         <div className="mb-8 text-center border-b-4 border-black pb-6">
           <h1 className="text-4xl font-black tracking-wide">PICK SHEET</h1>
           <h2 className="text-2xl font-bold mt-2">PICK SHEET</h2>
-          <p className="text-gray-600 mt-2">Orden #{orden.num}</p>
+          <p className="text-gray-600 mt-2">Order #{orden.num}</p>
         </div>
 
         {/* Información de la Orden */}

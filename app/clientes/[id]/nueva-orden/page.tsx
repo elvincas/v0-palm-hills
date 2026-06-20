@@ -429,7 +429,7 @@ export default function NuevaOrdenPage() {
                   </div>
                   {!esCastillo && (
                     <div className={`text-xs mt-0.5 ${disp <= 0 ? 'text-destructive' : 'text-muted-foreground'}`}>
-                      Disponible: {disp} uds.
+                      Available: {disp} units
                     </div>
                   )}
 
@@ -581,7 +581,7 @@ export default function NuevaOrdenPage() {
               </div>
 
               <div className="flex justify-between items-center mb-4 pt-3 border-t border-border">
-                <span className="text-sm text-muted-foreground">Total ({totalUnidades} uds.)</span>
+                <span className="text-sm text-muted-foreground">Total ({totalUnidades} units)</span>
                 <span className="text-xl font-bold text-primary">{fmt(total)}</span>
               </div>
 

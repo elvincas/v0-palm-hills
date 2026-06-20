@@ -364,26 +364,26 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const addCliente = async (cliente: Omit<Cliente, "id">) => {
     const { data } = await supabase.from("clientes").insert(cliente).select().single();
     if (data) setClientes((prev) => [data as Cliente, ...prev]);
-    await logAct(`Nuevo cliente: ${cliente.nom}`);
+    await logAct(`New client: ${cliente.nom}`);
   };
 
   const deleteCliente = async (id: string) => {
     await supabase.from("clientes").delete().eq("id", id);
     setClientes((prev) => prev.filter((c) => c.id !== id));
-    await logAct(`Cliente eliminado`);
+    await logAct(`Client deleted`);
   };
 
   const updateCliente = async (id: string, updated: Omit<Cliente, "id">) => {
     const { data } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
     if (data) setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
-    await logAct(`Cliente actualizado: ${updated.nom}`);
+    await logAct(`Client updated: ${updated.nom}`);
   };
 
   const addClientesBulk = async (rows: Omit<Cliente, "id">[]): Promise<number> => {
     const { data, error } = await supabase.from("clientes").insert(rows).select();
     if (error) throw new Error(error.message);
     if (data) setClientes((prev) => [...(data as Cliente[]), ...prev]);
-    await logAct(`Importacion masiva: ${rows.length} clientes`);
+    await logAct(`Bulk import: ${rows.length} clients`);
     return data?.length ?? 0;
   };
 
@@ -416,7 +416,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const addProducto = async (prod: Omit<Producto, "id">) => {
     const { data } = await supabase.from("productos").insert(sanitizeProducto(prod)).select().single();
     if (data) setProductos((prev) => [data as Producto, ...prev]);
-    await logAct(`Nuevo producto: ${prod.nom}`);
+    await logAct(`New product: ${prod.nom}`);
   };
 
   const addProductosBulk = async (rows: Omit<Producto, "id">[], skipDuplicates = false) => {
@@ -456,7 +456,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         throw new Error(`Error de Supabase: ${error.message}${error.details ? ` - ${error.details}` : ""}`);
       }
       if (data) setProductos((prev) => [...(data as Producto[]), ...prev]);
-      await logAct(`Carga masiva: ${data?.length || 0} productos${skipDuplicates ? ` (${duplicados.length} duplicados saltados)` : ""}`);
+      await logAct(`Bulk upload: ${data?.length || 0} products${skipDuplicates ? ` (${duplicados.length} duplicates skipped)` : ""}`);
       return { insertados: data?.length || 0, duplicados: duplicados.length };
     } catch (err) {
       console.error("[v0] Bulk operation failed:", err);
@@ -468,13 +468,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const validated = sanitizeProducto(prod);
     const { data } = await supabase.from("productos").update(validated).eq("id", id).select().single();
     if (data) setProductos((prev) => prev.map((p) => (p.id === id ? (data as Producto) : p)));
-    await logAct(`Producto actualizado: ${prod.nom}`);
+    await logAct(`Product updated: ${prod.nom}`);
   };
 
   const deleteProducto = async (id: string) => {
     await supabase.from("productos").delete().eq("id", id);
     setProductos((prev) => prev.filter((p) => p.id !== id));
-    await logAct(`Producto eliminado`);
+    await logAct(`Product deleted`);
   };
 
   // --- Facturas ---
@@ -482,13 +482,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const num = nextNum(facturas, 1001);
     const { data } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
     if (data) setFacturas((prev) => [data as Factura, ...prev]);
-    await logAct(`Factura #${num} → ${factura.cli}`);
+    await logAct(`Invoice #${num} → ${factura.cli}`);
   };
 
   const deleteFactura = async (id: string) => {
     await supabase.from("facturas").delete().eq("id", id);
     setFacturas((prev) => prev.filter((f) => f.id !== id));
-    await logAct(`Factura eliminada`);
+    await logAct(`Invoice deleted`);
   };
 
   // --- Ordenes ---
@@ -496,20 +496,20 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const num = nextNum(ordenes, 1);
     const { data } = await supabase.from("ordenes").insert({ ...orden, num }).select().single();
     if (data) setOrdenes((prev) => [{ ...(data as Orden), lineas: (data as Orden).lineas || [] }, ...prev]);
-    await logAct(`Orden #${num} → ${orden.cli}`);
+    await logAct(`Order #${num} → ${orden.cli}`);
   };
 
   const deleteOrden = async (id: string) => {
     await supabase.from("ordenes").delete().eq("id", id);
     setOrdenes((prev) => prev.filter((o) => o.id !== id));
-    await logAct(`Orden eliminada`);
+    await logAct(`Order deleted`);
   };
 
   const updateOrden = async (id: string, updated: Orden) => {
     const { id: _omit, ...payload } = updated;
     const { data } = await supabase.from("ordenes").update(payload).eq("id", id).select().single();
     if (data) setOrdenes((prev) => prev.map((o) => (o.id === id ? { ...(data as Orden), lineas: (data as Orden).lineas || [] } : o)));
-    await logAct(`Orden #${updated.num} actualizada`);
+    await logAct(`Order #${updated.num} updated`);
   };
 
   // --- Mejoras ---
@@ -524,19 +524,19 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const addMejora = async (m: Omit<Mejora, "id">) => {
     const { data } = await supabase.from("mejoras").insert(sanitizeMejora(m)).select().single();
     if (data) setMejoras((prev) => [data as Mejora, ...prev]);
-    await logAct(`Mejora agregada: ${m.titulo}`);
+    await logAct(`Improvement added: ${m.titulo}`);
   };
 
   const deleteMejora = async (id: string) => {
     await supabase.from("mejoras").delete().eq("id", id);
     setMejoras((prev) => prev.filter((e) => e.id !== id));
-    await logAct(`Mejora eliminada`);
+    await logAct(`Improvement deleted`);
   };
 
   const updateMejora = async (id: string, m: Omit<Mejora, "id">) => {
     const { data } = await supabase.from("mejoras").update(sanitizeMejora(m)).eq("id", id).select().single();
     if (data) setMejoras((prev) => prev.map((e) => (e.id === id ? (data as Mejora) : e)));
-    await logAct(`Mejora actualizada: ${m.titulo}`);
+    await logAct(`Improvement updated: ${m.titulo}`);
   };
 
   const value: DataContextType = {
@@ -655,7 +655,7 @@ const Dashboard = () => {
                 setEditMeta(true);
               }}
             >
-              {meta > 0 ? "Cambiar" : "+ Fijar meta"}
+              {meta > 0 ? "Change" : "+ Set goal"}
             </button>
           )}
         </div>
@@ -664,7 +664,7 @@ const Dashboard = () => {
             <div className="flex justify-between items-baseline mb-2">
               <div>
                 <span className="text-xl font-bold text-card-foreground">{fmt(totalVentas)}</span>
-                <span className="text-sm text-muted-foreground ml-1">de {fmt(meta)}</span>
+                <span className="text-sm text-muted-foreground ml-1">of {fmt(meta)}</span>
               </div>
               <span
                 className={`text-xl font-extrabold ${pct >= 100 ? "text-primary" : pct >= 70 ? "text-amber-500" : pct >= 40 ? "text-blue-500" : "text-slate-400"}`}
@@ -680,7 +680,7 @@ const Dashboard = () => {
             </div>
             {pct < 100 && (
               <div className="text-xs text-muted-foreground text-right">
-                Faltan <strong className="text-card-foreground">{fmt(meta - totalVentas)}</strong>
+                Remaining <strong className="text-card-foreground">{fmt(meta - totalVentas)}</strong>
               </div>
             )}
           </>
@@ -693,7 +693,7 @@ const Dashboard = () => {
         {[
           ["Sales this month", fmt(totalVentas), false],
           ["Invoices", facturas.length, false],
-          ["Clientes", clientes.length, false],
+          ["Clients", clientes.length, false],
           ["Low stock", lowStock, true],
         ].map(([label, val, red]) => (
           <div
@@ -743,7 +743,7 @@ const Dashboard = () => {
 
       <div className="bg-card rounded-2xl p-3.5 border border-border">
         <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-          Actividad reciente
+          Recent activity
         </div>
         {logs.length ? (
           logs.slice(0, 6).map((l, i) => (
@@ -813,10 +813,10 @@ const Dashboard = () => {
 // Calendario de entregas
 // ------------------------------
 const MESES = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
 ];
-const DIAS_CORTOS = ["D", "L", "M", "M", "J", "V", "S"];
+const DIAS_CORTOS = ["S", "M", "T", "W", "T", "F", "S"];
 
 const Calendario = () => {
   const { ordenes, clientes, readOnly } = useData();
@@ -959,7 +959,7 @@ const Calendario = () => {
                     <div className="text-sm font-semibold uppercase text-card-foreground truncate">
                       {cInfo ? cInfo.nom : o.cli}
                     </div>
-                    <div className="text-xs text-muted-foreground">Orden #{o.num}</div>
+                    <div className="text-xs text-muted-foreground">Order #{o.num}</div>
                   </div>
                   <div className="text-right shrink-0">
                     <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
@@ -1812,8 +1812,8 @@ const Clientes = () => {
                 ["CLI-0001", "Hamilton Meat Market", "123 St Nicholas Ave", "New York", "NY", "Hamilton Diaz", "2125550199", "hamilton@example.com", "Yes"],
               ]);
               const wb = XLSX.utils.book_new();
-              XLSX.utils.book_append_sheet(wb, ws, "Clientes");
-              XLSX.writeFile(wb, "plantilla_clientes.xlsx");
+              XLSX.utils.book_append_sheet(wb, ws, "Clients");
+              XLSX.writeFile(wb, "clients_template.xlsx");
             }}
             className="w-full px-4 py-2.5 rounded-xl bg-secondary text-secondary-foreground font-medium text-sm mb-3"
           >
@@ -2476,7 +2476,7 @@ const Inventario = () => {
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Products");
-    XLSX.writeFile(wb, "plantilla_inventario.xlsx");
+    XLSX.writeFile(wb, "inventory_template.xlsx");
   };
 
   const confirmBulk = async (skipDuplicates = false) => {
@@ -2689,7 +2689,7 @@ const Inventario = () => {
                   </div>
                   {Number(p.costo) > 0 && (
                     <div className="text-[11px] font-semibold text-primary mt-0.5">
-                      Margen: {(((Number(p.precio) - Number(p.costo)) / Number(p.costo)) * 100).toFixed(0)}%
+                      Margin: {(((Number(p.precio) - Number(p.costo)) / Number(p.costo)) * 100).toFixed(0)}%
                       <span className="text-muted-foreground font-normal ml-1">
                         ({fmt(Number(p.precio) - Number(p.costo))})
                       </span>
@@ -2697,7 +2697,7 @@ const Inventario = () => {
                   )}
                   {almacen !== "castillo" && (
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      Stock: {stock} uds.
+                      Stock: {stock} units
                     </div>
                   )}
                 </div>
@@ -3477,7 +3477,7 @@ const Ordenes = () => {
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
-                    Orden #{o.num} - {fdate(o.fecha)}
+                    Order #{o.num} - {fdate(o.fecha)}
                   </div>
                 </>
               }
@@ -3649,7 +3649,7 @@ const Ordenes = () => {
               X
             </button>
             <div className="flex-1">
-              <span className="text-white text-base font-bold block">Editar Orden #{editingOrden.num}</span>
+              <span className="text-white text-base font-bold block">Edit Order #{editingOrden.num}</span>
               <span className="text-white/80 text-xs uppercase">
                 {clienteFor(editingOrden.cli)?.nom || editingOrden.cli}
               </span>
@@ -3803,7 +3803,7 @@ const Ordenes = () => {
           </div>
           <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 py-3.5 flex items-center justify-between gap-3 shrink-0">
             <div className="min-w-0">
-              <p className="text-xs text-muted-foreground">{editTotalUnidades} uds.</p>
+              <p className="text-xs text-muted-foreground">{editTotalUnidades} units</p>
               <p className="text-xl font-bold text-primary truncate">{fmt(editTotal)}</p>
             </div>
             <div className="flex gap-2 shrink-0">
@@ -4180,7 +4180,7 @@ const Mejoras = () => {
       )}
       <div className="flex items-center justify-between gap-2.5">
         <div className="text-sm font-bold text-secondary-foreground">
-          {Number(m.costo) > 0 ? `Costo est.: ${fmt(Number(m.costo))}` : "No estimated cost"}
+          {Number(m.costo) > 0 ? `Est. cost: ${fmt(Number(m.costo))}` : "No estimated cost"}
         </div>
         {!readOnly && (
           <div className="flex gap-1.5">
@@ -4212,7 +4212,7 @@ const Mejoras = () => {
           <div className="text-xl font-bold text-card-foreground">{pendientes.length}</div>
         </div>
         <div className="bg-card rounded-xl p-3.5 border border-border">
-          <div className="text-xs text-muted-foreground mb-1">Inversion estimada</div>
+          <div className="text-xs text-muted-foreground mb-1">Estimated investment</div>
           <div className="text-xl font-bold text-card-foreground">{fmt(costoTotal)}</div>
         </div>
       </div>
@@ -4333,13 +4333,13 @@ const Mejoras = () => {
 // ------------------------------
 const TITLES: Record<string, string> = {
   dash: "Dashboard",
-  cal: "Calendario",
-  fact: "Facturacion",
-  cli: "Clientes",
+  cal: "Calendar",
+  fact: "Invoicing",
+  cli: "Clients",
   inv: "Inventory",
-  ord: "Ordenes",
-  mej: "Mejoras",
-  usr: "Gestionar Usuarios",
+  ord: "Orders",
+  mej: "Improvements",
+  usr: "Manage Users",
 };
 
 // Gestionar Usuarios component

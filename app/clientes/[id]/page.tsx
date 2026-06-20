@@ -427,7 +427,7 @@ export default function ClientePerfilPage() {
                     className="flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5"
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-card-foreground">Orden #{o.num}</div>
+                      <div className="text-sm font-semibold text-card-foreground">Order #{o.num}</div>
                       <div className="text-xs text-muted-foreground">{fdate(o.fecha)}</div>
                     </div>
                     <div className="text-right shrink-0">
