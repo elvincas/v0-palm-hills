@@ -245,8 +245,9 @@ interface DataContextType {
   addProducto: (p: Omit<Producto, "id">) => void;
   addProductosBulk: (
     rows: Omit<Producto, "id">[],
-    skipDuplicates?: boolean
-  ) => Promise<{ insertados: number; duplicados: number }>;
+    skipDuplicates?: boolean,
+    updatePrices?: boolean
+  ) => Promise<{ insertados: number; duplicados: number; actualizados: number }>;
   updateProducto: (id: string, p: Omit<Producto, "id">) => void;
   deleteProducto: (id: string) => void;
   addFactura: (f: Omit<Factura, "id" | "num">) => void;
@@ -419,45 +420,89 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`New product: ${prod.nom}`);
   };
 
-  const addProductosBulk = async (rows: Omit<Producto, "id">[], skipDuplicates = false) => {
+  const addProductosBulk = async (
+    rows: Omit<Producto, "id">[],
+    skipDuplicates = false,
+    updatePrices = false
+  ) => {
     const payload = rows.map(sanitizeProducto);
-    
-    // Detectar duplicados por SKU
-    const skusToCheck = payload.filter(p => p.sku).map(p => p.sku);
+
+    // El SKU es el identificador dominante dentro de cada almacen: dos productos
+    // con el mismo SKU en almacenes distintos son entradas independientes.
+    const dupKey = (sku: string, almacen: string) => `${sku}__${almacen || "palmhills"}`;
+
+    const skusToCheck = payload.filter((p) => p.sku).map((p) => p.sku);
     let duplicados: Producto[] = [];
-    
+
     if (skusToCheck.length > 0) {
+      const almacenes = Array.from(new Set(payload.map((p) => p.almacen || "palmhills")));
       const { data: existentes } = await supabase
         .from("productos")
         .select("*")
-        .in("sku", skusToCheck);
+        .in("sku", skusToCheck)
+        .in("almacen", almacenes);
       duplicados = (existentes || []) as Producto[];
     }
 
-    // Si hay duplicados y no queremos saltarlos, retorna info sobre duplicados
-    if (duplicados.length > 0 && !skipDuplicates) {
+    // Si hay duplicados y no se autorizo saltarlos ni actualizar precios, avisa primero.
+    if (duplicados.length > 0 && !skipDuplicates && !updatePrices) {
       throw new Error(`${duplicados.length} products already exist (by SKU). Check the duplicate SKUs.`);
     }
 
-    // Filtrar productos que ya existen si skipDuplicates es true
-    const skusDuplicados = new Set(duplicados.map(d => d.sku));
-    const payloadFiltrado = skipDuplicates 
-      ? payload.filter(p => !skusDuplicados.has(p.sku))
-      : payload;
+    const duplicadosMap = new Map(
+      duplicados.map((d) => [dupKey(d.sku || "", d.almacen || "palmhills"), d])
+    );
+    const nuevos = payload.filter(
+      (p) => !duplicadosMap.has(dupKey(p.sku || "", p.almacen || "palmhills"))
+    );
 
-    if (payloadFiltrado.length === 0) {
+    // Actualizar precio: solo toca el precio de los productos existentes, conserva
+    // foto, descripcion, stock y todo lo demas.
+    let actualizados = 0;
+    if (updatePrices) {
+      // key -> nuevo precio subido a granel para ese SKU/almacen existente
+      const preciosNuevos = new Map<string, number>();
+      for (const p of payload) {
+        const key = dupKey(p.sku || "", p.almacen || "palmhills");
+        if (duplicadosMap.has(key)) preciosNuevos.set(key, p.precio);
+      }
+      await Promise.all(
+        Array.from(preciosNuevos.entries()).map(([key, precio]) =>
+          supabase.from("productos").update({ precio }).eq("id", duplicadosMap.get(key)!.id)
+        )
+      );
+      actualizados = preciosNuevos.size;
+      if (actualizados > 0) {
+        setProductos((prev) =>
+          prev.map((prod) => {
+            const key = dupKey(prod.sku || "", prod.almacen || "palmhills");
+            return preciosNuevos.has(key) ? { ...prod, precio: preciosNuevos.get(key)! } : prod;
+          })
+        );
+      }
+    }
+
+    if (nuevos.length === 0) {
+      if (updatePrices) {
+        await logAct(`Bulk price update: ${actualizados} products updated`);
+        return { insertados: 0, duplicados: duplicados.length, actualizados };
+      }
       throw new Error("All products already exist in the database.");
     }
 
     try {
-      const { data, error } = await supabase.from("productos").insert(payloadFiltrado).select();
+      const { data, error } = await supabase.from("productos").insert(nuevos).select();
       if (error) {
         console.error("[v0] Bulk insert error:", error.message, error.details, error.hint);
         throw new Error(`Error de Supabase: ${error.message}${error.details ? ` - ${error.details}` : ""}`);
       }
       if (data) setProductos((prev) => [...(data as Producto[]), ...prev]);
-      await logAct(`Bulk upload: ${data?.length || 0} products${skipDuplicates ? ` (${duplicados.length} duplicates skipped)` : ""}`);
-      return { insertados: data?.length || 0, duplicados: duplicados.length };
+      await logAct(
+        `Bulk upload: ${data?.length || 0} new products${
+          updatePrices ? `, ${actualizados} prices updated` : skipDuplicates ? ` (${duplicados.length} duplicates skipped)` : ""
+        }`
+      );
+      return { insertados: data?.length || 0, duplicados: duplicados.length, actualizados };
     } catch (err) {
       console.error("[v0] Bulk operation failed:", err);
       throw err;
@@ -1018,6 +1063,10 @@ const Facturas = () => {
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [fecha, setFecha] = useState(today());
   const [estado, setEstado] = useState("Pending");
+  const [view, setView] = useState<"grid" | "list">("grid");
+
+  const clienteCodigo = (nom: string) =>
+    clientes.find((c) => c.nom === nom)?.codigo_cliente || "—";
 
   const productosPorSku = useMemo(
     () =>
@@ -1083,13 +1132,67 @@ const Facturas = () => {
 
   return (
     <div>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search invoices..."
-        className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-3 outline-none focus:ring-2 focus:ring-ring"
-      />
+      <div className="flex items-center gap-2 mb-3">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search invoices..."
+          className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+        <div className="flex items-center rounded-xl border border-input bg-card overflow-hidden shrink-0">
+          <button
+            onClick={() => setView("grid")}
+            aria-label="Grid view"
+            className={`px-2.5 py-2.5 ${view === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1" />
+              <rect x="14" y="3" width="7" height="7" rx="1" />
+              <rect x="3" y="14" width="7" height="7" rx="1" />
+              <rect x="14" y="14" width="7" height="7" rx="1" />
+            </svg>
+          </button>
+          <button
+            onClick={() => setView("list")}
+            aria-label="List view"
+            className={`px-2.5 py-2.5 ${view === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+              <line x1="8" y1="6" x2="21" y2="6" />
+              <line x1="8" y1="12" x2="21" y2="12" />
+              <line x1="8" y1="18" x2="21" y2="18" />
+              <line x1="3" y1="6" x2="3.01" y2="6" />
+              <line x1="3" y1="12" x2="3.01" y2="12" />
+              <line x1="3" y1="18" x2="3.01" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
       {filtered.length ? (
+        view === "list" ? (
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
+              <span>Date</span>
+              <span>Client #</span>
+              <span>Client Name</span>
+              <span>Amount</span>
+              <span>Invoice #</span>
+            </div>
+            {filtered.map((f) => (
+              <div
+                key={f.id}
+                onClick={() => router.push(`/facturas/${f.id}`)}
+                className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border cursor-pointer hover:bg-secondary/30"
+              >
+                <span className="text-muted-foreground">{fdate(f.fecha)}</span>
+                <span className="font-mono text-muted-foreground">{clienteCodigo(f.cli)}</span>
+                <span className="font-bold uppercase truncate">{f.cli}</span>
+                <span className="font-bold text-primary">{fmt(f.total)}</span>
+                <span className="font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 gap-2.5">
           {filtered.map((f) => (
             <div
@@ -1126,6 +1229,7 @@ const Facturas = () => {
             </div>
           ))}
         </div>
+        )
       ) : (
         <div className="bg-card rounded-2xl p-3.5 border border-border">
           <Empty text="No invoices. Tap + to create one." />
@@ -1266,7 +1370,7 @@ const Clientes = () => {
   const router = useRouter();
   const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, readOnly } = useData();
   const [q, setQ] = useState("");
-  const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("nom");
+  const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("codigo_cliente");
   const [show, setShow] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -2479,7 +2583,7 @@ const Inventario = () => {
     XLSX.writeFile(wb, "inventory_template.xlsx");
   };
 
-  const confirmBulk = async (skipDuplicates = false) => {
+  const confirmBulk = async (skipDuplicates = false, updatePrices = false) => {
     const valid = bulkRows.filter((r) => !r._error);
     if (!valid.length) {
       setBulkErr("No valid rows to import.");
@@ -2500,14 +2604,18 @@ const Inventario = () => {
           stock: r.stock,
           min: r.min,
           foto: null,
+          almacen,
         })),
-        skipDuplicates
+        skipDuplicates,
+        updatePrices
       );
-      
+
       if (typeof result === 'object') {
-        const msg = `Se importaron ${result.insertados} productos correctamente.${
-          result.duplicados > 0 ? ` (${result.duplicados} duplicados saltados)` : ''
-        }`;
+        const msg = updatePrices
+          ? `${result.actualizados} prices updated. ${result.insertados} new products imported.`
+          : `Se importaron ${result.insertados} productos correctamente.${
+              result.duplicados > 0 ? ` (${result.duplicados} duplicados saltados)` : ''
+            }`;
         alert(msg);
         setShowBulk(false);
         setBulkRows([]);
@@ -2518,7 +2626,7 @@ const Inventario = () => {
 
       // If it's a duplicates error, show the option to skip them
       if (errorMsg.includes("already exist")) {
-        setBulkErr(`${errorMsg} Do you want to skip the duplicates and import only the new ones?`);
+        setBulkErr(`${errorMsg} You can skip them, or update only their price while keeping their photo and description.`);
       } else {
         setBulkErr(`Error saving: ${errorMsg}. Please check the console.`);
       }
@@ -2871,13 +2979,23 @@ const Inventario = () => {
               Cancel
             </button>
             {bulkErr && bulkErr.includes("already exist") && (
-              <button
-                onClick={() => confirmBulk(true)}
-                disabled={bulkSaving || !bulkRows.some((r) => !r._error)}
-                className="flex-1 px-4 py-2.5 rounded-xl bg-orange-600 text-white font-bold text-sm disabled:opacity-50"
-              >
-                {bulkSaving ? "Importing..." : "Skip duplicates"}
-              </button>
+              <>
+                <button
+                  onClick={() => confirmBulk(true, false)}
+                  disabled={bulkSaving || !bulkRows.some((r) => !r._error)}
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-orange-600 text-white font-bold text-sm disabled:opacity-50"
+                >
+                  {bulkSaving ? "Importing..." : "Skip duplicates"}
+                </button>
+                <button
+                  onClick={() => confirmBulk(false, true)}
+                  disabled={bulkSaving || !bulkRows.some((r) => !r._error)}
+                  title="Updates only the price of existing SKUs (keeps photo, description and stock) and imports the new ones"
+                  className="flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-sm disabled:opacity-50"
+                >
+                  {bulkSaving ? "Updating..." : "Update price"}
+                </button>
+              </>
             )}
             <button
               onClick={() => confirmBulk(false)}
