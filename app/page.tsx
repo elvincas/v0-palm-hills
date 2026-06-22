@@ -336,7 +336,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const loadAll = async () => {
     const [c, p, f, o, e] = await Promise.all([
       supabase.from("clientes").select(CLIENTE_COLS).order("created_at", { ascending: false }),
-      supabase.from("productos").select(PRODUCTO_COLS).order("created_at", { ascending: false }),
+      supabase.from("productos").select(PRODUCTO_COLS).order("created_at", { ascending: false }).limit(5000),
       supabase.from("facturas").select("*").order("num", { ascending: false }),
       supabase.from("ordenes").select("*").order("num", { ascending: false }),
       supabase.from("mejoras").select("*").order("created_at", { ascending: false }),
