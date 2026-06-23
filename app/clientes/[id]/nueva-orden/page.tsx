@@ -73,12 +73,29 @@ export default function NuevaOrdenPage() {
         }
         const { data: c } = await supabase.from('clientes').select('id, nom').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
-        // Datos livianos primero (sin foto) para no esperar varios MB de imagenes
-        const { data: p } = await supabase
-          .from('productos')
-          .select('id, nom, sku, barcode, fabricante, etiquetas, precio, stock, min, reservado, almacen')
-          .order('nom')
-        if (p) setProductos(p as Producto[])
+        // Datos livianos primero (sin foto) para no esperar varios MB de imagenes.
+        // Supabase/PostgREST limita cada respuesta (db-max-rows, normalmente 1000),
+        // por lo que paginamos con .range() para traer TODOS los productos.
+        const PAGE = 1000
+        let desde = 0
+        let todos: Producto[] = []
+        for (;;) {
+          const { data: lote, error: loteError } = await supabase
+            .from('productos')
+            .select('id, nom, sku, barcode, fabricante, etiquetas, precio, stock, min, reservado, almacen')
+            .order('nom')
+            .range(desde, desde + PAGE - 1)
+          if (loteError) {
+            console.log('[v0] Error cargando productos:', loteError.message)
+            break
+          }
+          if (!lote || lote.length === 0) break
+          todos = todos.concat(lote as Producto[])
+          if (lote.length < PAGE) break
+          desde += PAGE
+        }
+        const p = todos
+        if (p.length) setProductos(p)
         setLoading(false)
         // Fotos en segundo plano, en lotes (pesan varios MB en total y una sola
         // consulta por todas supera el timeout de la base de datos)
