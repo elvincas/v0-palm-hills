@@ -343,8 +343,6 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       supabase.from("mejoras").select("*").order("created_at", { ascending: false }),
     ]);
     if (c.data) setClientes(c.data as Cliente[]);
-    console.log("[v0] productos query error:", p.error);
-    console.log("[v0] productos count:", p.data?.length, "palmhills:", p.data?.filter((x) => x.almacen === "palmhills").length, "castillo:", p.data?.filter((x) => x.almacen === "castillo").length, "null:", p.data?.filter((x) => !x.almacen).length);
     if (p.data) setProductos((p.data as Producto[]).map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
     if (f.data) setFacturas(f.data as Factura[]);
     if (o.data) setOrdenes((o.data as Orden[]).map((row) => ({ ...row, lineas: row.lineas || [] })));
@@ -2149,7 +2147,12 @@ const Inventario = () => {
   });
 
   const productosAlmacen = useMemo(
-    () => productos.filter((p) => (p.almacen || "palmhills") === almacen),
+    () =>
+      productos.filter((p) => {
+        const a = p.almacen ?? null;
+        if (almacen === "palmhills") return a === "palmhills" || a === null;
+        return a === almacen;
+      }),
     [productos, almacen]
   );
 
