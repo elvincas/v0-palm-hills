@@ -337,12 +337,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const loadAll = async () => {
     const [c, p, f, o, e] = await Promise.all([
       supabase.from("clientes").select(CLIENTE_COLS).order("created_at", { ascending: false }),
-      supabase.from("productos").select(PRODUCTO_COLS).order("created_at", { ascending: false }).limit(5000),
+      supabase.from("productos").select(PRODUCTO_COLS).limit(5000),
       supabase.from("facturas").select("*").order("num", { ascending: false }),
       supabase.from("ordenes").select("*").order("num", { ascending: false }),
       supabase.from("mejoras").select("*").order("created_at", { ascending: false }),
     ]);
     if (c.data) setClientes(c.data as Cliente[]);
+    if (p.error) console.error("[v0] productos error:", p.error.message, p.error.code);
     if (p.data) setProductos((p.data as Producto[]).map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
     if (f.data) setFacturas(f.data as Factura[]);
     if (o.data) setOrdenes((o.data as Orden[]).map((row) => ({ ...row, lineas: row.lineas || [] })));
