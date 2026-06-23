@@ -1417,14 +1417,6 @@ const Facturas = () => {
           >
             + Add product
           </button>
-            </div>
-          ))}
-          <button
-            onClick={() => setLineas((l) => [...l, { prodId: "", qty: 1 }])}
-            className="w-full px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm mb-3"
-          >
-            + Add line
-          </button>
           <div className="border-t border-border pt-2.5 text-right mb-3">
             <div className="text-sm text-muted-foreground mb-0.5">
               Subtotal: {fmt(subtotal)} - IVA 16%: {fmt(subtotal * 0.16)}
