@@ -3295,6 +3295,9 @@ const Ordenes = () => {
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const [newOrderAlmacen, setNewOrderAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const [newOrderSearches, setNewOrderSearches] = useState<string[]>([""]);
+  const [newOrderFocus, setNewOrderFocus] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pending" });
 
   const clienteFor = (cli: string) =>
@@ -3311,6 +3314,29 @@ const Ordenes = () => {
       }),
     [productos]
   );
+
+  const productosNewOrder = useMemo(
+    () =>
+      productosPorSku.filter((p) => {
+        const alm = p.almacen ?? null;
+        if (newOrderAlmacen === "palmhills") return alm === "palmhills" || alm === null;
+        return alm === newOrderAlmacen;
+      }),
+    [productosPorSku, newOrderAlmacen]
+  );
+
+  const getProductosSugeridos = (search: string) => {
+    const q = search.toLowerCase().trim();
+    if (!q) return productosNewOrder.slice(0, 30);
+    return productosNewOrder
+      .filter(
+        (p) =>
+          p.nom.toLowerCase().includes(q) ||
+          (p.sku || "").toLowerCase().includes(q) ||
+          (p.barcode || "").toLowerCase().includes(q)
+      )
+      .slice(0, 30);
+  };
 
   const total = lineas.reduce((acc, l) => {
     const p = productos.find((x) => x.id === l.prodId);
@@ -3348,6 +3374,8 @@ const Ordenes = () => {
     setShow(false);
     setLineas([{ prodId: "", qty: 1 }]);
     setForm({ cli: "", fecha: today(), estado: "Pending" });
+    setNewOrderSearches([""]);
+    setNewOrderFocus(null);
   };
 
   const startPick = (ord: Orden) => {
@@ -3683,62 +3711,112 @@ const Ordenes = () => {
               </select>
             </Field>
           </Row2>
-          <div className="text-sm font-semibold text-muted-foreground mb-2">
-            Products
-          </div>
-          {lineas.map((l, i) => (
-            <div
-              key={i}
-              className="flex gap-1.5 mb-2 items-center bg-muted rounded-lg p-2"
-            >
-              <select
-                value={l.prodId}
-                onChange={(e) =>
-                  setLineas((ls) =>
-                    ls.map((x, j) =>
-                      j === i ? { ...x, prodId: e.target.value } : x
-                    )
-                  )
-                }
-                className="flex-[2] px-2.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none"
-              >
-                <option value="">Selecciona...</option>
-                {productosPorSku.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.sku ? `${p.sku} — ` : ""}{p.nom} - {fmt(p.precio)}
-                  </option>
-                ))}
-              </select>
-              <input
-                type="text"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                value={l.qty}
-                onChange={(e) =>
-                  setLineas((ls) =>
-                    ls.map((x, j) =>
-                      j === i
-                        ? { ...x, qty: Math.max(1, Number(e.target.value)) }
-                        : x
-                    )
-                  )
-                }
-                autoComplete="off"
-                className="w-14 px-1.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm text-center outline-none"
-              />
-              <button
-                onClick={() => setLineas((ls) => ls.filter((_, j) => j !== i))}
-                className="bg-transparent border-none text-lg cursor-pointer text-muted-foreground"
-              >
-                X
-              </button>
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-semibold text-muted-foreground">Products</div>
+            <div className="flex gap-1">
+              {(["palmhills", "castillo"] as const).map((a) => (
+                <button
+                  key={a}
+                  onClick={() => { setNewOrderAlmacen(a); setNewOrderSearches(lineas.map(() => "")); }}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${newOrderAlmacen === a ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"}`}
+                >
+                  {a === "palmhills" ? "Palm Hills" : "Castillo"}
+                </button>
+              ))}
             </div>
-          ))}
+          </div>
+          {lineas.map((l, i) => {
+            const selectedProd = productos.find((p) => p.id === l.prodId);
+            const search = newOrderSearches[i] ?? "";
+            const sugeridos = getProductosSugeridos(search);
+            const isFocused = newOrderFocus === i;
+            return (
+              <div key={i} className="mb-2 bg-muted rounded-lg p-2">
+                <div className="flex gap-1.5 items-center mb-1">
+                  <div className="flex-[2] relative">
+                    {selectedProd ? (
+                      <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-primary bg-card text-card-foreground text-sm">
+                        <span className="flex-1 truncate">
+                          {selectedProd.sku ? `${selectedProd.sku} — ` : ""}{selectedProd.nom}
+                        </span>
+                        <button
+                          onClick={() => {
+                            setLineas((ls) => ls.map((x, j) => j === i ? { ...x, prodId: "" } : x));
+                            setNewOrderSearches((ss) => ss.map((s, j) => j === i ? "" : s));
+                          }}
+                          className="text-muted-foreground text-xs ml-1"
+                        >
+                          X
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <input
+                          type="text"
+                          placeholder="Buscar producto..."
+                          value={search}
+                          onChange={(e) => setNewOrderSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
+                          onFocus={() => setNewOrderFocus(i)}
+                          onBlur={() => setTimeout(() => setNewOrderFocus(null), 200)}
+                          className="w-full px-2.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                        />
+                        {isFocused && sugeridos.length > 0 && (
+                          <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                            {sugeridos.map((p) => (
+                              <button
+                                key={p.id}
+                                onMouseDown={() => {
+                                  setLineas((ls) => ls.map((x, j) => j === i ? { ...x, prodId: p.id } : x));
+                                  setNewOrderSearches((ss) => ss.map((s, j) => j === i ? "" : s));
+                                  setNewOrderFocus(null);
+                                }}
+                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b border-border last:border-0 text-card-foreground"
+                              >
+                                <span className="font-medium">{p.sku ? `${p.sku} — ` : ""}{p.nom}</span>
+                                <span className="text-muted-foreground ml-1">{fmt(p.precio)}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={l.qty}
+                    onChange={(e) =>
+                      setLineas((ls) =>
+                        ls.map((x, j) =>
+                          j === i ? { ...x, qty: Math.max(1, Number(e.target.value)) } : x
+                        )
+                      )
+                    }
+                    autoComplete="off"
+                    className="w-14 px-1.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm text-center outline-none"
+                  />
+                  <button
+                    onClick={() => {
+                      setLineas((ls) => ls.filter((_, j) => j !== i));
+                      setNewOrderSearches((ss) => ss.filter((_, j) => j !== i));
+                    }}
+                    className="bg-transparent border-none text-lg cursor-pointer text-muted-foreground"
+                  >
+                    X
+                  </button>
+                </div>
+              </div>
+            );
+          })}
           <button
-            onClick={() => setLineas((l) => [...l, { prodId: "", qty: 1 }])}
+            onClick={() => {
+              setLineas((l) => [...l, { prodId: "", qty: 1 }]);
+              setNewOrderSearches((ss) => [...ss, ""]);
+            }}
             className="w-full px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm mb-3"
           >
-            + Add manually
+            + Add product
           </button>
           <div className="text-right border-t border-border pt-2.5 mb-3">
             <strong className="text-base text-card-foreground">Total: {fmt(total)}</strong>
