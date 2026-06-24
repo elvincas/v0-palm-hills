@@ -553,7 +553,11 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const updateOrden = async (id: string, updated: Orden) => {
     const { id: _omit, ...payload } = updated;
-    const { data } = await supabase.from("ordenes").update(payload).eq("id", id).select().single();
+    const { data, error } = await supabase.from("ordenes").update(payload).eq("id", id).select().single();
+    if (error) {
+      console.error("[v0] Supabase error actualizando orden:", error);
+      throw new Error(error.message);
+    }
     if (data) setOrdenes((prev) => prev.map((o) => (o.id === id ? { ...(data as Orden), lineas: (data as Orden).lineas || [] } : o)));
     await logAct(`Order #${updated.num} updated`);
   };
@@ -3608,7 +3612,7 @@ const Ordenes = () => {
     0
   );
 
-  const handleSaveEdit = () => {
+  const handleSaveEdit = async () => {
     if (!editingOrden) return;
     const items = Object.entries(editQtys).filter(([, qty]) => qty > 0);
     if (items.length === 0) {
@@ -3616,7 +3620,11 @@ const Ordenes = () => {
       return;
     }
     const lineasDetalle = items.map(([prodId, qty]) => {
-      const p = productos.find((x) => x.id === prodId)!;
+      const p = productos.find((x) => x.id === prodId);
+      if (!p) {
+        console.error("[v0] Producto no encontrado:", prodId);
+        return null;
+      }
       const precioFinal = editPrecios[prodId] ?? Number(p.precio);
       return {
         prodId: p.id,
@@ -3629,15 +3637,26 @@ const Ordenes = () => {
         qtyEnviada: qty,
         almacen: p.almacen || "palmhills",
       };
-    });
-    updateOrden(editingOrden.id, {
-      ...editingOrden,
-      fecha: editForm.fecha,
-      estado: editForm.estado,
-      total: +editTotal.toFixed(2),
-      lineas: lineasDetalle,
-    });
-    setEditingOrden(null);
+    }).filter(Boolean);
+    
+    if (lineasDetalle.length === 0) {
+      alert("Could not find products to save");
+      return;
+    }
+
+    try {
+      await updateOrden(editingOrden.id, {
+        ...editingOrden,
+        fecha: editForm.fecha,
+        estado: editForm.estado,
+        total: +editTotal.toFixed(2),
+        lineas: lineasDetalle,
+      });
+      setEditingOrden(null);
+    } catch (error) {
+      console.error("[v0] Error guardando orden:", error);
+      alert("Error saving order: " + (error instanceof Error ? error.message : String(error)));
+    }
   };
 
   const ordenesOrdenadas = [...ordenes].sort((a, b) => {
