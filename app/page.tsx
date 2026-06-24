@@ -334,24 +334,49 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  // PostgREST limita cada respuesta a 1000 filas por defecto: con mas de 1000
+  // registros en una tabla, una sola llamada .select() se trunca en silencio.
+  // Se pagina con .range() hasta que una pagina vuelva incompleta.
+  const PAGE_SIZE = 1000;
+  const selectAll = async <T,>(
+    table: string,
+    cols: string,
+    orderCol: string,
+    ascending: boolean
+  ): Promise<T[]> => {
+    const rows: T[] = [];
+    let from = 0;
+    while (true) {
+      const { data, error } = await supabase
+        .from(table)
+        .select(cols)
+        .order(orderCol, { ascending })
+        .range(from, from + PAGE_SIZE - 1);
+      if (error || !data) break;
+      rows.push(...(data as T[]));
+      if (data.length < PAGE_SIZE) break;
+      from += PAGE_SIZE;
+    }
+    return rows;
+  };
+
   const loadAll = async () => {
     const [c, p, f, o, e] = await Promise.all([
-      supabase.from("clientes").select(CLIENTE_COLS).order("created_at", { ascending: false }),
-      supabase.from("productos").select(PRODUCTO_COLS).limit(5000),
-      supabase.from("facturas").select("*").order("num", { ascending: false }),
-      supabase.from("ordenes").select("*").order("num", { ascending: false }),
-      supabase.from("mejoras").select("*").order("created_at", { ascending: false }),
+      selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
+      selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
+      selectAll<Factura>("facturas", "*", "num", false),
+      selectAll<Orden>("ordenes", "*", "num", false),
+      selectAll<Mejora>("mejoras", "*", "created_at", false),
     ]);
-    if (c.data) setClientes(c.data as Cliente[]);
-    if (p.error) console.error("[v0] productos error:", p.error.message, p.error.code);
-    if (p.data) setProductos((p.data as Producto[]).map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
-    if (f.data) setFacturas(f.data as Factura[]);
-    if (o.data) setOrdenes((o.data as Orden[]).map((row) => ({ ...row, lineas: row.lineas || [] })));
-    if (e.data) setMejoras(e.data as Mejora[]);
+    setClientes(c);
+    setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
+    setFacturas(f);
+    setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
+    setMejoras(e);
     await refreshLogs();
     setLoading(false);
-    if (p.data) loadFotosProductos(p.data.map((r) => r.id));
-    if (c.data) loadFotosClientes(c.data.map((r) => r.id));
+    loadFotosProductos(p.map((r) => r.id));
+    loadFotosClientes(c.map((r) => r.id));
   };
 
   useEffect(() => {
@@ -2810,7 +2835,7 @@ const Inventario = () => {
             return (
               <div
                 key={p.id}
-                className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full"
+                className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full uppercase"
               >
                 {!readOnly && (
                   <button
@@ -2879,14 +2904,6 @@ const Inventario = () => {
                   <div className="text-sm font-bold text-secondary-foreground mt-1">
                     {fmt(p.precio)}
                   </div>
-                  {Number(p.costo) > 0 && (
-                    <div className="text-[11px] font-semibold text-primary mt-0.5">
-                      Margin: {(((Number(p.precio) - Number(p.costo)) / Number(p.costo)) * 100).toFixed(0)}%
-                      <span className="text-muted-foreground font-normal ml-1">
-                        ({fmt(Number(p.precio) - Number(p.costo))})
-                      </span>
-                    </div>
-                  )}
                   {almacen !== "castillo" && (
                     <div className="text-xs text-muted-foreground mt-0.5">
                       Stock: {stock} units
@@ -3255,6 +3272,14 @@ const Inventario = () => {
               />
             </Field>
           </Row2>
+          {Number(form.costo) > 0 && (
+            <div className="text-[11px] font-semibold text-primary -mt-1 mb-2">
+              Margin: {(((Number(form.precio) - Number(form.costo)) / Number(form.costo)) * 100).toFixed(0)}%
+              <span className="text-muted-foreground font-normal ml-1">
+                ({fmt(Number(form.precio) - Number(form.costo))})
+              </span>
+            </div>
+          )}
           {formAlmacen !== "castillo" && (
             <>
               <Row2>
