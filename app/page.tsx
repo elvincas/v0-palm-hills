@@ -1366,7 +1366,6 @@ const Facturas = () => {
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [fecha, setFecha] = useState("");
   const [estado, setEstado] = useState("Pending");
-  const [view, setView] = useState<"grid" | "list">("grid");
   const [invAlmacen, setInvAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [invSearches, setInvSearches] = useState<string[]>([""]);
   const [invFocus, setInvFocus] = useState<number | null>(null);
@@ -1470,97 +1469,30 @@ const Facturas = () => {
           placeholder="Search invoices..."
           className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
-        <div className="flex items-center rounded-xl border border-input bg-card overflow-hidden shrink-0">
-          <button
-            onClick={() => setView("grid")}
-            aria-label="Grid view"
-            className={`px-2.5 py-2.5 ${view === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-          >
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-          </button>
-          <button
-            onClick={() => setView("list")}
-            aria-label="List view"
-            className={`px-2.5 py-2.5 ${view === "list" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
-          >
-            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-              <line x1="8" y1="6" x2="21" y2="6" />
-              <line x1="8" y1="12" x2="21" y2="12" />
-              <line x1="8" y1="18" x2="21" y2="18" />
-              <line x1="3" y1="6" x2="3.01" y2="6" />
-              <line x1="3" y1="12" x2="3.01" y2="12" />
-              <line x1="3" y1="18" x2="3.01" y2="18" />
-            </svg>
-          </button>
-        </div>
       </div>
       {filtered.length ? (
-        view === "list" ? (
-          <div className="bg-card border border-border rounded-2xl overflow-hidden">
-            <div className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
-              <span>Date</span>
-              <span>Client #</span>
-              <span>Client Name</span>
-              <span>Amount</span>
-              <span>Invoice #</span>
-            </div>
-            {visibleFacturas.map((f) => (
-              <div
-                key={f.id}
-                onClick={() => router.push(`/facturas/${f.id}`)}
-                className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border cursor-pointer hover:bg-secondary/30"
-              >
-                <span className="text-muted-foreground">{fdate(f.fecha)}</span>
-                <span className="font-mono text-muted-foreground">{clienteCodigo(f.cli)}</span>
-                <span className="font-bold uppercase truncate">{f.cli}</span>
-                <span className="font-bold text-primary">{fmt(f.total)}</span>
-                <span className="font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
-              </div>
-            ))}
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          <div className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
+            <span>Date</span>
+            <span>Client #</span>
+            <span>Client Name</span>
+            <span>Amount</span>
+            <span>Invoice #</span>
           </div>
-        ) : (
-        <div className="grid grid-cols-2 gap-2.5">
           {visibleFacturas.map((f) => (
             <div
               key={f.id}
               onClick={() => router.push(`/facturas/${f.id}`)}
-              className="bg-card border border-border rounded-2xl p-3.5 cursor-pointer hover:border-primary transition-colors relative"
+              className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border cursor-pointer hover:bg-secondary/30"
             >
-              {!readOnly && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (confirm("Delete this invoice? It cannot be recovered.")) deleteFactura(f.id);
-                  }}
-                  aria-label="Delete invoice"
-                  className="absolute top-2 right-2 w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 z-[1]"
-                >
-                  ×
-                </button>
-              )}
-              <div className="w-full aspect-[4/5] rounded-xl bg-gradient-to-b from-[#fafaf7] to-[#f0efe9] border border-border flex flex-col items-center justify-center mb-2 gap-1.5 relative overflow-hidden">
-                <svg width={30} height={30} viewBox="0 0 24 24" fill="none" stroke="#4a6741" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-                  <path d="M14 2v6h6" />
-                  <path d="M16 13H8M16 17H8M10 9H8" />
-                </svg>
-                <span className="text-[10px] font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
-              </div>
-              <div className="text-xs font-bold text-card-foreground truncate uppercase">{f.cli}</div>
-              <div className="text-xs text-muted-foreground mb-1.5">{fdate(f.fecha)}</div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-primary">{fmt(f.total)}</span>
-                <Badge e={f.estado} />
-              </div>
+              <span className="text-muted-foreground">{fdate(f.fecha)}</span>
+              <span className="font-mono text-muted-foreground">{clienteCodigo(f.cli)}</span>
+              <span className="font-bold uppercase truncate">{f.cli}</span>
+              <span className="font-bold text-primary">{fmt(f.total)}</span>
+              <span className="font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
             </div>
           ))}
         </div>
-        )
       ) : (
         <div className="bg-card rounded-2xl p-3.5 border border-border">
           <Empty text="No invoices. Tap + to create one." />
@@ -1765,6 +1697,7 @@ const Clientes = () => {
   const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, readOnly } = useData();
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("codigo_cliente");
+  const [cliColumnas, setCliColumnas] = useState<1 | 3>(1);
   const [show, setShow] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -2021,89 +1954,127 @@ const Clientes = () => {
           <option value="nom">Name A-Z</option>
           <option value="codigo_cliente">Client Number A-Z</option>
         </select>
+        <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 shrink-0">
+          <button
+            onClick={() => setCliColumnas(1)}
+            aria-label="1 column"
+            className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all ${cliColumnas === 1 ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+          >
+            ▤ 1
+          </button>
+          <button
+            onClick={() => setCliColumnas(3)}
+            aria-label="3 columns"
+            className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all ${cliColumnas === 3 ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+          >
+            ▦ 3
+          </button>
+        </div>
         <span className="text-xs text-muted-foreground shrink-0">{filtered.length} cli.</span>
       </div>
-      <div className="space-y-2.5">
-        {filtered.length ? (
-          visibleClientes.map((c) => (
-            <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
-              {/* Banner - clickeable */}
-              <div 
+      {filtered.length ? (
+        cliColumnas === 3 ? (
+          <div className="grid grid-cols-3 gap-2 mb-3">
+            {visibleClientes.map((c) => (
+              <div
+                key={c.id}
                 onClick={() => router.push(`/clientes/${c.id}`)}
-                className="w-full h-32 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                className="bg-card border border-border rounded-2xl overflow-hidden cursor-pointer hover:border-primary transition-colors"
               >
-                {c.foto_local ? (
-                  <img
-                    src={c.foto_local}
-                    alt={c.nom}
-                    loading="lazy"
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <div className="text-4xl">🏪</div>
-                )}
-              </div>
-              {/* Content */}
-              <div className="p-3.5">
-                <div 
-                  onClick={() => router.push(`/clientes/${c.id}`)}
-                  className="flex items-start justify-between gap-2.5 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold uppercase tracking-wide text-card-foreground">{c.nom}</div>
-                    {c.codigo_cliente && (
-                      <div className="text-xs font-mono text-muted-foreground">#{c.codigo_cliente}</div>
-                    )}
-                    <div className="text-xs text-muted-foreground">
-                      {c.email || c.tel || "No contact"}
-                    </div>
-                  </div>
+                <div className="w-full aspect-square bg-gradient-to-b from-secondary to-secondary-foreground flex items-center justify-center overflow-hidden">
+                  {c.foto_local ? (
+                    <img src={c.foto_local} alt={c.nom} loading="lazy" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-3xl">🏪</div>
+                  )}
+                </div>
+                <div className="p-2">
+                  <div className="text-[11px] font-bold uppercase text-card-foreground truncate leading-tight">{c.nom}</div>
+                  {c.codigo_cliente && (
+                    <div className="text-[10px] font-mono text-muted-foreground">#{c.codigo_cliente}</div>
+                  )}
                   <Badge e={c.estado} />
                 </div>
-                {(c.dir || c.ciudad) && (
-                  <div className="text-xs text-muted-foreground mb-1">
-                    📍 {[c.dir, c.ciudad, c.estado_dir].filter(Boolean).join(", ")}
-                  </div>
-                )}
-                {c.contacto && (
-                  <div className="text-xs text-muted-foreground mb-2.5">👤 {c.contacto}</div>
-                )}
-                {c.abierto_sabados && (
-                  <div className="inline-block text-xs font-medium text-primary bg-secondary px-2 py-0.5 rounded-full mb-2.5">
-                    Open on Saturdays
-                  </div>
-                )}
-                {!readOnly && (
-                  <div className="flex gap-1.5">
-                    <button
-                      onClick={() => openEdit(c)}
-                      className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-primary/85 border border-white/30 shadow-sm hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground text-xs font-bold"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (confirm("Delete client?")) {
-                          deleteCliente(c.id).catch((err) =>
-                            alert(`Could not delete the client: ${err instanceof Error ? err.message : String(err)}`)
-                          );
-                        }
-                      }}
-                      className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                )}
               </div>
-            </div>
-          ))
-        ) : (
-          <div className="bg-card rounded-2xl p-3.5 border border-border">
-            <Empty text="No clients. Tap + to add one." />
+            ))}
           </div>
-        )}
-      </div>
+        ) : (
+          <div className="space-y-2.5">
+            {visibleClientes.map((c) => (
+              <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
+                {/* Banner - clickeable */}
+                <div
+                  onClick={() => router.push(`/clientes/${c.id}`)}
+                  className="w-full h-32 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden cursor-pointer hover:opacity-90 transition-opacity"
+                >
+                  {c.foto_local ? (
+                    <img src={c.foto_local} alt={c.nom} loading="lazy" className="w-full h-full object-cover" />
+                  ) : (
+                    <div className="text-4xl">🏪</div>
+                  )}
+                </div>
+                {/* Content */}
+                <div className="p-3.5">
+                  <div
+                    onClick={() => router.push(`/clientes/${c.id}`)}
+                    className="flex items-start justify-between gap-2.5 mb-2 cursor-pointer hover:opacity-80 transition-opacity"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-bold uppercase tracking-wide text-card-foreground">{c.nom}</div>
+                      {c.codigo_cliente && (
+                        <div className="text-xs font-mono text-muted-foreground">#{c.codigo_cliente}</div>
+                      )}
+                      <div className="text-xs text-muted-foreground">
+                        {c.email || c.tel || "No contact"}
+                      </div>
+                    </div>
+                    <Badge e={c.estado} />
+                  </div>
+                  {(c.dir || c.ciudad) && (
+                    <div className="text-xs text-muted-foreground mb-1">
+                      📍 {[c.dir, c.ciudad, c.estado_dir].filter(Boolean).join(", ")}
+                    </div>
+                  )}
+                  {c.contacto && (
+                    <div className="text-xs text-muted-foreground mb-2.5">👤 {c.contacto}</div>
+                  )}
+                  {c.abierto_sabados && (
+                    <div className="inline-block text-xs font-medium text-primary bg-secondary px-2 py-0.5 rounded-full mb-2.5">
+                      Open on Saturdays
+                    </div>
+                  )}
+                  {!readOnly && (
+                    <div className="flex gap-1.5">
+                      <button
+                        onClick={() => openEdit(c)}
+                        className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-primary/85 border border-white/30 shadow-sm hover:bg-primary/95 active:scale-[0.97] transition-all text-primary-foreground text-xs font-bold"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => {
+                          if (confirm("Delete client?")) {
+                            deleteCliente(c.id).catch((err) =>
+                              alert(`Could not delete the client: ${err instanceof Error ? err.message : String(err)}`)
+                            );
+                          }
+                        }}
+                        className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : (
+        <div className="bg-card rounded-2xl p-3.5 border border-border">
+          <Empty text="No clients. Tap + to add one." />
+        </div>
+      )}
       <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
 
       {show && (
