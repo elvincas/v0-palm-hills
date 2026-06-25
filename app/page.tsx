@@ -3156,23 +3156,6 @@ const Inventario = () => {
                     CB: {p.barcode}
                   </div>
                 )}
-                {(p.etiquetas || []).length > 0 && (
-                  <div className="flex flex-wrap gap-1 mb-1">
-                    {p.etiquetas.slice(0, 4).map((t) => (
-                      <span
-                        key={t}
-                        className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground"
-                      >
-                        {t}
-                      </span>
-                    ))}
-                    {p.etiquetas.length > 4 && (
-                      <span className="text-[10px] px-1 py-0.5 text-muted-foreground">
-                        +{p.etiquetas.length - 4}
-                      </span>
-                    )}
-                  </div>
-                )}
                 <div className="mt-auto pt-1.5">
                   {almacen === "castillo" ? (
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex bg-secondary text-secondary-foreground">
