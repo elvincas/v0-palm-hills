@@ -1028,6 +1028,8 @@ const Calendario = () => {
   const [modalTipo, setModalTipo] = useState<TipoEvento | null>(null);
   const [formFecha, setFormFecha] = useState(today());
   const [formClienteId, setFormClienteId] = useState("");
+  const [formClienteSearch, setFormClienteSearch] = useState("");
+  const [formClienteOpen, setFormClienteOpen] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const ordenesPorFecha = useMemo(() => {
@@ -1079,6 +1081,8 @@ const Calendario = () => {
     setModalTipo(tipo);
     setFormFecha(diaSeleccionado ?? today());
     setFormClienteId("");
+    setFormClienteSearch("");
+    setFormClienteOpen(false);
     setMenuOpen(false);
   };
 
@@ -1291,18 +1295,49 @@ const Calendario = () => {
           </Field>
           {modalTipo !== "delivery" && (
             <Field label="Client">
-              <select
-                value={formClienteId}
-                onChange={(e) => setFormClienteId(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option value="">Selecciona...</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nom}
-                  </option>
-                ))}
-              </select>
+              <div className="relative">
+                <input
+                  type="text"
+                  value={formClienteSearch}
+                  onChange={(e) => {
+                    setFormClienteSearch(e.target.value);
+                    setFormClienteId("");
+                    setFormClienteOpen(true);
+                  }}
+                  onFocus={() => setFormClienteOpen(true)}
+                  placeholder="Search client by name..."
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                />
+                {formClienteId && (
+                  <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-xs font-bold">✓</span>
+                )}
+                {formClienteOpen && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setFormClienteOpen(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-52 overflow-y-auto w-full">
+                      {clientes
+                        .filter((c) => !formClienteSearch.trim() || c.nom.toLowerCase().includes(formClienteSearch.toLowerCase()))
+                        .map((c) => (
+                          <button
+                            key={c.id}
+                            onClick={() => {
+                              setFormClienteId(c.id);
+                              setFormClienteSearch(c.nom);
+                              setFormClienteOpen(false);
+                            }}
+                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-muted ${formClienteId === c.id ? "font-bold text-primary" : "text-card-foreground"}`}
+                          >
+                            {c.nom}
+                          </button>
+                        ))}
+                      {clientes.filter((c) => !formClienteSearch.trim() || c.nom.toLowerCase().includes(formClienteSearch.toLowerCase())).length === 0 && (
+                        <div className="px-3 py-2.5 text-xs text-muted-foreground">No clients found</div>
+                      )}
+                    </div>
+                  </>
+                )}
+              </div>
             </Field>
           )}
           <button
@@ -3657,6 +3692,9 @@ const Ordenes = () => {
   });
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
+  const [editCli, setEditCli] = useState("");
+  const [editCliSearch, setEditCliSearch] = useState("");
+  const [editCliOpen, setEditCliOpen] = useState(false);
   const [editQtys, setEditQtys] = useState<Record<string, number>>({});
   const [editPrecios, setEditPrecios] = useState<Record<string, number>>({});
   const [editandoDescuentoId, setEditandoDescuentoId] = useState<string | null>(null);
@@ -3834,6 +3872,9 @@ const Ordenes = () => {
   const startEdit = (ord: Orden) => {
     setMenuOpenId(null);
     setEditingOrden(ord);
+    setEditCli(ord.cli);
+    setEditCliSearch(clienteFor(ord.cli)?.nom || ord.cli);
+    setEditCliOpen(false);
     setEditForm({ fecha: ord.fecha, estado: ord.estado });
     setEditSearch("");
     setEditAlmacen("palmhills");
@@ -3943,6 +3984,7 @@ const Ordenes = () => {
     try {
       await updateOrden(editingOrden.id, {
         ...editingOrden,
+        cli: editCli,
         fecha: editForm.fecha,
         estado: editForm.estado,
         total: +editTotal.toFixed(2),
@@ -4035,7 +4077,13 @@ const Ordenes = () => {
               }
               right={
                 <>
-                  <div className="text-sm font-bold mb-0.5 text-card-foreground">{fmt(o.total)}</div>
+                  <div className="text-sm font-bold mb-0.5 text-card-foreground">
+                    {fmt(
+                      o.lineas?.length
+                        ? o.lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0)
+                        : o.total
+                    )}
+                  </div>
                   <Badge e={o.estado} />
                   <br />
                   <button
@@ -4262,11 +4310,44 @@ const Ordenes = () => {
             >
               X
             </button>
-            <div className="flex-1">
+            <div className="flex-1 relative">
               <span className="text-white text-base font-bold block">Edit Order #{editingOrden.num}</span>
-              <span className="text-white/80 text-xs uppercase">
-                {clienteFor(editingOrden.cli)?.nom || editingOrden.cli}
-              </span>
+              <input
+                type="text"
+                value={editCliSearch}
+                onChange={(e) => {
+                  setEditCliSearch(e.target.value);
+                  setEditCliOpen(true);
+                }}
+                onFocus={() => setEditCliOpen(true)}
+                placeholder="Search client..."
+                className="w-full bg-white/20 text-white placeholder-white/60 text-xs rounded-lg px-2 py-1 outline-none border border-white/30 focus:border-white/60"
+              />
+              {editCliOpen && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setEditCliOpen(false)} />
+                  <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto min-w-[200px]">
+                    {clientes
+                      .filter((c) => !editCliSearch.trim() || c.nom.toLowerCase().includes(editCliSearch.toLowerCase()))
+                      .map((c) => (
+                        <button
+                          key={c.id}
+                          onClick={() => {
+                            setEditCli(c.id);
+                            setEditCliSearch(c.nom);
+                            setEditCliOpen(false);
+                          }}
+                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted ${editCli === c.id ? "font-bold text-primary" : "text-card-foreground"}`}
+                        >
+                          {c.nom}
+                        </button>
+                      ))}
+                    {clientes.filter((c) => !editCliSearch.trim() || c.nom.toLowerCase().includes(editCliSearch.toLowerCase())).length === 0 && (
+                      <div className="px-3 py-2 text-xs text-muted-foreground">No clients found</div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4">
