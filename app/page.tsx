@@ -185,6 +185,52 @@ const Empty = ({ text }: { text: string }) => (
   <div className="text-center py-7 text-muted-foreground text-sm">{text}</div>
 );
 
+const LIST_PAGE_SIZE = 40;
+
+// Pagina listas largas (clientes, facturas, ordenes, productos, etc.) para no
+// renderizar de una sola vez listas de miles de filas.
+//
+// El reinicio a la primera pagina se controla con `resetDeps` (busqueda,
+// filtros, almacen, orden) en vez de la propia `list`: las fotos de
+// productos/clientes se cargan en segundo plano en lotes y eso cambia la
+// referencia de `productos`/`clientes` (y por lo tanto de `list`) muchas
+// veces mientras cargan, sin que el filtro haya cambiado. Si el reinicio
+// dependiera de `list`, un "Cargar mas" se deshacia solo cada vez que
+// llegaba un lote de fotos.
+function usePagedList<T>(list: T[], resetDeps: unknown[] = [], pageSize: number = LIST_PAGE_SIZE) {
+  const [visibleCount, setVisibleCount] = useState(pageSize);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    setVisibleCount(pageSize);
+  }, resetDeps);
+  return {
+    visible: list.slice(0, visibleCount),
+    hasMore: visibleCount < list.length,
+    remaining: Math.max(0, list.length - visibleCount),
+    loadMore: () => setVisibleCount((c) => c + pageSize),
+  };
+}
+
+const LoadMoreButton = ({
+  hasMore,
+  remaining,
+  onClick,
+}: {
+  hasMore: boolean;
+  remaining: number;
+  onClick: () => void;
+}) => {
+  if (!hasMore) return null;
+  return (
+    <button
+      onClick={onClick}
+      className="w-full mt-3 py-2.5 rounded-xl border border-border text-sm font-bold text-secondary-foreground"
+    >
+      Cargar más ({remaining} restantes)
+    </button>
+  );
+};
+
 const Li = ({ left, right }: { left: ReactNode; right: ReactNode }) => (
   <div className="flex items-center justify-between py-3 border-b border-border last:border-b-0 gap-2.5">
     <div className="flex-1 min-w-0">{left}</div>
@@ -1158,6 +1204,8 @@ const Facturas = () => {
       )
     : facturas;
 
+  const { visible: visibleFacturas, hasMore, remaining, loadMore } = usePagedList(filtered, [q]);
+
   const subtotal = lineas.reduce((acc, l) => {
     const p = productos.find((x) => x.id === l.prodId);
     return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0);
@@ -1250,7 +1298,7 @@ const Facturas = () => {
               <span>Amount</span>
               <span>Invoice #</span>
             </div>
-            {filtered.map((f) => (
+            {visibleFacturas.map((f) => (
               <div
                 key={f.id}
                 onClick={() => router.push(`/facturas/${f.id}`)}
@@ -1266,7 +1314,7 @@ const Facturas = () => {
           </div>
         ) : (
         <div className="grid grid-cols-2 gap-2.5">
-          {filtered.map((f) => (
+          {visibleFacturas.map((f) => (
             <div
               key={f.id}
               onClick={() => router.push(`/facturas/${f.id}`)}
@@ -1307,6 +1355,7 @@ const Facturas = () => {
           <Empty text="No invoices. Tap + to create one." />
         </div>
       )}
+      <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
       {!readOnly && (
         <button
           className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
@@ -1558,6 +1607,8 @@ const Clientes = () => {
     return sorted;
   }, [clientes, q, sortBy]);
 
+  const { visible: visibleClientes, hasMore, remaining, loadMore } = usePagedList(filtered, [q, sortBy]);
+
   const handleFotoUpload = (file: File | undefined) => {
     if (!file) return;
     const reader = new FileReader();
@@ -1751,7 +1802,7 @@ const Clientes = () => {
       </div>
       <div className="space-y-2.5">
         {filtered.length ? (
-          filtered.map((c) => (
+          visibleClientes.map((c) => (
             <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
               {/* Banner - clickeable */}
               <div 
@@ -1830,6 +1881,7 @@ const Clientes = () => {
           </div>
         )}
       </div>
+      <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
 
       {show && (
         <Modal title={editId ? "Edit Client" : "New Client"} onClose={() => { reset(); setShow(false); }}>
@@ -2240,12 +2292,6 @@ const Inventario = () => {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("sku");
   const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
-  // Castillo solo tiene mas de 2000 productos: renderizar todas las tarjetas
-  // (con foto) de una sola vez es lento y puede romper el reconciliado de
-  // React en listas tan grandes. Se muestran de PAGE_SIZE en PAGE_SIZE y se
-  // reinicia el conteo cada vez que cambia el filtro/busqueda/almacen.
-  const INVENTARIO_PAGE_SIZE = 40;
-  const [visibleCount, setVisibleCount] = useState(INVENTARIO_PAGE_SIZE);
   const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [form, setForm] = useState({
     nom: "",
@@ -2338,14 +2384,12 @@ const Inventario = () => {
     return sorted;
   }, [productosAlmacen, q, tagFilter, sortBy]);
 
-  // Cada vez que cambia el resultado filtrado (busqueda, almacen, tags, orden)
-  // se reinicia a la primera pagina, para no arrastrar un "visibleCount" alto
-  // de una lista anterior mas grande.
-  useEffect(() => {
-    setVisibleCount(INVENTARIO_PAGE_SIZE);
-  }, [filtered]);
-
-  const visibleProductos = filtered.slice(0, visibleCount);
+  const { visible: visibleProductos, hasMore, remaining, loadMore } = usePagedList(filtered, [
+    q,
+    tagFilter,
+    sortBy,
+    almacen,
+  ]);
 
   // Las etiquetas son palabras unicas separadas por espacio (como las keywords
   // de busqueda de Amazon): cada palabra es una sugerencia de busqueda aparte,
@@ -2932,14 +2976,7 @@ const Inventario = () => {
           </div>
         )}
       </div>
-      {visibleCount < filtered.length && (
-        <button
-          onClick={() => setVisibleCount((c) => c + INVENTARIO_PAGE_SIZE)}
-          className="w-full mb-3 py-2.5 rounded-xl border border-border text-sm font-bold text-secondary-foreground"
-        >
-          Cargar más ({filtered.length - visibleCount} restantes)
-        </button>
-      )}
+      <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
       {menuOpen && (
         <div
           className="fixed inset-0 z-[6]"
@@ -3428,8 +3465,6 @@ const Ordenes = () => {
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
-  const EDIT_PRODUCTOS_PAGE_SIZE = 40;
-  const [editVisibleCount, setEditVisibleCount] = useState(EDIT_PRODUCTOS_PAGE_SIZE);
   const [newOrderAlmacen, setNewOrderAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [newOrderSearches, setNewOrderSearches] = useState<string[]>([""]);
   const [newOrderFocus, setNewOrderFocus] = useState<number | null>(null);
@@ -3658,13 +3693,12 @@ const Ordenes = () => {
     );
   })();
 
-  // Mismo motivo que en Inventario: Castillo tiene miles de productos,
-  // no se renderizan todos de una vez.
-  useEffect(() => {
-    setEditVisibleCount(EDIT_PRODUCTOS_PAGE_SIZE);
-  }, [editSearch, editAlmacen]);
-
-  const editProductosVisibles = editProductosFiltrados.slice(0, editVisibleCount);
+  const {
+    visible: editProductosVisibles,
+    hasMore: editHasMore,
+    remaining: editRemaining,
+    loadMore: editLoadMore,
+  } = usePagedList(editProductosFiltrados, [editSearch, editAlmacen]);
 
   const editTotalUnidades = Object.values(editQtys).reduce((a, b) => a + b, 0);
   const editTotal = editProductosOrdenados.reduce(
@@ -3725,11 +3759,18 @@ const Ordenes = () => {
     return aDone - bDone;
   });
 
+  const {
+    visible: ordenesVisibles,
+    hasMore: ordenesHasMore,
+    remaining: ordenesRemaining,
+    loadMore: ordenesLoadMore,
+  } = usePagedList(ordenesOrdenadas, []);
+
   return (
     <div>
       <div className="bg-card rounded-2xl p-3.5 border border-border">
         {ordenesOrdenadas.length ? (
-          ordenesOrdenadas.map((o) => {
+          ordenesVisibles.map((o) => {
             const cInfo = clienteFor(o.cli);
             return (
             <Li
@@ -3821,6 +3862,7 @@ const Ordenes = () => {
           <Empty text="No orders. Tap + to create one." />
         )}
       </div>
+      <LoadMoreButton hasMore={ordenesHasMore} remaining={ordenesRemaining} onClick={ordenesLoadMore} />
       {!readOnly && (
         <button
           className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
@@ -4159,14 +4201,7 @@ const Ordenes = () => {
                 </div>
               )}
             </div>
-            {editVisibleCount < editProductosFiltrados.length && (
-              <button
-                onClick={() => setEditVisibleCount((c) => c + EDIT_PRODUCTOS_PAGE_SIZE)}
-                className="w-full mt-3 py-2.5 rounded-xl border border-border text-sm font-bold text-secondary-foreground"
-              >
-                Cargar más ({editProductosFiltrados.length - editVisibleCount} restantes)
-              </button>
-            )}
+            <LoadMoreButton hasMore={editHasMore} remaining={editRemaining} onClick={editLoadMore} />
           </div>
           <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 py-3.5 flex items-center justify-between gap-3 shrink-0">
             <div className="min-w-0">
@@ -4477,6 +4512,19 @@ const Mejoras = () => {
     [mejoras]
   );
 
+  const {
+    visible: pendientesVisibles,
+    hasMore: pendientesHasMore,
+    remaining: pendientesRemaining,
+    loadMore: pendientesLoadMore,
+  } = usePagedList(pendientes, []);
+  const {
+    visible: completadasVisibles,
+    hasMore: completadasHasMore,
+    remaining: completadasRemaining,
+    loadMore: completadasLoadMore,
+  } = usePagedList(completadas, []);
+
   const reset = () => {
     setForm({
       titulo: "",
@@ -4590,13 +4638,23 @@ const Mejoras = () => {
         </div>
       ) : (
         <>
-          {pendientes.map(card)}
+          {pendientesVisibles.map(card)}
+          <LoadMoreButton
+            hasMore={pendientesHasMore}
+            remaining={pendientesRemaining}
+            onClick={pendientesLoadMore}
+          />
           {completadas.length > 0 && (
             <>
               <div className="text-xs font-bold text-muted-foreground uppercase tracking-wide mt-4 mb-2">
                 Completed
               </div>
-              {completadas.map(card)}
+              {completadasVisibles.map(card)}
+              <LoadMoreButton
+                hasMore={completadasHasMore}
+                remaining={completadasRemaining}
+                onClick={completadasLoadMore}
+              />
             </>
           )}
         </>
