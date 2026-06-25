@@ -3697,7 +3697,7 @@ const Ordenes = () => {
         qtyEnviada: qty,
         almacen: p.almacen || "palmhills",
       };
-    }).filter(Boolean);
+    }).filter((l): l is NonNullable<typeof l> => l !== null);
     
     if (lineasDetalle.length === 0) {
       alert("Could not find products to save");
