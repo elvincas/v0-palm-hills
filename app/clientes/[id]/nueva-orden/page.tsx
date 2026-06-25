@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { getDeliveryDays, nextDeliveryDate } from '@/lib/delivery'
+import { proximaFechaEntrega } from '@/lib/delivery'
 import { flexibleSearch } from '@/lib/search'
 
 interface Cliente {
@@ -41,7 +41,8 @@ export default function NuevaOrdenPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const [fecha, setFecha] = useState(() => nextDeliveryDate(getDeliveryDays()))
+  const [fecha, setFecha] = useState('')
+  const [fechasEntrega, setFechasEntrega] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string>('')
   // cantidades por producto: { [prodId]: qty }
@@ -74,6 +75,15 @@ export default function NuevaOrdenPage() {
         }
         const { data: c } = await supabase.from('clientes').select('id, nom').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
+        const { data: eventos } = await supabase
+          .from('eventos_calendario')
+          .select('fecha')
+          .eq('tipo', 'delivery')
+          .gte('fecha', today())
+          .order('fecha')
+        const fechas = Array.from(new Set((eventos || []).map((e) => e.fecha as string)))
+        setFechasEntrega(fechas)
+        if (fechas.length) setFecha(proximaFechaEntrega(fechas))
         // Datos livianos primero (sin foto) para no esperar varios MB de imagenes.
         // Supabase/PostgREST limita cada respuesta (db-max-rows, normalmente 1000),
         // por lo que paginamos con .range() para traer TODOS los productos.
@@ -191,6 +201,10 @@ export default function NuevaOrdenPage() {
       alert('Add at least one product')
       return
     }
+    if (!fecha) {
+      alert('Select a delivery date')
+      return
+    }
     setSaving(true)
     try {
       const supabase = createClient()
@@ -281,13 +295,24 @@ export default function NuevaOrdenPage() {
           {cliente && <p className="text-sm text-muted-foreground">Cliente: {cliente.nom}</p>}
 
           <div className="mt-3 flex flex-col gap-2">
-            <input
-              type="date"
-              value={fecha}
-              onChange={(e) => setFecha(e.target.value)}
-              autoComplete="off"
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-sm"
-            />
+            {fechasEntrega.length ? (
+              <select
+                value={fecha}
+                onChange={(e) => setFecha(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-sm"
+              >
+                <option value="">Selecciona una fecha de entrega...</option>
+                {fechasEntrega.map((f) => (
+                  <option key={f} value={f}>
+                    {f}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="text-xs text-muted-foreground">
+                No hay días de entrega disponibles todavía. Contacta a Palm Hills.
+              </p>
+            )}
             <input
               type="search"
               inputMode="search"

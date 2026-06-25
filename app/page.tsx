@@ -8,7 +8,7 @@ import { flexibleSearch, normTag } from "@/lib/search";
 import "react-easy-crop/react-easy-crop.css";
 import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
-import { getDeliveryDays, setDeliveryDays, DIAS_SEMANA } from "@/lib/delivery";
+import { proximaFechaEntrega } from "@/lib/delivery";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -105,6 +105,16 @@ interface Mejora {
 interface LogEntry {
   msg: string;
   ts: string;
+}
+
+type TipoEvento = "delivery" | "visit" | "collect_money" | "order_request";
+
+interface EventoCalendario {
+  id: string;
+  fecha: string;
+  tipo: TipoEvento;
+  cliente_id: string | null;
+  created_at?: string;
 }
 
 // ------------------------------
@@ -282,6 +292,8 @@ interface DataContextType {
   facturas: Factura[];
   ordenes: Orden[];
   mejoras: Mejora[];
+  eventosCalendario: EventoCalendario[];
+  proximasFechasEntrega: string[];
   logs: LogEntry[];
   loading: boolean;
   addCliente: (c: Omit<Cliente, "id">) => Promise<void>;
@@ -304,6 +316,8 @@ interface DataContextType {
   addMejora: (m: Omit<Mejora, "id">) => Promise<void>;
   deleteMejora: (id: string) => Promise<void>;
   updateMejora: (id: string, m: Omit<Mejora, "id">) => Promise<void>;
+  addEvento: (e: Omit<EventoCalendario, "id">) => Promise<void>;
+  deleteEvento: (id: string) => Promise<void>;
   refreshLogs: () => void;
 }
 
@@ -322,6 +336,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
+  const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -408,18 +423,20 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, o, e] = await Promise.all([
+      const [c, p, f, o, e, ev] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
         selectAll<Orden>("ordenes", "*", "num", false),
         selectAll<Mejora>("mejoras", "*", "created_at", false),
+        selectAll<EventoCalendario>("eventos_calendario", "*", "fecha", true),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
       setFacturas(f);
       setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setMejoras(e);
+      setEventosCalendario(ev);
       await refreshLogs();
       loadFotosProductos(p.map((r) => r.id));
       loadFotosClientes(c.map((r) => r.id));
@@ -680,6 +697,36 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Improvement updated: ${m.titulo}`);
   };
 
+  // --- Calendario (agenda de ruta) ---
+  const addEvento = async (ev: Omit<EventoCalendario, "id">) => {
+    const { data, error } = await supabase.from("eventos_calendario").insert(ev).select().single();
+    if (error) throw new Error(error.message);
+    setEventosCalendario((prev) => [...prev, data as EventoCalendario]);
+    await logAct(`Calendar event added: ${ev.tipo} on ${ev.fecha}`);
+  };
+
+  const deleteEvento = async (id: string) => {
+    const { error } = await supabase.from("eventos_calendario").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setEventosCalendario((prev) => prev.filter((e) => e.id !== id));
+    await logAct(`Calendar event deleted`);
+  };
+
+  // Fechas (>= hoy) ya marcadas como dia de entrega en el calendario: de aca
+  // se eligen las fechas de entrega de ordenes/facturas, en vez de un campo
+  // de fecha libre.
+  const proximasFechasEntrega = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          eventosCalendario
+            .filter((e) => e.tipo === "delivery" && e.fecha >= today())
+            .map((e) => e.fecha)
+        )
+      ).sort(),
+    [eventosCalendario]
+  );
+
   const value: DataContextType = {
     role,
     readOnly: role === "visitante",
@@ -688,6 +735,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     facturas,
     ordenes,
     mejoras,
+    eventosCalendario,
+    proximasFechasEntrega,
     logs,
     loading,
     addCliente,
@@ -706,6 +755,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addMejora,
     deleteMejora,
     updateMejora,
+    addEvento,
+    deleteEvento,
     refreshLogs,
   };
 
@@ -959,23 +1010,25 @@ const MESES = [
 ];
 const DIAS_CORTOS = ["S", "M", "T", "W", "T", "F", "S"];
 
+const EVENTO_INFO: Record<TipoEvento, { icon: string; label: string }> = {
+  delivery: { icon: "🚚", label: "Delivery day" },
+  visit: { icon: "📍", label: "Visit" },
+  collect_money: { icon: "💰", label: "Collect money" },
+  order_request: { icon: "📝", label: "Order request" },
+};
+
 const Calendario = () => {
-  const { ordenes, clientes, readOnly } = useData();
-  const [deliveryDays, setDeliveryDaysState] = useState<number[]>(() => getDeliveryDays());
-  const [showConfig, setShowConfig] = useState(false);
+  const { ordenes, clientes, eventosCalendario, addEvento, deleteEvento, readOnly } = useData();
   const [mesActual, setMesActual] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
-
-  const toggleDeliveryDay = (dia: number) => {
-    const next = deliveryDays.includes(dia)
-      ? deliveryDays.filter((d) => d !== dia)
-      : [...deliveryDays, dia].sort();
-    setDeliveryDaysState(next);
-    setDeliveryDays(next);
-  };
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [modalTipo, setModalTipo] = useState<TipoEvento | null>(null);
+  const [formFecha, setFormFecha] = useState(today());
+  const [formClienteId, setFormClienteId] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const ordenesPorFecha = useMemo(() => {
     const map: Record<string, Orden[]> = {};
@@ -986,6 +1039,15 @@ const Calendario = () => {
     });
     return map;
   }, [ordenes]);
+
+  const eventosPorFecha = useMemo(() => {
+    const map: Record<string, EventoCalendario[]> = {};
+    eventosCalendario.forEach((e) => {
+      if (!map[e.fecha]) map[e.fecha] = [];
+      map[e.fecha].push(e);
+    });
+    return map;
+  }, [eventosCalendario]);
 
   const clienteFor = (cli: string) =>
     clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
@@ -1011,6 +1073,42 @@ const Calendario = () => {
   };
 
   const ordenesDelDia = diaSeleccionado ? ordenesPorFecha[diaSeleccionado] || [] : [];
+  const eventosDelDia = diaSeleccionado ? eventosPorFecha[diaSeleccionado] || [] : [];
+
+  const abrirModalEvento = (tipo: TipoEvento) => {
+    setModalTipo(tipo);
+    setFormFecha(diaSeleccionado ?? today());
+    setFormClienteId("");
+    setMenuOpen(false);
+  };
+
+  const handleCrearEvento = async () => {
+    if (!modalTipo) return;
+    if (modalTipo !== "delivery" && !formClienteId) {
+      alert("Select a client");
+      return;
+    }
+    setSaving(true);
+    try {
+      await addEvento({
+        fecha: formFecha,
+        tipo: modalTipo,
+        cliente_id: modalTipo === "delivery" ? null : formClienteId,
+      });
+      setModalTipo(null);
+    } catch (err) {
+      alert(`Could not add this to the calendar: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteEvento = (ev: EventoCalendario) => {
+    if (!confirm("Remove this from the calendar?")) return;
+    deleteEvento(ev.id).catch((err) =>
+      alert(`Could not remove it: ${err instanceof Error ? err.message : String(err)}`)
+    );
+  };
 
   return (
     <div>
@@ -1033,11 +1131,6 @@ const Calendario = () => {
               ›
             </button>
           </div>
-          {!readOnly && (
-            <button onClick={() => setShowConfig(true)} className={`px-3 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN}`}>
-              ⚙️ Delivery days
-            </button>
-          )}
         </div>
 
         <div className="grid grid-cols-7 gap-1 mb-1">
@@ -1050,8 +1143,9 @@ const Calendario = () => {
         <div className="grid grid-cols-7 gap-1">
           {celdas.map((fecha, i) => {
             if (!fecha) return <div key={i} />;
-            const diaSemana = new Date(fecha + "T00:00:00").getDay();
-            const esEntrega = deliveryDays.includes(diaSemana);
+            const eventosDia = eventosPorFecha[fecha] || [];
+            const esEntrega = eventosDia.some((e) => e.tipo === "delivery");
+            const tieneAgenda = eventosDia.some((e) => e.tipo !== "delivery");
             const ordenesDia = ordenesPorFecha[fecha] || [];
             const numDia = Number(fecha.slice(-2));
             const esHoy = fecha === today();
@@ -1068,26 +1162,63 @@ const Calendario = () => {
                 } ${esHoy && diaSeleccionado !== fecha ? "ring-2 ring-primary" : ""}`}
               >
                 {numDia}
-                {ordenesDia.length > 0 && (
-                  <span
-                    className={`absolute bottom-0.5 w-1.5 h-1.5 rounded-full ${
-                      diaSeleccionado === fecha ? "bg-white" : "bg-primary"
-                    }`}
-                  />
-                )}
+                <span className="absolute bottom-0.5 flex gap-0.5">
+                  {ordenesDia.length > 0 && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        diaSeleccionado === fecha ? "bg-white" : "bg-primary"
+                      }`}
+                    />
+                  )}
+                  {tieneAgenda && (
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        diaSeleccionado === fecha ? "bg-white" : "bg-accent"
+                      }`}
+                    />
+                  )}
+                </span>
               </button>
             );
           })}
         </div>
-        {deliveryDays.length > 0 && (
-          <div className="text-[11px] text-muted-foreground mt-2">
-            🚚 Deliveries: {deliveryDays.map((d) => DIAS_SEMANA[d]).join(", ")}
-          </div>
-        )}
       </div>
 
       {diaSeleccionado && (
-        <div className="bg-card rounded-2xl p-3.5 border border-border">
+        <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
+            {fdate(diaSeleccionado)}
+          </div>
+          {eventosDelDia.length > 0 && (
+            <div className="mb-2">
+              {eventosDelDia.map((ev) => {
+                const info = EVENTO_INFO[ev.tipo];
+                const cInfo = ev.cliente_id ? clienteFor(ev.cliente_id) : null;
+                return (
+                  <div key={ev.id} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className="text-base" aria-hidden="true">{info.icon}</span>
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold uppercase text-card-foreground truncate">
+                          {cInfo ? cInfo.nom : info.label}
+                        </div>
+                        <div className="text-xs text-muted-foreground">{info.label}</div>
+                      </div>
+                    </div>
+                    {!readOnly && (
+                      <button
+                        onClick={() => handleDeleteEvento(ev)}
+                        aria-label="Remove"
+                        className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 shrink-0"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
             Entregas del {fdate(diaSeleccionado)}
           </div>
@@ -1115,31 +1246,71 @@ const Calendario = () => {
         </div>
       )}
 
-      {showConfig && (
-        <Modal title="Delivery days" onClose={() => setShowConfig(false)}>
-          <p className="text-sm text-muted-foreground mb-3">
-            Mark the days you make deliveries. Orders created after noon the day before are automatically scheduled for the next available delivery day.
-          </p>
-          <div className="flex flex-wrap gap-2 mb-4">
-            {DIAS_SEMANA.map((nombre, i) => (
-              <button
-                key={i}
-                onClick={() => toggleDeliveryDay(i)}
-                className={`px-3.5 py-2 rounded-full text-sm font-medium border ${
-                  deliveryDays.includes(i)
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-secondary-foreground border-border"
-                }`}
-              >
-                {nombre}
-              </button>
-            ))}
-          </div>
+      {menuOpen && (
+        <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+      )}
+      {!readOnly && (
+        <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
+          {menuOpen && (
+            <div className="flex flex-col gap-2 mb-1">
+              {(Object.keys(EVENTO_INFO) as TipoEvento[]).map((tipo) => (
+                <button
+                  key={tipo}
+                  onClick={() => abrirModalEvento(tipo)}
+                  className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                >
+                  <span className="text-base" aria-hidden="true">{EVENTO_INFO[tipo].icon}</span>
+                  {EVENTO_INFO[tipo].label}
+                </button>
+              ))}
+            </div>
+          )}
           <button
-            onClick={() => setShowConfig(false)}
-            className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
+            aria-label="Add to calendar"
+            className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
+            onClick={() => setMenuOpen((o) => !o)}
           >
-            Listo
+            +
+          </button>
+        </div>
+      )}
+
+      {modalTipo && (
+        <Modal
+          title={EVENTO_INFO[modalTipo].label}
+          onClose={() => setModalTipo(null)}
+        >
+          <Field label="Date">
+            <input
+              type="date"
+              value={formFecha}
+              onChange={(e) => setFormFecha(e.target.value)}
+              autoComplete="off"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          {modalTipo !== "delivery" && (
+            <Field label="Client">
+              <select
+                value={formClienteId}
+                onChange={(e) => setFormClienteId(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="">Selecciona...</option>
+                {clientes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nom}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          )}
+          <button
+            onClick={handleCrearEvento}
+            disabled={saving}
+            className={`w-full mt-2 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+          >
+            {saving ? "Saving..." : "Add"}
           </button>
         </Modal>
       )}
@@ -1151,13 +1322,14 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, addFactura, deleteFactura, readOnly } = useData();
+  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, readOnly } =
+    useData();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
-  const [fecha, setFecha] = useState(today());
+  const [fecha, setFecha] = useState("");
   const [estado, setEstado] = useState("Pending");
   const [view, setView] = useState<"grid" | "list">("grid");
   const [invAlmacen, setInvAlmacen] = useState<"palmhills" | "castillo">("palmhills");
@@ -1217,6 +1389,10 @@ const Facturas = () => {
       alert("Select a client");
       return;
     }
+    if (!fecha) {
+      alert("Select a delivery date");
+      return;
+    }
     const items = lineas.filter((l) => l.prodId);
     if (items.length === 0) {
       alert("Add at least one product");
@@ -1244,7 +1420,7 @@ const Facturas = () => {
     setShow(false);
     setLineas([{ prodId: "", qty: 1 }]);
     setClienteSeleccionado("");
-    setFecha(today());
+    setFecha("");
     setEstado("Pending");
     setInvSearches([""]);
     setInvFocus(null);
@@ -1382,13 +1558,25 @@ const Facturas = () => {
             </select>
           </Field>
           <Row2>
-            <Field label="Date">
-              <input
-                type="date"
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
+            <Field label="Delivery date">
+              {proximasFechasEntrega.length ? (
+                <select
+                  value={fecha}
+                  onChange={(e) => setFecha(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Selecciona...</option>
+                  {proximasFechasEntrega.map((f) => (
+                    <option key={f} value={f}>
+                      {fdate(f)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No hay días de entrega marcados — agrega uno desde Calendario.
+                </p>
+              )}
             </Field>
             <Field label="Status">
               <select
@@ -3443,7 +3631,17 @@ const Inventario = () => {
 // Ordenes
 // ------------------------------
 const Ordenes = () => {
-  const { ordenes, clientes, productos, addOrden, updateOrden, deleteOrden, addFactura, readOnly } = useData();
+  const {
+    ordenes,
+    clientes,
+    productos,
+    proximasFechasEntrega,
+    addOrden,
+    updateOrden,
+    deleteOrden,
+    addFactura,
+    readOnly,
+  } = useData();
   const router = useRouter();
   const [show, setShow] = useState(false);
   const [picking, setPicking] = useState<Orden | null>(null);
@@ -3454,7 +3652,7 @@ const Ordenes = () => {
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
   const [form, setForm] = useState({
     cli: "",
-    fecha: today(),
+    fecha: "",
     estado: "Pending",
   });
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -3512,6 +3710,10 @@ const Ordenes = () => {
       alert("Select a client");
       return;
     }
+    if (!form.fecha) {
+      alert("Select a delivery date");
+      return;
+    }
     const items = lineas.filter((l) => l.prodId);
     if (items.length === 0) {
       alert("Add at least one product");
@@ -3537,7 +3739,7 @@ const Ordenes = () => {
     });
     setShow(false);
     setLineas([{ prodId: "", qty: 1 }]);
-    setForm({ cli: "", fecha: today(), estado: "Pending" });
+    setForm({ cli: "", fecha: "", estado: "Pending" });
     setNewOrderSearches([""]);
     setNewOrderFocus(null);
   };
@@ -3588,7 +3790,7 @@ const Ordenes = () => {
       const cInfo = clienteFor(picking.cli);
       await addFactura({
         cli: cInfo?.nom || picking.cli,
-        fecha: today(),
+        fecha: picking.fecha,
         estado: "Pending",
         total: +facturaTotal.toFixed(2),
         lineas: facturaLineas,
@@ -3890,13 +4092,24 @@ const Ordenes = () => {
           </Field>
           <Row2>
             <Field label="Delivery">
-              <input
-                type="date"
-                value={form.fecha}
-                onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-                autoComplete="off"
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              />
+              {proximasFechasEntrega.length ? (
+                <select
+                  value={form.fecha}
+                  onChange={(e) => setForm({ ...form, fecha: e.target.value })}
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                >
+                  <option value="">Selecciona...</option>
+                  {proximasFechasEntrega.map((f) => (
+                    <option key={f} value={f}>
+                      {fdate(f)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  No hay días marcados — agrega uno desde Calendario.
+                </p>
+              )}
             </Field>
             <Field label="Estado">
               <select
@@ -4058,13 +4271,23 @@ const Ordenes = () => {
           </div>
           <div className="flex-1 overflow-y-auto p-4">
             <div className="flex gap-2 mb-3">
-              <input
-                type="date"
+              <select
                 value={editForm.fecha}
                 onChange={(e) => setEditForm({ ...editForm, fecha: e.target.value })}
-                autoComplete="off"
                 className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-              />
+              >
+                {/* Si la orden ya tenia una fecha que no esta entre los dias marcados
+                    (ej. quedo asignada antes de este sistema), se incluye igual para
+                    no perderla al abrir el formulario. */}
+                {Array.from(new Set([editForm.fecha, ...proximasFechasEntrega]))
+                  .filter(Boolean)
+                  .sort()
+                  .map((f) => (
+                    <option key={f} value={f}>
+                      {fdate(f)}
+                    </option>
+                  ))}
+              </select>
               <select
                 value={editForm.estado}
                 onChange={(e) => setEditForm({ ...editForm, estado: e.target.value })}
