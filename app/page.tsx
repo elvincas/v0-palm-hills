@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, createContext, useContext, useRef, type R
 import { useRouter } from "next/navigation";
 import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
-import Fuse from "fuse.js";
+import { flexibleSearch, normTag } from "@/lib/search";
 import "react-easy-crop/react-easy-crop.css";
 import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
@@ -168,7 +168,7 @@ const Badge = ({ e }: { e: string }) => (
 // ------------------------------
 // UI Components
 // ------------------------------
-const Field = ({ label, children }: { label: string; children: ReactNode }) => (
+const Field = ({ label, children }: { label: ReactNode; children: ReactNode }) => (
   <div className="mb-3">
     <label className="text-sm font-semibold text-muted-foreground block mb-1.5">
       {label}
@@ -238,26 +238,26 @@ interface DataContextType {
   mejoras: Mejora[];
   logs: LogEntry[];
   loading: boolean;
-  addCliente: (c: Omit<Cliente, "id">) => void;
-  deleteCliente: (id: string) => void;
-  updateCliente: (id: string, c: Omit<Cliente, "id">) => void;
+  addCliente: (c: Omit<Cliente, "id">) => Promise<void>;
+  deleteCliente: (id: string) => Promise<void>;
+  updateCliente: (id: string, c: Omit<Cliente, "id">) => Promise<void>;
   addClientesBulk: (rows: Omit<Cliente, "id">[]) => Promise<number>;
-  addProducto: (p: Omit<Producto, "id">) => void;
+  addProducto: (p: Omit<Producto, "id">) => Promise<void>;
   addProductosBulk: (
     rows: Omit<Producto, "id">[],
     skipDuplicates?: boolean,
     updatePrices?: boolean
   ) => Promise<{ insertados: number; duplicados: number; actualizados: number }>;
-  updateProducto: (id: string, p: Omit<Producto, "id">) => void;
-  deleteProducto: (id: string) => void;
-  addFactura: (f: Omit<Factura, "id" | "num">) => void;
-  deleteFactura: (id: string) => void;
-  addOrden: (o: Omit<Orden, "id" | "num">) => void;
-  deleteOrden: (id: string) => void;
-  updateOrden: (id: string, o: Orden) => void;
-  addMejora: (m: Omit<Mejora, "id">) => void;
-  deleteMejora: (id: string) => void;
-  updateMejora: (id: string, m: Omit<Mejora, "id">) => void;
+  updateProducto: (id: string, p: Omit<Producto, "id">) => Promise<void>;
+  deleteProducto: (id: string) => Promise<void>;
+  addFactura: (f: Omit<Factura, "id" | "num">) => Promise<void>;
+  deleteFactura: (id: string) => Promise<void>;
+  addOrden: (o: Omit<Orden, "id" | "num">) => Promise<void>;
+  deleteOrden: (id: string) => Promise<void>;
+  updateOrden: (id: string, o: Orden) => Promise<void>;
+  addMejora: (m: Omit<Mejora, "id">) => Promise<void>;
+  deleteMejora: (id: string) => Promise<void>;
+  updateMejora: (id: string, m: Omit<Mejora, "id">) => Promise<void>;
   refreshLogs: () => void;
 }
 
@@ -361,22 +361,29 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loadAll = async () => {
-    const [c, p, f, o, e] = await Promise.all([
-      selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
-      selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
-      selectAll<Factura>("facturas", "*", "num", false),
-      selectAll<Orden>("ordenes", "*", "num", false),
-      selectAll<Mejora>("mejoras", "*", "created_at", false),
-    ]);
-    setClientes(c);
-    setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
-    setFacturas(f);
-    setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
-    setMejoras(e);
-    await refreshLogs();
-    setLoading(false);
-    loadFotosProductos(p.map((r) => r.id));
-    loadFotosClientes(c.map((r) => r.id));
+    try {
+      const [c, p, f, o, e] = await Promise.all([
+        selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
+        selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
+        selectAll<Factura>("facturas", "*", "num", false),
+        selectAll<Orden>("ordenes", "*", "num", false),
+        selectAll<Mejora>("mejoras", "*", "created_at", false),
+      ]);
+      setClientes(c);
+      setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
+      setFacturas(f);
+      setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
+      setMejoras(e);
+      await refreshLogs();
+      loadFotosProductos(p.map((r) => r.id));
+      loadFotosClientes(c.map((r) => r.id));
+    } catch (err) {
+      // Si la carga inicial falla (ej. corte de red), no dejamos la app
+      // congelada en "Loading..." para siempre.
+      console.error("[v0] loadAll failed:", err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -389,20 +396,23 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Clientes ---
   const addCliente = async (cliente: Omit<Cliente, "id">) => {
-    const { data } = await supabase.from("clientes").insert(cliente).select().single();
-    if (data) setClientes((prev) => [data as Cliente, ...prev]);
+    const { data, error } = await supabase.from("clientes").insert(cliente).select().single();
+    if (error) throw new Error(error.message);
+    setClientes((prev) => [data as Cliente, ...prev]);
     await logAct(`New client: ${cliente.nom}`);
   };
 
   const deleteCliente = async (id: string) => {
-    await supabase.from("clientes").delete().eq("id", id);
+    const { error } = await supabase.from("clientes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
     setClientes((prev) => prev.filter((c) => c.id !== id));
     await logAct(`Client deleted`);
   };
 
   const updateCliente = async (id: string, updated: Omit<Cliente, "id">) => {
-    const { data } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
-    if (data) setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
+    const { data, error } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
     await logAct(`Client updated: ${updated.nom}`);
   };
 
@@ -441,8 +451,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const addProducto = async (prod: Omit<Producto, "id">) => {
-    const { data } = await supabase.from("productos").insert(sanitizeProducto(prod)).select().single();
-    if (data) setProductos((prev) => [data as Producto, ...prev]);
+    const { data, error } = await supabase.from("productos").insert(sanitizeProducto(prod)).select().single();
+    if (error) throw new Error(error.message);
+    setProductos((prev) => [data as Producto, ...prev]);
     await logAct(`New product: ${prod.nom}`);
   };
 
@@ -537,13 +548,15 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const updateProducto = async (id: string, prod: Omit<Producto, "id">) => {
     const validated = sanitizeProducto(prod);
-    const { data } = await supabase.from("productos").update(validated).eq("id", id).select().single();
-    if (data) setProductos((prev) => prev.map((p) => (p.id === id ? (data as Producto) : p)));
+    const { data, error } = await supabase.from("productos").update(validated).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setProductos((prev) => prev.map((p) => (p.id === id ? (data as Producto) : p)));
     await logAct(`Product updated: ${prod.nom}`);
   };
 
   const deleteProducto = async (id: string) => {
-    await supabase.from("productos").delete().eq("id", id);
+    const { error } = await supabase.from("productos").delete().eq("id", id);
+    if (error) throw new Error(error.message);
     setProductos((prev) => prev.filter((p) => p.id !== id));
     await logAct(`Product deleted`);
   };
@@ -551,13 +564,15 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // --- Facturas ---
   const addFactura = async (factura: Omit<Factura, "id" | "num">) => {
     const num = nextNum(facturas, 1001);
-    const { data } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
-    if (data) setFacturas((prev) => [data as Factura, ...prev]);
+    const { data, error } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
+    if (error) throw new Error(error.message);
+    setFacturas((prev) => [data as Factura, ...prev]);
     await logAct(`Invoice #${num} → ${factura.cli}`);
   };
 
   const deleteFactura = async (id: string) => {
-    await supabase.from("facturas").delete().eq("id", id);
+    const { error } = await supabase.from("facturas").delete().eq("id", id);
+    if (error) throw new Error(error.message);
     setFacturas((prev) => prev.filter((f) => f.id !== id));
     await logAct(`Invoice deleted`);
   };
@@ -565,13 +580,15 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // --- Ordenes ---
   const addOrden = async (orden: Omit<Orden, "id" | "num">) => {
     const num = nextNum(ordenes, 1);
-    const { data } = await supabase.from("ordenes").insert({ ...orden, num }).select().single();
-    if (data) setOrdenes((prev) => [{ ...(data as Orden), lineas: (data as Orden).lineas || [] }, ...prev]);
+    const { data, error } = await supabase.from("ordenes").insert({ ...orden, num }).select().single();
+    if (error) throw new Error(error.message);
+    setOrdenes((prev) => [{ ...(data as Orden), lineas: (data as Orden).lineas || [] }, ...prev]);
     await logAct(`Order #${num} → ${orden.cli}`);
   };
 
   const deleteOrden = async (id: string) => {
-    await supabase.from("ordenes").delete().eq("id", id);
+    const { error } = await supabase.from("ordenes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
     setOrdenes((prev) => prev.filter((o) => o.id !== id));
     await logAct(`Order deleted`);
   };
@@ -583,7 +600,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       console.error("[v0] Supabase error actualizando orden:", error);
       throw new Error(error.message);
     }
-    if (data) setOrdenes((prev) => prev.map((o) => (o.id === id ? { ...(data as Orden), lineas: (data as Orden).lineas || [] } : o)));
+    setOrdenes((prev) => prev.map((o) => (o.id === id ? { ...(data as Orden), lineas: (data as Orden).lineas || [] } : o)));
     await logAct(`Order #${updated.num} updated`);
   };
 
@@ -597,20 +614,23 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   });
 
   const addMejora = async (m: Omit<Mejora, "id">) => {
-    const { data } = await supabase.from("mejoras").insert(sanitizeMejora(m)).select().single();
-    if (data) setMejoras((prev) => [data as Mejora, ...prev]);
+    const { data, error } = await supabase.from("mejoras").insert(sanitizeMejora(m)).select().single();
+    if (error) throw new Error(error.message);
+    setMejoras((prev) => [data as Mejora, ...prev]);
     await logAct(`Improvement added: ${m.titulo}`);
   };
 
   const deleteMejora = async (id: string) => {
-    await supabase.from("mejoras").delete().eq("id", id);
+    const { error } = await supabase.from("mejoras").delete().eq("id", id);
+    if (error) throw new Error(error.message);
     setMejoras((prev) => prev.filter((e) => e.id !== id));
     await logAct(`Improvement deleted`);
   };
 
   const updateMejora = async (id: string, m: Omit<Mejora, "id">) => {
-    const { data } = await supabase.from("mejoras").update(sanitizeMejora(m)).eq("id", id).select().single();
-    if (data) setMejoras((prev) => prev.map((e) => (e.id === id ? (data as Mejora) : e)));
+    const { data, error } = await supabase.from("mejoras").update(sanitizeMejora(m)).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setMejoras((prev) => prev.map((e) => (e.id === id ? (data as Mejora) : e)));
     await logAct(`Improvement updated: ${m.titulo}`);
   };
 
@@ -1124,16 +1144,10 @@ const Facturas = () => {
   );
 
   const getInvSugeridos = (search: string) => {
-    const q2 = search.toLowerCase().trim();
-    if (!q2) return productosInvAlmacen.slice(0, 30);
-    return productosInvAlmacen
-      .filter(
-        (p) =>
-          p.nom.toLowerCase().includes(q2) ||
-          (p.sku || "").toLowerCase().includes(q2) ||
-          (p.barcode || "").toLowerCase().includes(q2)
-      )
-      .slice(0, 50);
+    if (!search.trim()) return productosInvAlmacen.slice(0, 30);
+    return flexibleSearch(productosInvAlmacen, search, (p) =>
+      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    ).slice(0, 50);
   };
 
   const filtered = q
@@ -1649,7 +1663,7 @@ const Clientes = () => {
     setShow(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nom.trim()) {
       alert("Enter the name");
       return;
@@ -1658,13 +1672,17 @@ const Clientes = () => {
       alert("Enter the client number");
       return;
     }
-    if (editId) {
-      updateCliente(editId, form);
-    } else {
-      addCliente(form);
+    try {
+      if (editId) {
+        await updateCliente(editId, form);
+      } else {
+        await addCliente(form);
+      }
+      reset();
+      setShow(false);
+    } catch (err) {
+      alert(`Could not save the client: ${err instanceof Error ? err.message : String(err)}`);
     }
-    reset();
-    setShow(false);
   };
 
   return (
@@ -1791,7 +1809,11 @@ const Clientes = () => {
                     </button>
                     <button
                       onClick={() => {
-                        if (confirm("Delete client?")) deleteCliente(c.id);
+                        if (confirm("Delete client?")) {
+                          deleteCliente(c.id).catch((err) =>
+                            alert(`Could not delete the client: ${err instanceof Error ? err.message : String(err)}`)
+                          );
+                        }
                       }}
                       className="flex-1 px-2.5 py-1.5 rounded-full backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-destructive text-xs font-bold"
                     >
@@ -2202,28 +2224,6 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "sku", label: "SKU" },
 ];
 
-// Normalize text for typo/accent tolerant matching:
-// lowercases, strips accents, and collapses common Spanish spelling variants
-// (e.g. "risos" -> "rizos", "kabello" -> "cabello").
-const normTag = (s: string) =>
-  String(s || "")
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove accents
-    .replace(/[^a-z0-9ñ ]/g, "")
-    .trim()
-    .replace(/\s+/g, " ")
-    // phonetic-ish folding for common DR/ES misspellings
-    .replace(/z/g, "s") // rizos / risos
-    .replace(/c([ei])/g, "s$1") // celular / selular
-    .replace(/qu/g, "k")
-    .replace(/c/g, "k") // cabello / kabello
-    .replace(/v/g, "b") // vello / bello
-    .replace(/h/g, "") // hair / air (silent h)
-    .replace(/y/g, "i")
-    .replace(/ll/g, "i")
-    .replace(/(.)\1+/g, "$1"); // collapse doubled letters
-
 const Inventario = () => {
   const { productos, addProducto, addProductosBulk, updateProducto, deleteProducto, readOnly } = useData();
   const [q, setQ] = useState("");
@@ -2240,6 +2240,12 @@ const Inventario = () => {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("sku");
   const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  // Castillo solo tiene mas de 2000 productos: renderizar todas las tarjetas
+  // (con foto) de una sola vez es lento y puede romper el reconciliado de
+  // React en listas tan grandes. Se muestran de PAGE_SIZE en PAGE_SIZE y se
+  // reinicia el conteo cada vez que cambia el filtro/busqueda/almacen.
+  const INVENTARIO_PAGE_SIZE = 40;
+  const [visibleCount, setVisibleCount] = useState(INVENTARIO_PAGE_SIZE);
   const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [form, setForm] = useState({
     nom: "",
@@ -2271,73 +2277,16 @@ const Inventario = () => {
     return Array.from(set).sort((a, b) => a.localeCompare(b, "en"));
   }, [productosAlmacen]);
 
-  // Fuzzy search index over name, sku, barcode, and normalized tags
-  const fuse = useMemo(
-    () =>
-      new Fuse(
-        productosAlmacen.map((p) => ({
-          ...p,
-          _tags: (p.etiquetas || []).join(" "),
-          _normTags: (p.etiquetas || []).map(normTag).join(" "),
-          _normNom: normTag(p.nom),
-        })),
-        {
-          includeScore: true,
-          threshold: 0.25, // stricter — only close matches
-          ignoreLocation: true,
-          keys: [
-            { name: "nom", weight: 3 },
-            { name: "_normNom", weight: 3 },
-            { name: "sku", weight: 2 },
-            { name: "barcode", weight: 1 },
-            { name: "_tags", weight: 1 },
-            { name: "_normTags", weight: 1 },
-          ],
-        }
-      ),
-    [productosAlmacen]
-  );
-
+  // Texto buscable por producto: nombre, sku, barcode y tags. flexibleSearch
+  // tokeniza el query y matchea cada palabra sin importar el orden, con
+  // tolerancia a typos y variantes foneticas (ver lib/search.ts).
   const filtered = useMemo(() => {
     let list = productosAlmacen;
 
-    // Text search: exact substring match takes priority (score 0),
-    // then fuzzy results ordered by Fuse score (lower = better match).
     if (q.trim()) {
-      const term = q.trim();
-      const normTerm = normTag(term);
-
-      // Score map: 0 = exact substring in name, 1 = exact in other fields, 2+ = fuzzy
-      const scoreMap = new Map<string, number>();
-
-      // 1. Exact substring matches — always included, highest priority
-      productosAlmacen.forEach((p) => {
-        const nameNorm = normTag(p.nom || "");
-        const skuNorm = normTag(p.sku || "");
-        const barcodeNorm = normTag(p.barcode || "");
-        const tagsNorm = (p.etiquetas || []).map(normTag).join(" ");
-
-        if (nameNorm.includes(normTerm) || (p.nom || "").toLowerCase().includes(term.toLowerCase())) {
-          scoreMap.set(p.id, 0); // best: exact in name
-        } else if (skuNorm.includes(normTerm) || barcodeNorm.includes(normTerm) || tagsNorm.includes(normTerm)) {
-          scoreMap.set(p.id, 0.3); // good: exact in sku/barcode/tags
-        }
-      });
-
-      // 2. Fuzzy results — only add if not already found via exact match
-      [term, normTerm].forEach((t) => {
-        if (!t.trim()) return;
-        fuse.search(t).forEach((r) => {
-          if (!scoreMap.has(r.item.id)) {
-            scoreMap.set(r.item.id, 0.5 + (r.score ?? 0.5));
-          }
-        });
-      });
-
-      // Filter and sort: exact matches first, then by fuzzy score
-      list = productosAlmacen
-        .filter((p) => scoreMap.has(p.id))
-        .sort((a, b) => (scoreMap.get(a.id) ?? 1) - (scoreMap.get(b.id) ?? 1));
+      list = flexibleSearch(productosAlmacen, q, (p) =>
+        [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+      );
     }
 
     // Tag filter (product must contain ALL selected tags)
@@ -2387,7 +2336,16 @@ const Inventario = () => {
     }
 
     return sorted;
-  }, [productosAlmacen, q, tagFilter, fuse, sortBy]);
+  }, [productosAlmacen, q, tagFilter, sortBy]);
+
+  // Cada vez que cambia el resultado filtrado (busqueda, almacen, tags, orden)
+  // se reinicia a la primera pagina, para no arrastrar un "visibleCount" alto
+  // de una lista anterior mas grande.
+  useEffect(() => {
+    setVisibleCount(INVENTARIO_PAGE_SIZE);
+  }, [filtered]);
+
+  const visibleProductos = filtered.slice(0, visibleCount);
 
   // Las etiquetas son palabras unicas separadas por espacio (como las keywords
   // de busqueda de Amazon): cada palabra es una sugerencia de busqueda aparte,
@@ -2462,11 +2420,32 @@ const Inventario = () => {
     setShow(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.nom.trim()) {
       alert("Enter the name");
       return;
     }
+
+    // El SKU y el nombre no pueden repetirse dentro del mismo almacen
+    // (excluyendo el propio producto cuando se esta editando).
+    const skuNuevo = form.sku.trim().toLowerCase();
+    const nomNuevo = normTag(form.nom);
+    const otrosDelAlmacen = productos.filter(
+      (p) => p.id !== editId && (p.almacen || "palmhills") === formAlmacen
+    );
+    if (skuNuevo) {
+      const skuDup = otrosDelAlmacen.find((p) => (p.sku || "").trim().toLowerCase() === skuNuevo);
+      if (skuDup) {
+        alert(`There is already a product with SKU "${form.sku}" in this warehouse: ${skuDup.nom}`);
+        return;
+      }
+    }
+    const nomDup = otrosDelAlmacen.find((p) => normTag(p.nom) === nomNuevo);
+    if (nomDup) {
+      alert(`There is already a product with this name in this warehouse: ${nomDup.nom}`);
+      return;
+    }
+
     // Fold any pending word(s) still in the input box into the list
     const pendientes = etqInput
       .trim()
@@ -2488,12 +2467,16 @@ const Inventario = () => {
       foto,
       almacen: formAlmacen,
     };
-    if (editId) {
-      updateProducto(editId, productData);
-    } else {
-      addProducto(productData);
+    try {
+      if (editId) {
+        await updateProducto(editId, productData);
+      } else {
+        await addProducto(productData);
+      }
+      setShow(false);
+    } catch (err) {
+      alert(`Could not save the product: ${err instanceof Error ? err.message : String(err)}`);
     }
-    setShow(false);
   };
 
   const handleFotoUpload = (file: File | undefined) => {
@@ -2668,6 +2651,32 @@ const Inventario = () => {
           _warning: warning,
         };
       });
+
+      // El SKU y la descripcion no pueden repetirse: ni entre filas del mismo
+      // archivo, ni contra un producto que ya exista en este almacen. El SKU
+      // contra la base de datos se valida aparte (permite "skip" o "update
+      // prices"), pero duplicados dentro del propio archivo o por nombre
+      // siempre se bloquean.
+      const skuCounts = new Map<string, number>();
+      const nomCounts = new Map<string, number>();
+      rows.forEach((r) => {
+        if (r.sku) skuCounts.set(r.sku.toLowerCase(), (skuCounts.get(r.sku.toLowerCase()) || 0) + 1);
+        if (r.nom) nomCounts.set(normTag(r.nom), (nomCounts.get(normTag(r.nom)) || 0) + 1);
+      });
+      const nomExistente = new Set(productosAlmacen.map((p) => normTag(p.nom)));
+      rows.forEach((r) => {
+        if (r._error) return;
+        const skuNorm = r.sku.toLowerCase();
+        const nomNorm = normTag(r.nom);
+        if (skuNorm && (skuCounts.get(skuNorm) || 0) > 1) {
+          r._error = "Duplicate SKU in this file";
+        } else if ((nomCounts.get(nomNorm) || 0) > 1) {
+          r._error = "Duplicate description in this file";
+        } else if (nomExistente.has(nomNorm)) {
+          r._error = "A product with this name already exists in this warehouse";
+        }
+      });
+
       setBulkRows(rows);
     } catch {
       setBulkErr("Couldn't read the file. Make sure it's a valid Excel file (.xlsx).");
@@ -2830,8 +2839,8 @@ const Inventario = () => {
         </div>
       )}
       <div className="grid grid-cols-2 gap-2.5 mb-3">
-        {filtered.length ? (
-          filtered.map((p) => {
+        {visibleProductos.length ? (
+          visibleProductos.map((p) => {
             const stock = Number(p.stock);
             const min = Number(p.min || 5);
             const estado =
@@ -2923,6 +2932,14 @@ const Inventario = () => {
           </div>
         )}
       </div>
+      {visibleCount < filtered.length && (
+        <button
+          onClick={() => setVisibleCount((c) => c + INVENTARIO_PAGE_SIZE)}
+          className="w-full mb-3 py-2.5 rounded-xl border border-border text-sm font-bold text-secondary-foreground"
+        >
+          Cargar más ({filtered.length - visibleCount} restantes)
+        </button>
+      )}
       {menuOpen && (
         <div
           className="fixed inset-0 z-[6]"
@@ -3196,7 +3213,13 @@ const Inventario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="SKU">
+          <Field
+            label={
+              <>
+                SKU <span className="text-destructive">*</span>
+              </>
+            }
+          >
             <input
               value={form.sku}
               onChange={(e) => setForm({ ...form, sku: e.target.value })}
@@ -3327,8 +3350,11 @@ const Inventario = () => {
             <button
               onClick={() => {
                 if (confirm("Delete product?")) {
-                  deleteProducto(editId);
-                  setShow(false);
+                  deleteProducto(editId)
+                    .then(() => setShow(false))
+                    .catch((err) =>
+                      alert(`Could not delete the product: ${err instanceof Error ? err.message : String(err)}`)
+                    );
                 }
               }}
               className="w-full px-4 py-2.5 rounded-xl backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive font-medium text-sm mb-3"
@@ -3402,6 +3428,8 @@ const Ordenes = () => {
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const EDIT_PRODUCTOS_PAGE_SIZE = 40;
+  const [editVisibleCount, setEditVisibleCount] = useState(EDIT_PRODUCTOS_PAGE_SIZE);
   const [newOrderAlmacen, setNewOrderAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [newOrderSearches, setNewOrderSearches] = useState<string[]>([""]);
   const [newOrderFocus, setNewOrderFocus] = useState<number | null>(null);
@@ -3433,16 +3461,10 @@ const Ordenes = () => {
   );
 
   const getProductosSugeridos = (search: string) => {
-    const q = search.toLowerCase().trim();
-    if (!q) return productosNewOrder.slice(0, 30);
-    return productosNewOrder
-      .filter(
-        (p) =>
-          p.nom.toLowerCase().includes(q) ||
-          (p.sku || "").toLowerCase().includes(q) ||
-          (p.barcode || "").toLowerCase().includes(q)
-      )
-      .slice(0, 30);
+    if (!search.trim()) return productosNewOrder.slice(0, 30);
+    return flexibleSearch(productosNewOrder, search, (p) =>
+      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    ).slice(0, 30);
   };
 
   const total = lineas.reduce((acc, l) => {
@@ -3509,10 +3531,11 @@ const Ordenes = () => {
     );
   };
 
-  const completePick = () => {
-    if (picking) {
+  const completePick = async () => {
+    if (!picking) return;
+    try {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
-      updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completed" });
+      await updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completed" });
 
       // Genera la factura solo con lo que realmente se envio (cantidad enviada > 0)
       const facturaLineas: LineaFactura[] = pickItems
@@ -3528,15 +3551,19 @@ const Ordenes = () => {
         }));
       const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
       const cInfo = clienteFor(picking.cli);
-      addFactura({
+      await addFactura({
         cli: cInfo?.nom || picking.cli,
         fecha: today(),
         estado: "Pending",
         total: +facturaTotal.toFixed(2),
         lineas: facturaLineas,
       });
+      setPicking(null);
+    } catch (err) {
+      alert(
+        `Could not complete the order: ${err instanceof Error ? err.message : String(err)}. Please try again.`
+      );
     }
-    setPicking(null);
   };
 
   // Cuanto de cada almacen ya esta totalmente cotejado, para habilitar "Sacada parcialmente"
@@ -3547,10 +3574,14 @@ const Ordenes = () => {
 
   const puedeGuardarParcial = pickAlmacenCompleto("palmhills") || pickAlmacenCompleto("castillo");
 
-  const guardarParcial = () => {
+  const guardarParcial = async () => {
     if (!picking || !puedeGuardarParcial) return;
-    updateOrden(picking.id, { ...picking, lineas: pickItems, estado: "In Progress" });
-    setPicking(null);
+    try {
+      await updateOrden(picking.id, { ...picking, lineas: pickItems, estado: "In Progress" });
+      setPicking(null);
+    } catch (err) {
+      alert(`Could not save progress: ${err instanceof Error ? err.message : String(err)}`);
+    }
   };
 
   const handleDeleteOrden = (ord: Orden) => {
@@ -3619,17 +3650,21 @@ const Ordenes = () => {
     .map((id) => productos.find((p) => p.id === id))
     .filter((p): p is Producto => !!p);
 
-  const editProductosFiltrados = editProductosOrdenados
-    .filter((p) => (p.almacen || "palmhills") === editAlmacen)
-    .filter((p) => {
-      const q = editSearch.trim().toLowerCase();
-      if (!q) return true;
-      return (
-        p.nom.toLowerCase().includes(q) ||
-        (p.sku || "").toLowerCase().includes(q) ||
-        (p.barcode || "").toLowerCase().includes(q)
-      );
-    });
+  const editProductosFiltrados = (() => {
+    const porAlmacen = editProductosOrdenados.filter((p) => (p.almacen || "palmhills") === editAlmacen);
+    if (!editSearch.trim()) return porAlmacen;
+    return flexibleSearch(porAlmacen, editSearch, (p) =>
+      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    );
+  })();
+
+  // Mismo motivo que en Inventario: Castillo tiene miles de productos,
+  // no se renderizan todos de una vez.
+  useEffect(() => {
+    setEditVisibleCount(EDIT_PRODUCTOS_PAGE_SIZE);
+  }, [editSearch, editAlmacen]);
+
+  const editProductosVisibles = editProductosFiltrados.slice(0, editVisibleCount);
 
   const editTotalUnidades = Object.values(editQtys).reduce((a, b) => a + b, 0);
   const editTotal = editProductosOrdenados.reduce(
@@ -4028,8 +4063,8 @@ const Ordenes = () => {
               className="w-full mb-3 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
             <div className="grid grid-cols-2 gap-2.5">
-              {editProductosFiltrados.length ? (
-                editProductosFiltrados.map((p) => {
+              {editProductosVisibles.length ? (
+                editProductosVisibles.map((p) => {
                   const qty = editQtys[p.id] || 0;
                   return (
                     <div
@@ -4124,6 +4159,14 @@ const Ordenes = () => {
                 </div>
               )}
             </div>
+            {editVisibleCount < editProductosFiltrados.length && (
+              <button
+                onClick={() => setEditVisibleCount((c) => c + EDIT_PRODUCTOS_PAGE_SIZE)}
+                className="w-full mt-3 py-2.5 rounded-xl border border-border text-sm font-bold text-secondary-foreground"
+              >
+                Cargar más ({editProductosFiltrados.length - editVisibleCount} restantes)
+              </button>
+            )}
           </div>
           <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 py-3.5 flex items-center justify-between gap-3 shrink-0">
             <div className="min-w-0">

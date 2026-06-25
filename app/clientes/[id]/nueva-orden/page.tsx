@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { getDeliveryDays, nextDeliveryDate } from '@/lib/delivery'
+import { flexibleSearch } from '@/lib/search'
 
 interface Cliente {
   id: string
@@ -123,18 +124,17 @@ export default function NuevaOrdenPage() {
   }, [productos])
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    return productos
-      .filter((p) => {
-        const matchAlmacen = (p.almacen || 'palmhills') === almacen
-        const matchSearch =
-          !q ||
-          p.nom.toLowerCase().includes(q) ||
-          (p.sku || '').toLowerCase().includes(q) ||
-          (p.barcode || '').toLowerCase().includes(q)
-        const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
-        return matchAlmacen && matchSearch && matchTag
-      })
+    let list = productos.filter((p) => {
+      const matchAlmacen = (p.almacen || 'palmhills') === almacen
+      const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
+      return matchAlmacen && matchTag
+    })
+    if (search.trim()) {
+      list = flexibleSearch(list, search, (p) =>
+        [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(' ')
+      )
+    }
+    return list
       .sort((a, b) => {
         const skuA = (a.sku || '').trim()
         const skuB = (b.sku || '').trim()
