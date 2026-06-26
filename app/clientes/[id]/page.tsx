@@ -30,6 +30,14 @@ interface Factura {
   total: number;
 }
 
+interface NotaCredito {
+  id: string;
+  num: number;
+  fecha: string;
+  monto: number;
+  motivo: string;
+}
+
 interface Orden {
   id: string;
   num: number;
@@ -98,6 +106,7 @@ export default function ClientePerfilPage() {
   const [form, setForm] = useState<Cliente | null>(null);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [loadingFacturas, setLoadingFacturas] = useState(true);
+  const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [loadingOrdenes, setLoadingOrdenes] = useState(true);
   const [editando, setEditando] = useState(false);
@@ -131,6 +140,7 @@ export default function ClientePerfilPage() {
     setCliente(data as Cliente);
     setForm(data as Cliente);
     cargarFacturas((data as Cliente).nom);
+    cargarNotasCredito((data as Cliente).nom);
     cargarOrdenes(clienteId);
   };
 
@@ -143,6 +153,15 @@ export default function ClientePerfilPage() {
       .order("num", { ascending: false });
     setFacturas((data as Factura[]) || []);
     setLoadingFacturas(false);
+  };
+
+  const cargarNotasCredito = async (nombreCliente: string) => {
+    const { data } = await supabase
+      .from("notas_credito")
+      .select("id, num, fecha, monto, motivo")
+      .eq("cli", nombreCliente)
+      .order("num", { ascending: false });
+    setNotasCredito((data as NotaCredito[]) || []);
   };
 
   const cargarOrdenes = async (clienteIdParam: string) => {
@@ -442,6 +461,40 @@ export default function ClientePerfilPage() {
             )}
           </div>
 
+          {/* Balance Neto */}
+          {!loadingFacturas && (() => {
+            const deuda = facturas.filter(f => !["Paid", "Completed", "Cancelled"].includes(f.estado)).reduce((acc, f) => acc + f.total, 0);
+            const credito = notasCredito.reduce((acc, n) => acc + n.monto, 0);
+            const neto = deuda - credito;
+            return (
+              <div className="mt-6 rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-[#f0f7ed] to-[#fafaf7] p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#4a6741]">Account Balance</h2>
+                  <button
+                    onClick={() => router.push(`/clientes/${clienteId}/estado-cuenta`)}
+                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
+                  >
+                    📄 Statement PDF
+                  </button>
+                </div>
+                <div className="grid grid-cols-3 gap-2 text-center">
+                  <div className="bg-white/70 rounded-xl p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Pending</div>
+                    <div className="text-sm font-bold text-amber-700">{fmt(deuda)}</div>
+                  </div>
+                  <div className="bg-white/70 rounded-xl p-2.5">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Credits</div>
+                    <div className="text-sm font-bold text-green-700">−{fmt(credito)}</div>
+                  </div>
+                  <div className="bg-white/70 rounded-xl p-2.5 border border-primary/20">
+                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Net Due</div>
+                    <div className={`text-sm font-bold ${neto > 0 ? "text-amber-700" : "text-green-700"}`}>{neto < 0 ? "-" : ""}{fmt(Math.abs(neto))}</div>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Seccion Facturas */}
           <div className="mt-6">
             <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Invoices</h2>
@@ -450,14 +503,14 @@ export default function ClientePerfilPage() {
             ) : facturas.length ? (
               <div className="space-y-2">
                 {facturas.map((f) => {
-                  const balance = f.estado === "Paid" ? 0 : f.total;
+                  const balance = ["Paid","Completed","Cancelled"].includes(f.estado) ? 0 : f.total;
                   return (
                     <div
                       key={f.id}
                       className="flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5"
                     >
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-card-foreground">Factura #{f.num}</div>
+                        <div className="text-sm font-semibold text-card-foreground">Invoice #{f.num}</div>
                         <div className="text-xs text-muted-foreground">{fdate(f.fecha)}</div>
                       </div>
                       <div className="text-right shrink-0">
@@ -473,6 +526,26 @@ export default function ClientePerfilPage() {
               <p className="text-sm text-muted-foreground">No invoices recorded.</p>
             )}
           </div>
+
+          {/* Notas de Crédito */}
+          {notasCredito.length > 0 && (
+            <div className="mt-6">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Credit Notes</h2>
+              <div className="space-y-2">
+                {notasCredito.map((n) => (
+                  <div key={n.id} className="flex items-center justify-between gap-2 bg-green-50 border border-green-200 rounded-xl px-3.5 py-2.5">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-green-800">CN #{String(n.num).padStart(3,"0")}</div>
+                      <div className="text-xs text-green-700">{fdate(n.fecha)}{n.motivo ? ` · ${n.motivo}` : ""}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold text-green-700">−{fmt(n.monto)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
       <BottomNav active="cli" />

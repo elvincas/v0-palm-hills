@@ -70,6 +70,15 @@ interface Factura {
   lineas?: LineaFactura[];
 }
 
+interface NotaCredito {
+  id: string;
+  num: number;
+  cli: string;
+  fecha: string;
+  monto: number;
+  motivo: string;
+}
+
 interface LineaOrden {
   prodId: string;
   prodNom: string;
@@ -312,6 +321,9 @@ interface DataContextType {
   deleteProducto: (id: string) => Promise<void>;
   addFactura: (f: Omit<Factura, "id" | "num">) => Promise<void>;
   deleteFactura: (id: string) => Promise<void>;
+  notasCredito: NotaCredito[];
+  addNotaCredito: (n: Omit<NotaCredito, "id" | "num">) => Promise<void>;
+  deleteNotaCredito: (id: string) => Promise<void>;
   addOrden: (o: Omit<Orden, "id" | "num">) => Promise<void>;
   deleteOrden: (id: string) => Promise<void>;
   updateOrden: (id: string, o: Orden) => Promise<void>;
@@ -336,6 +348,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
   const [facturas, setFacturas] = useState<Factura[]>([]);
+  const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
@@ -425,10 +438,11 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, o, e, ev] = await Promise.all([
+      const [c, p, f, nc, o, e, ev] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
+        selectAll<NotaCredito>("notas_credito", "*", "num", false),
         selectAll<Orden>("ordenes", "*", "num", false),
         selectAll<Mejora>("mejoras", "*", "created_at", false),
         selectAll<EventoCalendario>("eventos_calendario", "*", "fecha", true),
@@ -436,6 +450,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
       setFacturas(f);
+      setNotasCredito(nc);
       setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setMejoras(e);
       setEventosCalendario(ev);
@@ -648,6 +663,22 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Invoice deleted`);
   };
 
+  // --- Notas de Crédito ---
+  const addNotaCredito = async (nota: Omit<NotaCredito, "id" | "num">) => {
+    const num = nextNum(notasCredito, 1);
+    const { data, error } = await supabase.from("notas_credito").insert({ ...nota, num }).select().single();
+    if (error) throw new Error(error.message);
+    setNotasCredito((prev) => [data as NotaCredito, ...prev]);
+    await logAct(`Credit note #${num} → ${nota.cli} — $${nota.monto}`);
+  };
+
+  const deleteNotaCredito = async (id: string) => {
+    const { error } = await supabase.from("notas_credito").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setNotasCredito((prev) => prev.filter((n) => n.id !== id));
+    await logAct(`Credit note deleted`);
+  };
+
   // --- Ordenes ---
   const addOrden = async (orden: Omit<Orden, "id" | "num">) => {
     const num = nextNum(ordenes, 1);
@@ -758,6 +789,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     deleteProducto,
     addFactura,
     deleteFactura,
+    notasCredito,
+    addNotaCredito,
+    deleteNotaCredito,
     addOrden,
     deleteOrden,
     updateOrden,
@@ -1368,9 +1402,10 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, readOnly } =
+  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, readOnly } =
     useData();
   const router = useRouter();
+  const [subTab, setSubTab] = useState<"invoices" | "creditos">("invoices");
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
@@ -1380,6 +1415,13 @@ const Facturas = () => {
   const [invAlmacen, setInvAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [invSearches, setInvSearches] = useState<string[]>([""]);
   const [invFocus, setInvFocus] = useState<number | null>(null);
+  // Credit notes form
+  const [showNcForm, setShowNcForm] = useState(false);
+  const [ncForm, setNcForm] = useState({ cli: "", fecha: today(), monto: "", motivo: "" });
+  const [ncCliSearch, setNcCliSearch] = useState("");
+  const [ncCliOpen, setNcCliOpen] = useState(false);
+  const [ncSaving, setNcSaving] = useState(false);
+  const [ncQ, setNcQ] = useState("");
 
   const clienteCodigo = (nom: string) =>
     clientes.find((c) => c.nom === nom)?.codigo_cliente || "—";
@@ -1473,6 +1515,100 @@ const Facturas = () => {
 
   return (
     <div>
+      {/* Sub-tab toggle */}
+      <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-4">
+        <button onClick={() => setSubTab("invoices")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "invoices" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          🧾 Invoices
+        </button>
+        <button onClick={() => setSubTab("creditos")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "creditos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          📋 Credit Notes
+        </button>
+      </div>
+
+      {subTab === "creditos" ? (
+        <div>
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <input value={ncQ} onChange={(e) => setNcQ(e.target.value)} placeholder="Search by client..." className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              {ncQ && <button onClick={() => setNcQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
+            </div>
+          </div>
+          {(() => {
+            const ncs = notasCredito.filter(n => !ncQ || n.cli.toLowerCase().includes(ncQ.toLowerCase())).sort((a,b) => b.num - a.num);
+            return ncs.length ? (
+              <div className="bg-card border border-border rounded-2xl overflow-hidden mb-3">
+                <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
+                  <span>Date</span><span>Client</span><span>Amount</span><span>CN #</span>
+                </div>
+                {ncs.map(n => (
+                  <div key={n.id} className="grid grid-cols-[1fr_1.5fr_1fr_1fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border hover:bg-secondary/30 group">
+                    <span className="text-muted-foreground">{fdate(n.fecha)}</span>
+                    <div className="min-w-0">
+                      <div className="font-bold uppercase truncate text-card-foreground">{n.cli}</div>
+                      {n.motivo && <div className="text-muted-foreground truncate">{n.motivo}</div>}
+                    </div>
+                    <span className="font-bold text-green-700">{fmt(n.monto)}</span>
+                    <div className="flex items-center justify-between">
+                      <span className="font-mono text-muted-foreground">#{String(n.num).padStart(3, "0")}</span>
+                      {!readOnly && <button onClick={() => { if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-xs px-1">×</button>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-card rounded-2xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No credit notes.</p></div>
+            );
+          })()}
+          {!readOnly && (
+            <button onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setShowNcForm(true); }} className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}>+</button>
+          )}
+          {showNcForm && !readOnly && (
+            <Modal title="New Credit Note" onClose={() => setShowNcForm(false)}>
+              <Field label="Client">
+                <div className="relative">
+                  <input type="text" value={ncCliSearch} onChange={(e) => { setNcCliSearch(e.target.value); setNcForm(f => ({ ...f, cli: "" })); setNcCliOpen(true); }} onFocus={() => setNcCliOpen(true)} placeholder="Search client..." autoComplete="off" className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+                  {ncForm.cli ? <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-xs font-bold">✓</span> : ncCliSearch ? <button onClick={() => { setNcCliSearch(""); setNcForm(f => ({ ...f, cli: "" })); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button> : null}
+                  {ncCliOpen && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setNcCliOpen(false)} />
+                      <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-52 overflow-y-auto w-full">
+                        {clientes.filter(c => !ncCliSearch || c.nom.toLowerCase().includes(ncCliSearch.toLowerCase())).map(c => (
+                          <button key={c.id} onClick={() => { setNcForm(f => ({ ...f, cli: c.nom })); setNcCliSearch(c.nom); setNcCliOpen(false); }} className={`w-full text-left px-3 py-2.5 text-sm hover:bg-muted ${ncForm.cli === c.nom ? "font-bold text-primary" : "text-card-foreground"}`}>{c.nom}</button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+              </Field>
+              <Field label="Date">
+                <input type="date" value={ncForm.fecha} onChange={(e) => setNcForm(f => ({ ...f, fecha: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              </Field>
+              <Field label="Amount ($)">
+                <input type="number" min="0" step="0.01" value={ncForm.monto} onChange={(e) => setNcForm(f => ({ ...f, monto: e.target.value }))} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              </Field>
+              <Field label="Reason / Notes">
+                <input type="text" value={ncForm.motivo} onChange={(e) => setNcForm(f => ({ ...f, motivo: e.target.value }))} placeholder="Reason for credit..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              </Field>
+              <button
+                disabled={ncSaving || !ncForm.cli || !ncForm.monto}
+                onClick={async () => {
+                  if (!ncForm.cli) { alert("Select a client"); return; }
+                  const m = parseFloat(ncForm.monto);
+                  if (!m || m <= 0) { alert("Enter a valid amount"); return; }
+                  setNcSaving(true);
+                  try { await addNotaCredito({ cli: ncForm.cli, fecha: ncForm.fecha, monto: m, motivo: ncForm.motivo }); setShowNcForm(false); }
+                  catch (err) { alert(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+                  finally { setNcSaving(false); }
+                }}
+                className={`w-full mt-2 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+              >
+                {ncSaving ? "Saving..." : "Create Credit Note"}
+              </button>
+            </Modal>
+          )}
+        </div>
+      ) : (
+      <div>
       <div className="flex items-center gap-2 mb-3">
         <div className="relative flex-1">
           <input
@@ -1703,6 +1839,8 @@ const Facturas = () => {
           </div>
         </Modal>
       )}
+      </div>
+      )}
     </div>
   );
 };
@@ -1711,7 +1849,7 @@ const Facturas = () => {
 // Clientes
 const Clientes = () => {
   const router = useRouter();
-  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, readOnly } = useData();
+  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, facturas, notasCredito, readOnly } = useData();
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("codigo_cliente");
   const [cliColumnas, setCliColumnas] = useState<1 | 3>(1);
@@ -1760,6 +1898,16 @@ const Clientes = () => {
     });
     return `${prefix}-${String(maxNum + 1).padStart(width, "0")}`;
   }, [clientes]);
+
+  const balanceCliente = (nom: string) => {
+    const deuda = facturas
+      .filter(f => f.cli === nom && !["Paid", "Completed", "Cancelled"].includes(f.estado))
+      .reduce((acc, f) => acc + f.total, 0);
+    const credito = notasCredito
+      .filter(nc => nc.cli === nom)
+      .reduce((acc, nc) => acc + nc.monto, 0);
+    return deuda - credito;
+  };
 
   const filtered = useMemo(() => {
     const base = q
@@ -2014,6 +2162,7 @@ const Clientes = () => {
                     <div className="text-[10px] font-mono text-muted-foreground">#{c.codigo_cliente}</div>
                   )}
                   <Badge e={c.estado} />
+                  {(() => { const b = balanceCliente(c.nom); return b > 0 ? <div className="text-[10px] font-bold text-amber-700 mt-0.5">{fmt(b)}</div> : null; })()}
                 </div>
               </div>
             ))}
@@ -2063,6 +2212,15 @@ const Clientes = () => {
                       Open on Saturdays
                     </div>
                   )}
+                  {(() => {
+                    const bal = balanceCliente(c.nom);
+                    return bal !== 0 ? (
+                      <div className={`flex items-center justify-between px-3 py-2 rounded-xl mb-2.5 ${bal > 0 ? "bg-amber-50 border border-amber-200" : "bg-green-50 border border-green-200"}`}>
+                        <span className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Pending Balance</span>
+                        <span className={`text-sm font-bold ${bal > 0 ? "text-amber-700" : "text-green-700"}`}>{bal < 0 ? "-" : ""}{fmt(Math.abs(bal))}</span>
+                      </div>
+                    ) : null;
+                  })()}
                   {!readOnly && (
                     <div className="flex gap-1.5">
                       <button
