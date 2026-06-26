@@ -2,17 +2,12 @@ import { createClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
 import { createClient as createServerSessionClient } from '@/lib/supabase/server'
 
-// Initialize Supabase Admin client with service role key
-const supabaseAdmin = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || '',
-  {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  }
-)
+const getSupabaseAdmin = () =>
+  createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    process.env.SUPABASE_SERVICE_ROLE_KEY || '',
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
 
 // Esta API usa la llave de servicio (acceso total), asi que primero hay que
 // confirmar que quien llama tiene una sesion valida con rol "admin" - de lo
@@ -54,7 +49,7 @@ export async function POST(request: Request) {
 
     if (action === 'create') {
       // Create new user with admin API
-      const { data, error } = await supabaseAdmin.auth.admin.createUser({
+      const { data, error } = await getSupabaseAdmin().auth.admin.createUser({
         email,
         password,
         email_confirm: true,
@@ -80,7 +75,7 @@ export async function POST(request: Request) {
 
     if (action === 'resetPassword') {
       // Reset user password - need to get user ID first by listing users
-      const { data: allUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      const { data: allUsers, error: listError } = await getSupabaseAdmin().auth.admin.listUsers()
       
       if (listError) {
         return NextResponse.json(
@@ -99,7 +94,7 @@ export async function POST(request: Request) {
       }
 
       // Reset password by user ID
-      const { error } = await supabaseAdmin.auth.admin.updateUserById(
+      const { error } = await getSupabaseAdmin().auth.admin.updateUserById(
         userToUpdate.id,
         { password }
       )
@@ -118,7 +113,7 @@ export async function POST(request: Request) {
     }
 
     if (action === 'setRole') {
-      const { data: allUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      const { data: allUsers, error: listError } = await getSupabaseAdmin().auth.admin.listUsers()
 
       if (listError) {
         return NextResponse.json(
@@ -135,7 +130,7 @@ export async function POST(request: Request) {
         )
       }
 
-      const { error } = await supabaseAdmin.auth.admin.updateUserById(userToUpdate.id, {
+      const { error } = await getSupabaseAdmin().auth.admin.updateUserById(userToUpdate.id, {
         user_metadata: { ...userToUpdate.user_metadata, role: role === 'visitante' ? 'visitante' : 'admin' },
       })
 
@@ -154,7 +149,7 @@ export async function POST(request: Request) {
 
     if (action === 'delete') {
       // Delete user - need to get user ID first by listing users
-      const { data: allUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers()
+      const { data: allUsers, error: listError } = await getSupabaseAdmin().auth.admin.listUsers()
       
       if (listError) {
         return NextResponse.json(
@@ -173,7 +168,7 @@ export async function POST(request: Request) {
       }
 
       // Delete user by ID
-      const { error } = await supabaseAdmin.auth.admin.deleteUser(userToDelete.id)
+      const { error } = await getSupabaseAdmin().auth.admin.deleteUser(userToDelete.id)
 
       if (error) {
         console.error("[v0] Delete user error:", error)
@@ -219,7 +214,7 @@ export async function GET() {
     const unauthorized = await requireAdmin()
     if (unauthorized) return unauthorized
 
-    const { data, error } = await supabaseAdmin.auth.admin.listUsers()
+    const { data, error } = await getSupabaseAdmin().auth.admin.listUsers()
 
     if (error) {
       return NextResponse.json(
