@@ -6,6 +6,7 @@ import dynamic from "next/dynamic";
 import { createClient } from "@/lib/supabase/client";
 import { flexibleSearch, normTag } from "@/lib/search";
 import "react-easy-crop/react-easy-crop.css";
+import JSZip from "jszip";
 import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
 import { proximaFechaEntrega } from "@/lib/delivery";
@@ -307,6 +308,7 @@ interface DataContextType {
     updatePrices?: boolean
   ) => Promise<{ insertados: number; duplicados: number; actualizados: number }>;
   updateProducto: (id: string, p: Omit<Producto, "id">) => Promise<void>;
+  updateProductoFoto: (id: string, foto: string) => Promise<void>;
   deleteProducto: (id: string) => Promise<void>;
   addFactura: (f: Omit<Factura, "id" | "num">) => Promise<void>;
   deleteFactura: (id: string) => Promise<void>;
@@ -617,6 +619,12 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Product updated: ${prod.nom}`);
   };
 
+  const updateProductoFoto = async (id: string, foto: string) => {
+    const { error } = await supabase.from("productos").update({ foto }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, foto } : p)));
+  };
+
   const deleteProducto = async (id: string) => {
     const { error } = await supabase.from("productos").delete().eq("id", id);
     if (error) throw new Error(error.message);
@@ -746,6 +754,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addProducto,
     addProductosBulk,
     updateProducto,
+    updateProductoFoto,
     deleteProducto,
     addFactura,
     deleteFactura,
@@ -1307,11 +1316,13 @@ const Calendario = () => {
                   onFocus={() => setFormClienteOpen(true)}
                   placeholder="Search client by name..."
                   autoComplete="off"
-                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                  className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
                 />
-                {formClienteId && (
+                {formClienteId ? (
                   <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-xs font-bold">✓</span>
-                )}
+                ) : formClienteSearch ? (
+                  <button onClick={() => { setFormClienteSearch(""); setFormClienteId(""); }} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>
+                ) : null}
                 {formClienteOpen && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setFormClienteOpen(false)} />
@@ -1463,12 +1474,15 @@ const Facturas = () => {
   return (
     <div>
       <div className="flex items-center gap-2 mb-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search invoices..."
-          className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-        />
+        <div className="relative flex-1">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search invoices..."
+            className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+          {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
+        </div>
       </div>
       {filtered.length ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -1597,15 +1611,18 @@ const Facturas = () => {
                       </div>
                     ) : (
                       <>
-                        <input
-                          type="text"
-                          placeholder="Buscar producto..."
-                          value={srch}
-                          onChange={(e) => setInvSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
-                          onFocus={() => setInvFocus(i)}
-                          onBlur={() => setTimeout(() => setInvFocus(null), 200)}
-                          className="w-full px-2.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Buscar producto..."
+                            value={srch}
+                            onChange={(e) => setInvSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
+                            onFocus={() => setInvFocus(i)}
+                            onBlur={() => setTimeout(() => setInvFocus(null), 200)}
+                            className="w-full px-2.5 py-2 pr-7 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                          />
+                          {srch && <button onMouseDown={(e) => { e.preventDefault(); setInvSearches((ss) => ss.map((s, j) => j === i ? "" : s)); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-lg leading-none">×</button>}
+                        </div>
                         {isFocused && sugeridos.length > 0 && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
                             {sugeridos.map((p) => (
@@ -1896,13 +1913,16 @@ const Clientes = () => {
     <div>
       {/* Header: buscador + botón + dropdown */}
       <div className="flex gap-2 mb-3">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search clients..."
-          autoComplete="off"
-          className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-        />
+        <div className="relative flex-1">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search clients..."
+            autoComplete="off"
+            className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+          {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
+        </div>
         {!readOnly && (
           <div className="relative shrink-0" ref={addMenuRef}>
             <button
@@ -2471,7 +2491,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ];
 
 const Inventario = () => {
-  const { productos, addProducto, addProductosBulk, updateProducto, deleteProducto, readOnly } = useData();
+  const { productos, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, readOnly } = useData();
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -2482,9 +2502,15 @@ const Inventario = () => {
   const [bulkRows, setBulkRows] = useState<BulkRow[]>([]);
   const [bulkErr, setBulkErr] = useState("");
   const [bulkSaving, setBulkSaving] = useState(false);
+  const [showBulkFotos, setShowBulkFotos] = useState(false);
+  const [bulkFotosMatches, setBulkFotosMatches] = useState<{ sku: string; prodId: string; nom: string; dataUrl: string }[]>([]);
+  const [bulkFotosNoMatch, setBulkFotosNoMatch] = useState<string[]>([]);
+  const [bulkFotosSaving, setBulkFotosSaving] = useState(false);
+  const [bulkFotosProgress, setBulkFotosProgress] = useState(0);
   const [etqInput, setEtqInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("sku");
+  const [invColumnas, setInvColumnas] = useState<2 | 3>(2);
   const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [form, setForm] = useState({
@@ -2787,6 +2813,77 @@ const Inventario = () => {
     setShowBulk(true);
   };
 
+  const compressImageBuffer = (buffer: ArrayBuffer): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const blob = new Blob([buffer]);
+      const url = URL.createObjectURL(blob);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const CANVAS_SIZE = 800;
+        const canvas = document.createElement("canvas");
+        canvas.width = CANVAS_SIZE;
+        canvas.height = CANVAS_SIZE;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no ctx"));
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
+        const aspect = img.width / img.height;
+        let sw = CANVAS_SIZE, sh = CANVAS_SIZE;
+        if (aspect > 1) { sh = CANVAS_SIZE / aspect; } else { sw = CANVAS_SIZE * aspect; }
+        ctx.drawImage(img, (CANVAS_SIZE - sw) / 2, (CANVAS_SIZE - sh) / 2, sw, sh);
+        let out = canvas.toDataURL("image/jpeg", 0.75);
+        if (out.length > 300000) {
+          const s = document.createElement("canvas"); s.width = 500; s.height = 500;
+          const sc = s.getContext("2d");
+          if (sc) { sc.fillStyle = "#fff"; sc.fillRect(0, 0, 500, 500); sc.drawImage(canvas, 0, 0, 500, 500); out = s.toDataURL("image/jpeg", 0.6); }
+        }
+        resolve(out);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("load error")); };
+      img.src = url;
+    });
+
+  const handleBulkFotosZip = async (file: File) => {
+    setBulkFotosMatches([]);
+    setBulkFotosNoMatch([]);
+    try {
+      const zip = await JSZip.loadAsync(file);
+      const IMAGE_EXT = /\.(jpe?g|png|webp|gif)$/i;
+      const matched: { sku: string; prodId: string; nom: string; dataUrl: string }[] = [];
+      const noMatch: string[] = [];
+      const files = Object.entries(zip.files).filter(([name, f]) => !f.dir && IMAGE_EXT.test(name));
+      for (const [name, zipFile] of files) {
+        const baseName = name.split("/").pop() || name;
+        const sku = baseName.replace(/\.[^.]+$/, "").trim();
+        const prod = productos.find((p) => (p.sku || "").trim().toLowerCase() === sku.toLowerCase());
+        if (!prod) { noMatch.push(sku); continue; }
+        const buffer = await zipFile.async("arraybuffer");
+        const dataUrl = await compressImageBuffer(buffer);
+        matched.push({ sku, prodId: prod.id, nom: prod.nom, dataUrl });
+      }
+      setBulkFotosMatches(matched);
+      setBulkFotosNoMatch(noMatch);
+    } catch (err) {
+      alert(`Error reading ZIP: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const applyBulkFotos = async () => {
+    setBulkFotosSaving(true);
+    setBulkFotosProgress(0);
+    let done = 0;
+    for (const m of bulkFotosMatches) {
+      await updateProductoFoto(m.prodId, m.dataUrl);
+      done++;
+      setBulkFotosProgress(Math.round((done / bulkFotosMatches.length) * 100));
+    }
+    setBulkFotosSaving(false);
+    setShowBulkFotos(false);
+    setBulkFotosMatches([]);
+    setBulkFotosNoMatch([]);
+  };
+
   // Normalize a header to match it loosely (ignore case, accents, spaces)
   const norm = (s: string) =>
     String(s || "")
@@ -2997,31 +3094,54 @@ const Inventario = () => {
 
   return (
     <div>
-      <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-2.5">
-        <button
-          onClick={() => setAlmacen("palmhills")}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-            almacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-          }`}
-        >
-          🌴 Palm Hills
-        </button>
-        <button
-          onClick={() => setAlmacen("castillo")}
-          className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-            almacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-          }`}
-        >
-          🏰 Castillo
-        </button>
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+          <button
+            onClick={() => setAlmacen("palmhills")}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+              almacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+            }`}
+          >
+            🌴 Palm Hills
+          </button>
+          <button
+            onClick={() => setAlmacen("castillo")}
+            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+              almacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+            }`}
+          >
+            🏰 Castillo
+          </button>
+        </div>
+        <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+          <button
+            onClick={() => setInvColumnas(2)}
+            aria-label="2 columns"
+            className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all ${invColumnas === 2 ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+          >
+            ▥ 2
+          </button>
+          <button
+            onClick={() => setInvColumnas(3)}
+            aria-label="3 columns"
+            className={`px-2.5 py-1 rounded-full text-xs font-bold transition-all ${invColumnas === 3 ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+          >
+            ▦ 3
+          </button>
+        </div>
       </div>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder="Search by name, code or tag..."
-        autoComplete="off"
-        className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base mb-2.5 outline-none focus:ring-2 focus:ring-ring"
-      />
+      <div className="relative mb-2.5">
+        <input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by name, code or tag..."
+          autoComplete="off"
+          className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+        {q && (
+          <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>
+        )}
+      </div>
       <div className="flex items-center gap-2 mb-3">
         <label
           htmlFor="sortBy"
@@ -3076,7 +3196,7 @@ const Inventario = () => {
           })}
         </div>
       )}
-      <div className="grid grid-cols-2 gap-2.5 mb-3">
+      <div className={`grid gap-2.5 mb-3 ${invColumnas === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
         {visibleProductos.length ? (
           visibleProductos.map((p) => {
             const stock = Number(p.stock);
@@ -3179,6 +3299,13 @@ const Inventario = () => {
                 <span className="text-base" aria-hidden="true">📄</span>
                 Bulk Upload
               </button>
+              <button
+                onClick={() => { setMenuOpen(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); setShowBulkFotos(true); }}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">🖼️</span>
+                Bulk Photos (ZIP)
+              </button>
             </div>
           )}
           <button
@@ -3189,6 +3316,74 @@ const Inventario = () => {
             +
           </button>
         </div>
+      )}
+
+      {showBulkFotos && (
+        <Modal title="Bulk Photos Upload (ZIP)" onClose={() => { setShowBulkFotos(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); }}>
+          <p className="text-sm text-muted-foreground mb-3 leading-relaxed">
+            Upload a ZIP file with images named by SKU (e.g. <span className="font-mono">rb-001.jpg</span>). Images can be in subfolders. Each image will be matched to the product with that SKU.
+          </p>
+          <label className="block w-full cursor-pointer">
+            <div className="w-full border-2 border-dashed border-border rounded-xl py-6 flex flex-col items-center gap-2 bg-muted/30 hover:bg-muted/50 transition-colors">
+              <span className="text-3xl">🗜️</span>
+              <span className="text-sm font-medium text-card-foreground">Select ZIP file</span>
+              <span className="text-xs text-muted-foreground">Images named by SKU inside</span>
+            </div>
+            <input
+              type="file"
+              accept=".zip"
+              className="hidden"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleBulkFotosZip(f); e.target.value = ""; }}
+            />
+          </label>
+          {(bulkFotosMatches.length > 0 || bulkFotosNoMatch.length > 0) && (
+            <div className="mt-4 space-y-3">
+              {bulkFotosMatches.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-card-foreground mb-2">✅ {bulkFotosMatches.length} matched products</p>
+                  <div className="grid grid-cols-3 gap-2 max-h-52 overflow-y-auto">
+                    {bulkFotosMatches.map((m) => (
+                      <div key={m.prodId} className="bg-card border border-border rounded-lg p-1.5 flex flex-col items-center gap-1">
+                        <img src={m.dataUrl} alt={m.nom} className="w-full aspect-square object-contain rounded" />
+                        <span className="text-[10px] font-mono text-muted-foreground truncate w-full text-center">{m.sku}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {bulkFotosNoMatch.length > 0 && (
+                <div>
+                  <p className="text-xs font-bold text-destructive mb-1">❌ {bulkFotosNoMatch.length} SKUs not found</p>
+                  <div className="flex flex-wrap gap-1">
+                    {bulkFotosNoMatch.slice(0, 20).map((s) => (
+                      <span key={s} className="text-[10px] font-mono bg-red-50 text-destructive px-1.5 py-0.5 rounded">{s}</span>
+                    ))}
+                    {bulkFotosNoMatch.length > 20 && <span className="text-[10px] text-muted-foreground">+{bulkFotosNoMatch.length - 20} more</span>}
+                  </div>
+                </div>
+              )}
+              {bulkFotosMatches.length > 0 && (
+                <div>
+                  {bulkFotosSaving && (
+                    <div className="mb-2">
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full bg-primary transition-all" style={{ width: `${bulkFotosProgress}%` }} />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1 text-center">{bulkFotosProgress}%</p>
+                    </div>
+                  )}
+                  <button
+                    onClick={applyBulkFotos}
+                    disabled={bulkFotosSaving}
+                    className="w-full py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
+                  >
+                    {bulkFotosSaving ? `Uploading... ${bulkFotosProgress}%` : `Apply ${bulkFotosMatches.length} photos`}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </Modal>
       )}
 
       {showBulk && (
@@ -4165,15 +4360,18 @@ const Ordenes = () => {
                       </div>
                     ) : (
                       <>
-                        <input
-                          type="text"
-                          placeholder="Buscar producto..."
-                          value={search}
-                          onChange={(e) => setNewOrderSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
-                          onFocus={() => setNewOrderFocus(i)}
-                          onBlur={() => setTimeout(() => setNewOrderFocus(null), 200)}
-                          className="w-full px-2.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-                        />
+                        <div className="relative">
+                          <input
+                            type="text"
+                            placeholder="Buscar producto..."
+                            value={search}
+                            onChange={(e) => setNewOrderSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
+                            onFocus={() => setNewOrderFocus(i)}
+                            onBlur={() => setTimeout(() => setNewOrderFocus(null), 200)}
+                            className="w-full px-2.5 py-2 pr-7 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                          />
+                          {search && <button onMouseDown={(e) => { e.preventDefault(); setNewOrderSearches((ss) => ss.map((s, j) => j === i ? "" : s)); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-lg leading-none">×</button>}
+                        </div>
                         {isFocused && sugeridos.length > 0 && (
                           <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
                             {sugeridos.map((p) => (
@@ -4266,17 +4464,22 @@ const Ordenes = () => {
             </button>
             <div className="flex-1 relative">
               <span className="text-white text-base font-bold block">Edit Order #{editingOrden.num}</span>
-              <input
-                type="text"
-                value={editCliSearch}
-                onChange={(e) => {
-                  setEditCliSearch(e.target.value);
-                  setEditCliOpen(true);
-                }}
-                onFocus={() => setEditCliOpen(true)}
-                placeholder="Search client..."
-                className="w-full bg-white/20 text-white placeholder-white/60 text-xs rounded-lg px-2 py-1 outline-none border border-white/30 focus:border-white/60"
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={editCliSearch}
+                  onChange={(e) => {
+                    setEditCliSearch(e.target.value);
+                    setEditCliOpen(true);
+                  }}
+                  onFocus={() => setEditCliOpen(true)}
+                  placeholder="Search client..."
+                  className="w-full bg-white/20 text-white placeholder-white/60 text-xs rounded-lg px-2 py-1 pr-6 outline-none border border-white/30 focus:border-white/60"
+                />
+                {editCliSearch && (
+                  <button onClick={() => { setEditCliSearch(""); setEditCli(""); setEditCliOpen(false); }} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-white/60 hover:text-white text-base leading-none">×</button>
+                )}
+              </div>
               {editCliOpen && (
                 <>
                   <div className="fixed inset-0 z-10" onClick={() => setEditCliOpen(false)} />
@@ -4352,16 +4555,19 @@ const Ordenes = () => {
                 🏰 Castillo
               </button>
             </div>
-            <input
-              type="search"
-              inputMode="search"
-              placeholder="Search by name, SKU or barcode"
-              value={editSearch}
-              onChange={(e) => setEditSearch(e.target.value)}
-              autoComplete="off"
-              autoCorrect="off"
-              className="w-full mb-3 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            />
+            <div className="relative mb-3">
+              <input
+                type="search"
+                inputMode="search"
+                placeholder="Search by name, SKU or barcode"
+                value={editSearch}
+                onChange={(e) => setEditSearch(e.target.value)}
+                autoComplete="off"
+                autoCorrect="off"
+                className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+              {editSearch && <button onClick={() => setEditSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
+            </div>
             <div className="grid grid-cols-2 gap-2.5">
               {editProductosVisibles.length ? (
                 editProductosVisibles.map((p) => {
