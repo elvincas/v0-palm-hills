@@ -40,7 +40,7 @@ const fmt = (n: number) =>
 const fdate = (s: string) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
-  return `${d}/${m}/${y}`;
+  return `${m}/${d}/${y}`;
 };
 
 // Filas de producto por hoja impresa (deja espacio para el encabezado completo en cada una)

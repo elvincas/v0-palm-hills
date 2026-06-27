@@ -36,7 +36,7 @@ const fmt = (n: number) =>
 const fdate = (s: string) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
-  return `${d}/${m}/${y}`;
+  return `${m}/${d}/${y}`;
 };
 
 const hoy = () => {

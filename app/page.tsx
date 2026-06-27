@@ -143,7 +143,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const fdate = (s: string) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
-  return `${d}/${m}/${y}`;
+  return `${m}/${d}/${y}`;
 };
 
 // Estilos de botones tipo "vidrio" (glassmorphism), reutilizables en toda la app
