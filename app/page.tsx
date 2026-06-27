@@ -1118,8 +1118,11 @@ const Calendario = () => {
     });
   };
 
+  const TIPO_PRIORIDAD: Record<TipoEvento, number> = { delivery: 0, collect_money: 1, order_request: 2, visit: 3 };
   const ordenesDelDia = diaSeleccionado ? ordenesPorFecha[diaSeleccionado] || [] : [];
-  const eventosDelDia = diaSeleccionado ? eventosPorFecha[diaSeleccionado] || [] : [];
+  const eventosDelDia = (diaSeleccionado ? eventosPorFecha[diaSeleccionado] || [] : [])
+    .slice()
+    .sort((a, b) => (TIPO_PRIORIDAD[a.tipo] ?? 9) - (TIPO_PRIORIDAD[b.tipo] ?? 9));
 
   const abrirModalEvento = (tipo: TipoEvento) => {
     setModalTipo(tipo);
