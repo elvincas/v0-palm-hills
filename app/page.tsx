@@ -361,7 +361,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getUser().then(({ data }) => {
       const r = data.user?.user_metadata?.role;
       setRole(r === "visitante" ? "visitante" : "admin");
-    });
+    }).catch(() => {});
   }, [supabase]);
 
   const refreshLogs = async () => {
@@ -456,8 +456,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setMejoras(e);
       setEventosCalendario(ev);
       await refreshLogs();
-      loadFotosProductos(p.map((r) => r.id));
-      loadFotosClientes(c.map((r) => r.id));
+      loadFotosProductos(p.map((r) => r.id)).catch(() => {});
+      loadFotosClientes(c.map((r) => r.id)).catch(() => {});
     } catch (err) {
       // Si la carga inicial falla (ej. corte de red), no dejamos la app
       // congelada en "Loading..." para siempre.
@@ -5690,7 +5690,7 @@ function AppContent() {
   }, [tab]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ""));
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || "")).catch(() => {});
   }, [supabase]);
 
   // Un visitante no tiene acceso a Usuarios; si quedo esa pestaña activa, regresa a Inicio
