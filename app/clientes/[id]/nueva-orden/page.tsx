@@ -140,8 +140,12 @@ export default function NuevaOrdenPage() {
       return matchAlmacen && matchTag
     })
     if (search.trim()) {
-      list = flexibleSearch(list, search, (p) =>
-        [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(' ')
+      // flexibleSearch ya devuelve por relevancia — no re-ordenar por SKU
+      return flexibleSearch(
+        list,
+        search,
+        (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(' '),
+        (p) => p.nom
       )
     }
     return list

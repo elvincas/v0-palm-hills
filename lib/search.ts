@@ -8,16 +8,13 @@
 // Estrategia:
 // 1. Normalizar (sin acentos, minusculas, variantes foneticas ES comunes).
 // 2. Partir el query en palabras (tokens). Cada token se busca por separado
-//    contra cada palabra del texto del producto (nombre + sku + barcode + tags),
-//    sin importar el orden.
-// 3. Un token matchea si es substring exacto, o si esta a poca distancia de
-//    edicion (Levenshtein) de alguna palabra del producto — eso es lo que
-//    permite que "silica"/"silico" matcheen "silicon".
-// 4. El producto entra al resultado si TODOS los tokens del query matchean
-//    en algun lado (orden ignorado). Se ordena por que tan buenos fueron los matches.
+//    contra cada PALABRA del texto del producto — solo matchea si la palabra
+//    del producto EMPIEZA con el token (prefix match), no si lo contiene en
+//    cualquier posicion. Esto evita falsos positivos como "gel" -> "angel".
+// 3. Fallback a Levenshtein para typos ("silica" -> "silicon").
+// 4. El producto entra si TODOS los tokens del query matchean. Se ordena por
+//    relevancia: match exacto en nombre > prefix en nombre > match en SKU/tags.
 
-// Normaliza texto para tolerar typos/acentos/variantes foneticas en espanol
-// (ej. "risos" -> "rizos", "kabello" -> "cabello").
 export const normTag = (s: string) =>
   String(s || "")
     .toLowerCase()
@@ -26,20 +23,18 @@ export const normTag = (s: string) =>
     .replace(/[^a-z0-9ñ ]/g, "")
     .trim()
     .replace(/\s+/g, " ")
-    .replace(/z/g, "s") // rizos / risos
-    .replace(/c([ei])/g, "s$1") // celular / selular
+    .replace(/z/g, "s")           // rizos / risos
+    .replace(/c([ei])/g, "s$1")   // celular / selular
     .replace(/qu/g, "k")
-    .replace(/c/g, "k") // cabello / kabello
-    .replace(/v/g, "b") // vello / bello
-    .replace(/h/g, "") // hair / air (h muda)
+    .replace(/c/g, "k")           // cabello / kabello
+    .replace(/v/g, "b")           // vello / bello
+    .replace(/h/g, "")            // hair / air (h muda)
     .replace(/y/g, "i")
     .replace(/ll/g, "i")
-    .replace(/(.)\1+/g, "$1"); // colapsa letras dobladas
+    .replace(/(.)\1+/g, "$1");    // colapsa letras dobladas
 
 const tokenize = (q: string): string[] => normTag(q).split(" ").filter(Boolean);
 
-// Distancia de edicion (Levenshtein), con corte temprano para mantenerlo rapido
-// en listas de cientos/miles de productos.
 function levenshtein(a: string, b: string, maxDist: number): number {
   if (Math.abs(a.length - b.length) > maxDist) return maxDist + 1;
   const m = a.length;
@@ -61,30 +56,34 @@ function levenshtein(a: string, b: string, maxDist: number): number {
   return prev[n];
 }
 
-// Que tan tolerante es la distancia permitida segun el largo del token:
-// tokens cortos (3-4 letras) casi no toleran error para evitar falsos positivos,
-// tokens largos toleran 1-2 letras distintas (typos / variantes foneticas).
+// Tolerancia Levenshtein segun largo: tokens <= 3 deben ser exactos,
+// 4-6 toleran 1 typo, 7+ toleran 2.
 const maxDistFor = (len: number) => (len <= 3 ? 0 : len <= 6 ? 1 : 2);
 
-// Score de match de un token contra una palabra del producto.
-// 0 = substring exacto/prefijo, mayor = mas distante (peor).
+// Score de match de un token contra una sola palabra del producto.
+// Retorna null si no hay match.
+// Score 0 = exacto o prefix (mejor), 1-3 = fuzzy (peor).
 function tokenWordScore(token: string, word: string): number | null {
   if (!word) return null;
-  // token.includes(word) solo cuenta si `word` tiene un largo minimo: si no,
-  // cualquier palabra suelta de una letra (tallas, unidades, sku sueltos como
-  // "g"/"w"/"8") matchea por pura casualidad contra cualquier token.
-  if (word.includes(token) || (word.length >= 2 && token.includes(word))) return 0;
 
+  // Coincidencia exacta → mejor score
+  if (token === word) return 0;
+
+  // Prefix match: la palabra del producto empieza con el token
+  // Ej: token "sil" matchea "silicon", "silka", "silicone"
+  if (word.startsWith(token)) return 0;
+
+  // Reverse prefix: el token empieza con la palabra (usuario escribió más
+  // que la palabra completa). Solo para palabras largas (>=3) para evitar
+  // que "a" o "de" matcheen todo.
+  if (token.length > word.length && word.length >= 3 && token.startsWith(word)) return 0;
+
+  // Fuzzy Levenshtein — solo para tokens suficientemente largos y
+  // con las primeras letras en comun (ancla de 3 chars para mayor precision).
   const maxDist = maxDistFor(Math.min(token.length, word.length));
   if (maxDist === 0) return null;
 
-  // Anclar por las primeras letras antes de medir distancia de edicion.
-  // Sin esto, un token de 5-6 letras esta a distancia 1 de demasiadas
-  // palabras al azar del catalogo (cientos de productos, miles de palabras
-  // entre nombre/sku/tags) y el buscador termina devolviendo casi todo.
-  // Exigir que arranquen igual reduce drasticamente esos falsos positivos
-  // sin perder tolerancia real a typos ("silica" -> "silicon").
-  const anchorLen = Math.min(2, token.length, word.length);
+  const anchorLen = Math.min(3, token.length, word.length);
   if (token.slice(0, anchorLen) !== word.slice(0, anchorLen)) return null;
 
   const dist = levenshtein(token, word, maxDist);
@@ -92,8 +91,6 @@ function tokenWordScore(token: string, word: string): number | null {
   return 1 + dist;
 }
 
-// Mejor score de un token contra todo el texto normalizado de un producto
-// (probando contra cada palabra individual, no la frase completa).
 function tokenBestScore(token: string, normWords: string[]): number | null {
   let best: number | null = null;
   for (const w of normWords) {
@@ -105,14 +102,9 @@ function tokenBestScore(token: string, normWords: string[]): number | null {
 
 export interface SearchableFields {
   id: string;
-  text: string; // texto plano sin normalizar (nombre + sku + barcode + tags...)
+  text: string;
 }
 
-// Filtra y ordena `items` por relevancia contra `query`. `getText` debe
-// devolver el texto combinado (nombre, sku, barcode, tags, etc.) de cada item.
-// `getName` opcional devuelve solo el nombre del producto para dar mas peso a
-// matches exactos en el nombre vs SKU/tags.
-// Si el query esta vacio, devuelve `items` sin tocar.
 export function flexibleSearch<T>(
   items: T[],
   query: string,
@@ -126,31 +118,32 @@ export function flexibleSearch<T>(
 
   const scored: { item: T; score: number }[] = [];
   for (const item of items) {
-    const fullText = getText(item);
-    const normFull = normTag(fullText);
+    const normFull = normTag(getText(item));
     const normWords = normFull.split(" ").filter(Boolean);
 
     let total = 0;
     let allMatch = true;
     for (const tok of tokens) {
       const s = tokenBestScore(tok, normWords);
-      if (s === null) {
-        allMatch = false;
-        break;
-      }
+      if (s === null) { allMatch = false; break; }
       total += s;
     }
     if (!allMatch) continue;
 
-    // Bonus por match exacto de frase completa en el nombre
-    const normName = getName ? normTag(getName(item)) : normWords.slice(0, 4).join(" ");
-    if (normName.includes(normQuery)) {
-      total -= 20; // fuerte bonus: sube al tope
+    // Bonus de relevancia basado en el nombre del producto
+    const normName = getName ? normTag(getName(item)) : normWords.slice(0, 5).join(" ");
+    const nameWords = normName.split(" ").filter(Boolean);
+
+    if (normName === normQuery || normName.startsWith(normQuery + " ")) {
+      // El nombre empieza exactamente con el query → tope de relevancia
+      total -= 30;
+    } else if (normName.includes(normQuery)) {
+      // Query aparece en algun lugar del nombre
+      total -= 20;
     } else {
-      // Bonus por cada token que aparece en el nombre (no solo en SKU/tags)
-      const nameWords = normName.split(" ").filter(Boolean);
+      // Bonus por cada token que hace prefix-match en el nombre
       for (const tok of tokens) {
-        if (tokenBestScore(tok, nameWords) !== null) total -= 3;
+        if (tokenBestScore(tok, nameWords) !== null) total -= 4;
       }
     }
 

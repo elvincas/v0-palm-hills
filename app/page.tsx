@@ -4065,8 +4065,11 @@ const Ordenes = () => {
 
   const getProductosSugeridos = (search: string) => {
     if (!search.trim()) return productosNewOrder.slice(0, 30);
-    return flexibleSearch(productosNewOrder, search, (p) =>
-      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    return flexibleSearch(
+      productosNewOrder,
+      search,
+      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+      (p) => p.nom
     ).slice(0, 30);
   };
 
@@ -4263,8 +4266,11 @@ const Ordenes = () => {
   const editProductosFiltrados = (() => {
     const porAlmacen = editProductosOrdenados.filter((p) => (p.almacen || "palmhills") === editAlmacen);
     if (!editSearch.trim()) return porAlmacen;
-    return flexibleSearch(porAlmacen, editSearch, (p) =>
-      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    return flexibleSearch(
+      porAlmacen,
+      editSearch,
+      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+      (p) => p.nom
     );
   })();
 
