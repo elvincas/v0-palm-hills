@@ -374,7 +374,7 @@ export default function FacturaPage() {
 
       {/* Invoice document — flujo continuo, el navegador pagina automaticamente */}
       <div className="max-w-3xl mx-auto p-4 sm:p-8 print:p-0">
-        <div className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden">
+        <div className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden print:overflow-visible">
           <EncabezadoFactura factura={factura} cliente={cliente} />
 
           <div className="px-6 sm:px-10 py-6">

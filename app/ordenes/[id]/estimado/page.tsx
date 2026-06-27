@@ -176,7 +176,13 @@ export default function EstimadoPage() {
             ← Back
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={() => {
+              if ((navigator as Navigator & { standalone?: boolean }).standalone) {
+                window.open(window.location.href, "_blank");
+              } else {
+                window.print();
+              }
+            }}
             className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
           >
             🖨️ Print / Save PDF
@@ -185,7 +191,7 @@ export default function EstimadoPage() {
       </div>
 
       <div className="max-w-3xl mx-auto p-4 sm:p-8 print:p-0">
-        <div className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden">
+        <div className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden print:overflow-visible">
           <EncabezadoEstimado orden={orden} cliente={cliente} />
 
           <div className="px-6 sm:px-10 py-6">
