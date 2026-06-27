@@ -1450,8 +1450,11 @@ const Facturas = () => {
 
   const getInvSugeridos = (search: string) => {
     if (!search.trim()) return productosInvAlmacen.slice(0, 30);
-    return flexibleSearch(productosInvAlmacen, search, (p) =>
-      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    return flexibleSearch(
+      productosInvAlmacen,
+      search,
+      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+      (p) => p.nom
     ).slice(0, 50);
   };
 
@@ -1615,6 +1618,7 @@ const Facturas = () => {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search invoices..."
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
             className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
           />
           {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
@@ -2066,7 +2070,7 @@ const Clientes = () => {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search clients..."
-            autoComplete="off"
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
             className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
           />
           {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
@@ -2708,8 +2712,11 @@ const Inventario = () => {
     let list = productosAlmacen;
 
     if (q.trim()) {
-      list = flexibleSearch(productosAlmacen, q, (p) =>
-        [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+      list = flexibleSearch(
+        productosAlmacen,
+        q,
+        (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+        (p) => p.nom
       );
     }
 
@@ -3294,6 +3301,9 @@ const Inventario = () => {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by name, code or tag..."
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
         {q && (
@@ -4722,6 +4732,8 @@ const Ordenes = () => {
                 onChange={(e) => setEditSearch(e.target.value)}
                 autoComplete="off"
                 autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
               {editSearch && <button onClick={() => setEditSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}

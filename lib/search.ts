@@ -110,14 +110,26 @@ export interface SearchableFields {
 
 // Filtra y ordena `items` por relevancia contra `query`. `getText` debe
 // devolver el texto combinado (nombre, sku, barcode, tags, etc.) de cada item.
+// `getName` opcional devuelve solo el nombre del producto para dar mas peso a
+// matches exactos en el nombre vs SKU/tags.
 // Si el query esta vacio, devuelve `items` sin tocar.
-export function flexibleSearch<T>(items: T[], query: string, getText: (item: T) => string): T[] {
+export function flexibleSearch<T>(
+  items: T[],
+  query: string,
+  getText: (item: T) => string,
+  getName?: (item: T) => string
+): T[] {
   const tokens = tokenize(query);
   if (!tokens.length) return items;
 
+  const normQuery = normTag(query);
+
   const scored: { item: T; score: number }[] = [];
   for (const item of items) {
-    const normWords = normTag(getText(item)).split(" ").filter(Boolean);
+    const fullText = getText(item);
+    const normFull = normTag(fullText);
+    const normWords = normFull.split(" ").filter(Boolean);
+
     let total = 0;
     let allMatch = true;
     for (const tok of tokens) {
@@ -128,7 +140,21 @@ export function flexibleSearch<T>(items: T[], query: string, getText: (item: T) 
       }
       total += s;
     }
-    if (allMatch) scored.push({ item, score: total });
+    if (!allMatch) continue;
+
+    // Bonus por match exacto de frase completa en el nombre
+    const normName = getName ? normTag(getName(item)) : normWords.slice(0, 4).join(" ");
+    if (normName.includes(normQuery)) {
+      total -= 20; // fuerte bonus: sube al tope
+    } else {
+      // Bonus por cada token que aparece en el nombre (no solo en SKU/tags)
+      const nameWords = normName.split(" ").filter(Boolean);
+      for (const tok of tokens) {
+        if (tokenBestScore(tok, nameWords) !== null) total -= 3;
+      }
+    }
+
+    scored.push({ item, score: total });
   }
 
   scored.sort((a, b) => a.score - b.score);
