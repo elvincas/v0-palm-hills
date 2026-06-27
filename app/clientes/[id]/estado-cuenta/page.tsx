@@ -115,7 +115,13 @@ export default function EstadoCuentaPage() {
             ← Back
           </button>
           <button
-            onClick={() => window.print()}
+            onClick={() => {
+              if ((navigator as Navigator & {standalone?: boolean}).standalone) {
+                window.open(window.location.href, "_blank");
+              } else {
+                window.print();
+              }
+            }}
             className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
           >
             🖨️ Print / Save PDF

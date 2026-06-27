@@ -506,22 +506,27 @@ export default function ClientePerfilPage() {
             ) : facturas.length ? (
               <div className="space-y-2">
                 {facturas.map((f) => {
-                  const balance = ["Paid","Completed","Cancelled"].includes(f.estado) ? 0 : f.total;
+                  const pagado = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
+                  const balance = ["Paid","Completed","Cancelled"].includes(f.estado) ? 0 : Math.max(0, f.total - pagado);
                   return (
-                    <div
+                    <button
                       key={f.id}
-                      className="flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5"
+                      onClick={() => router.push(`/facturas/${f.id}`)}
+                      className="w-full flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5 hover:bg-muted/80 active:scale-[0.98] transition-all text-left"
                     >
                       <div className="min-w-0">
                         <div className="text-sm font-semibold text-card-foreground">Invoice #{f.num}</div>
                         <div className="text-xs text-muted-foreground">{fdate(f.fecha)}</div>
                       </div>
-                      <div className="text-right shrink-0">
-                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</div>
-                        <div className="text-sm font-bold text-card-foreground">{fmt(balance)}</div>
-                        <FacturaBadge e={f.estado} />
+                      <div className="text-right shrink-0 flex items-center gap-2">
+                        <div>
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</div>
+                          <div className="text-sm font-bold text-card-foreground">{fmt(balance)}</div>
+                          <FacturaBadge e={f.estado} />
+                        </div>
+                        <span className="text-muted-foreground text-lg">›</span>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>

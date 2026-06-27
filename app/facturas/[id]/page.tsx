@@ -266,8 +266,19 @@ export default function FacturaPage() {
                 ✓ Paid
               </button>
             )}
-            <button onClick={() => window.print()} className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}>
-              🖨️ PDF
+            <button
+              onClick={() => {
+                if (typeof window !== "undefined") {
+                  if ((navigator as Navigator & {standalone?: boolean}).standalone) {
+                    window.open(window.location.href, "_blank");
+                  } else {
+                    window.print();
+                  }
+                }
+              }}
+              className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
+            >
+              🖨️ Print / PDF
             </button>
             {!readOnly && (
               <button
