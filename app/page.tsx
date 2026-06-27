@@ -68,6 +68,7 @@ interface Factura {
   estado: string;
   total: number;
   lineas?: LineaFactura[];
+  pagos?: { monto: number; fecha: string; nota?: string }[];
 }
 
 interface NotaCredito {
@@ -1914,7 +1915,10 @@ const Clientes = () => {
   const balanceCliente = (nom: string) => {
     const deuda = facturas
       .filter(f => f.cli === nom && !["Paid", "Completed", "Cancelled"].includes(f.estado))
-      .reduce((acc, f) => acc + f.total, 0);
+      .reduce((acc, f) => {
+        const pagado = (f.pagos || []).reduce((s, p) => s + p.monto, 0);
+        return acc + Math.max(0, f.total - pagado);
+      }, 0);
     const credito = notasCredito
       .filter(nc => nc.cli === nom)
       .reduce((acc, nc) => acc + nc.monto, 0);

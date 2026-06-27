@@ -14,6 +14,12 @@ interface LineaFactura {
   almacen?: "palmhills" | "castillo";
 }
 
+interface Pago {
+  monto: number;
+  fecha: string;
+  nota?: string;
+}
+
 interface Factura {
   id: string;
   num: number;
@@ -22,6 +28,7 @@ interface Factura {
   estado: string;
   total: number;
   lineas?: LineaFactura[];
+  pagos?: Pago[];
 }
 
 interface Cliente {
@@ -43,8 +50,13 @@ const fdate = (s: string) => {
   return `${d}/${m}/${y}`;
 };
 
-// Filas de producto por hoja impresa (deja espacio para el encabezado completo en cada una)
+const today = () => new Date().toISOString().split("T")[0];
+
 const FILAS_POR_HOJA = 12;
+
+const GLASS_BTN = "backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]";
+const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
+const GLASS_BTN_DANGER = "backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-red-700";
 
 function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
   return (
@@ -81,6 +93,15 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
         <div className="text-right">
           <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Date</div>
           <div className="text-xs font-medium text-[#1a1a18]">{fdate(factura.fecha)}</div>
+          <div className="mt-2">
+            <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Status</div>
+            <div className={`text-xs font-bold ${
+              factura.estado === "Paid" ? "text-green-700"
+              : factura.estado === "Partially Paid" ? "text-blue-700"
+              : factura.estado === "Overdue" ? "text-red-600"
+              : "text-amber-700"
+            }`}>{factura.estado}</div>
+          </div>
         </div>
       </div>
     </>
@@ -97,8 +118,20 @@ export default function FacturaPage() {
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [readOnly, setReadOnly] = useState(false);
+
+  // Payment form
+  const [showPagoForm, setShowPagoForm] = useState(false);
+  const [pagoMonto, setPagoMonto] = useState("");
+  const [pagoFecha, setPagoFecha] = useState(today());
+  const [pagoNota, setPagoNota] = useState("");
+  const [savingPago, setSavingPago] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => {
+      setReadOnly(data.user?.user_metadata?.role === "visitante");
+    });
     const load = async () => {
       const { data: f, error: fErr } = await supabase
         .from("facturas")
@@ -123,6 +156,55 @@ export default function FacturaPage() {
     load();
   }, [facturaId, supabase]);
 
+  const handleDelete = async () => {
+    if (!factura) return;
+    if (!confirm(`Delete invoice #${factura.num}? This cannot be undone.`)) return;
+    setDeleting(true);
+    const { error } = await supabase.from("facturas").delete().eq("id", facturaId);
+    if (error) { alert("Error deleting invoice: " + error.message); setDeleting(false); return; }
+    router.push("/?tab=fact");
+  };
+
+  const handleMarkPaid = async () => {
+    if (!factura) return;
+    const newEstado = "Paid";
+    const fullPago: Pago = { monto: factura.total, fecha: today(), nota: "Marked as fully paid" };
+    const newPagos = [...(factura.pagos || []), fullPago];
+    const { error } = await supabase.from("facturas").update({ estado: newEstado, pagos: newPagos }).eq("id", facturaId);
+    if (error) { alert("Error: " + error.message); return; }
+    setFactura(f => f ? { ...f, estado: newEstado, pagos: newPagos } : f);
+  };
+
+  const handleAddPago = async () => {
+    if (!factura || savingPago) return;
+    const monto = parseFloat(pagoMonto);
+    if (!monto || monto <= 0) { alert("Enter a valid amount"); return; }
+    setSavingPago(true);
+    const newPago: Pago = { monto, fecha: pagoFecha, nota: pagoNota || undefined };
+    const newPagos = [...(factura.pagos || []), newPago];
+    const totalPagado = newPagos.reduce((acc, p) => acc + p.monto, 0);
+    const newEstado = totalPagado >= factura.total ? "Paid" : "Partially Paid";
+    const { error } = await supabase.from("facturas").update({ pagos: newPagos, estado: newEstado }).eq("id", facturaId);
+    if (error) { alert("Error: " + error.message); setSavingPago(false); return; }
+    setFactura(f => f ? { ...f, pagos: newPagos, estado: newEstado } : f);
+    setPagoMonto("");
+    setPagoFecha(today());
+    setPagoNota("");
+    setShowPagoForm(false);
+    setSavingPago(false);
+  };
+
+  const handleDeletePago = async (idx: number) => {
+    if (!factura) return;
+    if (!confirm("Remove this payment?")) return;
+    const newPagos = (factura.pagos || []).filter((_, i) => i !== idx);
+    const totalPagado = newPagos.reduce((acc, p) => acc + p.monto, 0);
+    const newEstado = totalPagado >= factura.total ? "Paid" : totalPagado > 0 ? "Partially Paid" : "Pending";
+    const { error } = await supabase.from("facturas").update({ pagos: newPagos, estado: newEstado }).eq("id", facturaId);
+    if (error) { alert("Error: " + error.message); return; }
+    setFactura(f => f ? { ...f, pagos: newPagos, estado: newEstado } : f);
+  };
+
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground text-center">Loading invoice...</div>;
   }
@@ -131,15 +213,14 @@ export default function FacturaPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button
-          onClick={() => router.push("/?tab=fact")}
-          className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
-        >
-          ← Back
-        </button>
+        <button onClick={() => router.push("/?tab=fact")} className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}>← Back</button>
       </div>
     );
   }
+
+  const pagos = factura.pagos || [];
+  const totalPagado = pagos.reduce((acc, p) => acc + p.monto, 0);
+  const saldo = factura.total - totalPagado;
 
   const lineas = [...(factura.lineas || [])].sort((a, b) => {
     const skuA = (a.sku || "").trim();
@@ -157,28 +238,139 @@ export default function FacturaPage() {
   }
   if (paginas.length === 0) paginas.push([]);
 
+  const isPaid = factura.estado === "Paid";
+
   return (
     <div className="min-h-screen bg-[#f0efe9]">
+      {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between"
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between gap-2"
           style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}
         >
-          <button
-            onClick={() => router.push("/?tab=fact")}
-            className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
-          >
-            ← Back
-          </button>
-          <button
-            onClick={() => window.print()}
-            className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
-          >
-            🖨️ Print / Save PDF
-          </button>
+          <button onClick={() => router.push("/?tab=fact")} className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}>← Back</button>
+          <div className="flex gap-2">
+            {!readOnly && !isPaid && (
+              <button
+                onClick={() => setShowPagoForm(true)}
+                className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
+              >
+                + Payment
+              </button>
+            )}
+            {!readOnly && !isPaid && (
+              <button
+                onClick={handleMarkPaid}
+                className="px-4 py-2 rounded-full text-sm font-bold backdrop-blur-md bg-green-600/85 border border-white/30 shadow-md hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
+              >
+                ✓ Paid
+              </button>
+            )}
+            <button onClick={() => window.print()} className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}>
+              🖨️ PDF
+            </button>
+            {!readOnly && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className={`px-3 py-2 rounded-full text-sm font-bold ${GLASS_BTN_DANGER}`}
+              >
+                🗑
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
+      {/* Payment form modal */}
+      {showPagoForm && (
+        <div className="print:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-[#1a1a18]">Record Payment</h2>
+              <button onClick={() => setShowPagoForm(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <div className="text-xs text-gray-500 mb-4">
+              Invoice total: <strong>{fmt(factura.total)}</strong> · Paid: <strong className="text-green-700">{fmt(totalPagado)}</strong> · Balance: <strong className="text-amber-700">{fmt(saldo)}</strong>
+            </div>
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Amount ($)</label>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={pagoMonto}
+                  onChange={e => setPagoMonto(e.target.value)}
+                  placeholder={fmt(saldo).replace("$", "")}
+                  autoFocus
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Date</label>
+                <input
+                  type="date"
+                  value={pagoFecha}
+                  onChange={e => setPagoFecha(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                />
+              </div>
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Note (optional)</label>
+                <input
+                  type="text"
+                  value={pagoNota}
+                  onChange={e => setPagoNota(e.target.value)}
+                  placeholder="Cash, transfer, check..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                />
+              </div>
+            </div>
+            <div className="flex gap-2.5 mt-5">
+              <button onClick={() => setShowPagoForm(false)} className={`flex-1 px-4 py-2.5 rounded-full text-sm font-medium ${GLASS_BTN}`}>Cancel</button>
+              <button
+                onClick={handleAddPago}
+                disabled={savingPago || !pagoMonto}
+                className={`flex-1 px-4 py-2.5 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+              >
+                {savingPago ? "Saving..." : "Save Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment history (screen only) */}
+      {pagos.length > 0 && (
+        <div className="print:hidden max-w-3xl mx-auto px-4 sm:px-8 pt-4">
+          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="text-xs font-bold uppercase tracking-wide text-gray-500">Payment History</div>
+              <div className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${isPaid ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>
+                {isPaid ? "Fully Paid" : `Balance: ${fmt(saldo)}`}
+              </div>
+            </div>
+            {pagos.map((p, i) => (
+              <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 last:border-0">
+                <div>
+                  <div className="text-sm font-semibold text-gray-800">{fmt(p.monto)}</div>
+                  <div className="text-xs text-gray-400">{fdate(p.fecha)}{p.nota ? ` · ${p.nota}` : ""}</div>
+                </div>
+                {!readOnly && (
+                  <button onClick={() => handleDeletePago(i)} className="text-gray-300 hover:text-red-500 text-lg leading-none px-1 transition-colors">×</button>
+                )}
+              </div>
+            ))}
+            <div className="px-4 py-2.5 bg-gray-50 flex justify-between text-sm font-bold">
+              <span className="text-gray-600">Total paid</span>
+              <span className="text-green-700">{fmt(totalPagado)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Invoice document */}
       <div className="max-w-3xl mx-auto p-4 sm:p-8 print:p-0">
         {paginas.map((pagina, pIdx) => {
           const esUltima = pIdx === paginas.length - 1;
@@ -196,15 +388,9 @@ export default function FacturaPage() {
                     <tr className="border-b-2 border-[#1a1a18] text-left">
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Qty.</th>
                       <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">SKU</th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">
-                        Description
-                      </th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">
-                        Price
-                      </th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">
-                        Amount
-                      </th>
+                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Description</th>
+                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">Price</th>
+                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">Amount</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -219,9 +405,7 @@ export default function FacturaPage() {
                             <td className="py-2 text-right text-xs">
                               {tieneDescuento ? (
                                 <div className="flex flex-col items-end leading-tight">
-                                  <span className="text-gray-400 line-through text-[11px]">
-                                    {fmt(l.precioOriginal!)}
-                                  </span>
+                                  <span className="text-gray-400 line-through text-[11px]">{fmt(l.precioOriginal!)}</span>
                                   <span className="text-[#4a6741] font-bold">{fmt(l.precio)}</span>
                                 </div>
                               ) : (
@@ -231,9 +415,7 @@ export default function FacturaPage() {
                             <td className="py-2 text-right text-xs">
                               {tieneDescuento ? (
                                 <div className="flex flex-col items-end leading-tight">
-                                  <span className="text-gray-400 line-through text-[11px]">
-                                    {fmt(l.qty * l.precioOriginal!)}
-                                  </span>
+                                  <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precioOriginal!)}</span>
                                   <span className="text-[#4a6741] font-bold">{fmt(l.qty * l.precio)}</span>
                                 </div>
                               ) : (
@@ -245,9 +427,7 @@ export default function FacturaPage() {
                       })
                     ) : (
                       <tr>
-                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">
-                          No product details
-                        </td>
+                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
                       </tr>
                     )}
                   </tbody>
@@ -270,6 +450,18 @@ export default function FacturaPage() {
                         <span className="text-base font-bold text-[#1a1a18]">Total</span>
                         <span className="text-xl font-black text-[#4a6741]">{fmt(factura.total)}</span>
                       </div>
+                      {totalPagado > 0 && (
+                        <>
+                          <div className="flex justify-between py-1.5 text-sm text-green-700">
+                            <span>Paid</span>
+                            <span>-{fmt(totalPagado)}</span>
+                          </div>
+                          <div className="flex justify-between items-center py-2 border-t border-gray-200 mt-1">
+                            <span className="text-sm font-bold text-[#1a1a18]">Balance Due</span>
+                            <span className={`text-base font-black ${saldo <= 0 ? "text-green-700" : "text-amber-700"}`}>{fmt(Math.max(0, saldo))}</span>
+                          </div>
+                        </>
+                      )}
                     </div>
                   </div>
                 )}
@@ -277,9 +469,7 @@ export default function FacturaPage() {
 
               {esUltima && (
                 <div className="px-6 sm:px-10 py-3 border-t border-gray-200">
-                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">
-                    Delivery confirmation
-                  </div>
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
                   <div className="flex flex-wrap gap-x-6 gap-y-2">
                     <div>
                       <div className="border-b border-gray-400 h-4 w-28" />
@@ -315,15 +505,9 @@ export default function FacturaPage() {
 
       <style jsx global>{`
         @media print {
-          @page {
-            margin: 0.5in;
-          }
-          body {
-            background: white !important;
-          }
-          tr {
-            page-break-inside: avoid;
-          }
+          @page { margin: 0.5in; }
+          body { background: white !important; }
+          tr { page-break-inside: avoid; }
         }
       `}</style>
     </div>

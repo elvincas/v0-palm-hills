@@ -463,7 +463,10 @@ export default function ClientePerfilPage() {
 
           {/* Balance Neto */}
           {!loadingFacturas && (() => {
-            const deuda = facturas.filter(f => !["Paid", "Completed", "Cancelled"].includes(f.estado)).reduce((acc, f) => acc + f.total, 0);
+            const deuda = facturas.filter(f => !["Paid", "Completed", "Cancelled"].includes(f.estado)).reduce((acc, f) => {
+              const pagado = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
+              return acc + Math.max(0, f.total - pagado);
+            }, 0);
             const credito = notasCredito.reduce((acc, n) => acc + n.monto, 0);
             const neto = deuda - credito;
             return (
