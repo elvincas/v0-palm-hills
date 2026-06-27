@@ -1422,6 +1422,7 @@ const Facturas = () => {
   const [ncCliOpen, setNcCliOpen] = useState(false);
   const [ncSaving, setNcSaving] = useState(false);
   const [ncQ, setNcQ] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const clienteCodigo = (nom: string) =>
     clientes.find((c) => c.nom === nom)?.codigo_cliente || "—";
@@ -1474,7 +1475,8 @@ const Facturas = () => {
   }, 0);
   const total = subtotal * 1.16;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return;
     if (!clienteSeleccionado) {
       alert("Select a client");
       return;
@@ -1500,20 +1502,25 @@ const Facturas = () => {
         almacen: p.almacen || "palmhills",
       };
     });
-    addFactura({
-      cli: clienteSeleccionado,
-      fecha,
-      estado,
-      total: +total.toFixed(2),
-      lineas: lineasDetalle,
-    });
-    setShow(false);
-    setLineas([{ prodId: "", qty: 1 }]);
-    setClienteSeleccionado("");
-    setFecha("");
-    setEstado("Pending");
-    setInvSearches([""]);
-    setInvFocus(null);
+    setSaving(true);
+    try {
+      await addFactura({
+        cli: clienteSeleccionado,
+        fecha,
+        estado,
+        total: +total.toFixed(2),
+        lineas: lineasDetalle,
+      });
+      setShow(false);
+      setLineas([{ prodId: "", qty: 1 }]);
+      setClienteSeleccionado("");
+      setFecha("");
+      setEstado("Pending");
+      setInvSearches([""]);
+      setInvFocus(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1836,9 +1843,10 @@ const Facturas = () => {
             </button>
             <button
               onClick={handleSave}
-              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
+              disabled={saving}
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
             >
-              Save Invoice
+              {saving ? "Saving..." : "Save Invoice"}
             </button>
           </div>
         </Modal>
