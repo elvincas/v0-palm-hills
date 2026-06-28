@@ -80,6 +80,19 @@ interface NotaCredito {
   motivo: string;
 }
 
+interface Remito {
+  id: string;
+  num: number;
+  orden_id: string;
+  orden_num: number;
+  cli: string;
+  fecha: string;
+  lineas?: LineaOrden[];
+  enviado: boolean;
+  fecha_envio?: string;
+  total?: number;
+}
+
 interface LineaOrden {
   prodId: string;
   prodNom: string;
@@ -302,6 +315,7 @@ interface DataContextType {
   productos: Producto[];
   facturas: Factura[];
   ordenes: Orden[];
+  remitos: Remito[];
   mejoras: Mejora[];
   eventosCalendario: EventoCalendario[];
   proximasFechasEntrega: string[];
@@ -328,6 +342,8 @@ interface DataContextType {
   addOrden: (o: Omit<Orden, "id" | "num">) => Promise<void>;
   deleteOrden: (id: string) => Promise<void>;
   updateOrden: (id: string, o: Orden) => Promise<void>;
+  addRemito: (r: Omit<Remito, "id" | "num">) => Promise<void>;
+  marcarRemitoEnviado: (id: string) => Promise<void>;
   addMejora: (m: Omit<Mejora, "id">) => Promise<void>;
   deleteMejora: (id: string) => Promise<void>;
   updateMejora: (id: string, m: Omit<Mejora, "id">) => Promise<void>;
@@ -351,6 +367,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
+  const [remitos, setRemitos] = useState<Remito[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -439,12 +456,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, e, ev] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
         selectAll<NotaCredito>("notas_credito", "*", "num", false),
         selectAll<Orden>("ordenes", "*", "num", false),
+        selectAll<Remito>("remitos", "*", "num", false),
         selectAll<Mejora>("mejoras", "*", "created_at", false),
         selectAll<EventoCalendario>("eventos_calendario", "*", "fecha", true),
       ]);
@@ -453,6 +471,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setFacturas(f);
       setNotasCredito(nc);
       setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
+      setRemitos(r.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setMejoras(e);
       setEventosCalendario(ev);
       await refreshLogs();
@@ -657,6 +676,29 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Invoice #${num} → ${factura.cli}`);
   };
 
+  // --- Remitos (Constancia de Retiro Castillo) ---
+  const addRemito = async (remito: Omit<Remito, "id" | "num">) => {
+    const num = nextNum(remitos as any, 5001);
+    const { data, error } = await supabase.from("remitos").insert({ ...remito, num }).select().single();
+    if (error) throw new Error(error.message);
+    setRemitos((prev) => [data as Remito, ...prev]);
+    await logAct(`Remito #${num} (Castillo) → ${remito.cli}`);
+  };
+
+  const marcarRemitoEnviado = async (remitoId: string) => {
+    const { error } = await supabase
+      .from("remitos")
+      .update({ enviado: true, fecha_envio: new Date().toISOString().split("T")[0] })
+      .eq("id", remitoId);
+    if (error) throw new Error(error.message);
+    setRemitos((prev) =>
+      prev.map((r) =>
+        r.id === remitoId ? { ...r, enviado: true, fecha_envio: new Date().toISOString().split("T")[0] } : r
+      )
+    );
+    await logAct(`Remito marked as sent`);
+  };
+
   const deleteFactura = async (id: string) => {
     const { error } = await supabase.from("facturas").delete().eq("id", id);
     if (error) throw new Error(error.message);
@@ -774,6 +816,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     productos,
     facturas,
     ordenes,
+    remitos,
     mejoras,
     eventosCalendario,
     proximasFechasEntrega,
@@ -796,6 +839,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addOrden,
     deleteOrden,
     updateOrden,
+    addRemito,
+    marcarRemitoEnviado,
     addMejora,
     deleteMejora,
     updateMejora,
@@ -4168,6 +4213,34 @@ const Ordenes = () => {
         total: +facturaTotal.toFixed(2),
         lineas: facturaLineas,
       });
+
+      // Genera remito SOLO para productos de Castillo (constancia de retiro)
+      const lineasCastillo = pickItems.filter((it) => it.almacen === "castillo" && (it.qtyEnviada ?? it.qty) > 0);
+      if (lineasCastillo.length > 0) {
+        const remitoCastilloLineas = lineasCastillo.map((it) => ({
+          prodId: it.prodId,
+          prodNom: it.prodNom,
+          barcode: it.barcode,
+          sku: it.sku,
+          precio: it.precioFinal ?? it.precio,
+          precioFinal: it.precioFinal,
+          qty: it.qtyEnviada ?? it.qty,
+          qtyEnviada: it.qtyEnviada ?? it.qty,
+          picked: true,
+          almacen: "castillo" as const,
+        }));
+        const remitoCastilloTotal = remitoCastilloLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
+        await addRemito({
+          orden_id: picking.id,
+          orden_num: picking.num,
+          cli: cInfo?.nom || picking.cli,
+          fecha: picking.fecha,
+          lineas: remitoCastilloLineas,
+          enviado: false,
+          total: +remitoCastilloTotal.toFixed(2),
+        });
+      }
+
       setPicking(null);
     } catch (err) {
       alert(
