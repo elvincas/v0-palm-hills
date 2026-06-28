@@ -68,6 +68,7 @@ interface Factura {
   estado: string;
   total: number;
   lineas?: LineaFactura[];
+  pagos?: { monto: number; fecha: string; nota?: string }[];
 }
 
 interface NotaCredito {
@@ -142,7 +143,7 @@ const today = () => new Date().toISOString().slice(0, 10);
 const fdate = (s: string) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
-  return `${d}/${m}/${y}`;
+  return `${m}/${d}/${y}`;
 };
 
 // Estilos de botones tipo "vidrio" (glassmorphism), reutilizables en toda la app
@@ -360,7 +361,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     supabase.auth.getUser().then(({ data }) => {
       const r = data.user?.user_metadata?.role;
       setRole(r === "visitante" ? "visitante" : "admin");
-    });
+    }).catch(() => {});
   }, [supabase]);
 
   const refreshLogs = async () => {
@@ -455,8 +456,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setMejoras(e);
       setEventosCalendario(ev);
       await refreshLogs();
-      loadFotosProductos(p.map((r) => r.id));
-      loadFotosClientes(c.map((r) => r.id));
+      loadFotosProductos(p.map((r) => r.id)).catch(() => {});
+      loadFotosClientes(c.map((r) => r.id)).catch(() => {});
     } catch (err) {
       // Si la carga inicial falla (ej. corte de red), no dejamos la app
       // congelada en "Loading..." para siempre.
@@ -1117,8 +1118,11 @@ const Calendario = () => {
     });
   };
 
+  const TIPO_PRIORIDAD: Record<TipoEvento, number> = { delivery: 0, collect_money: 1, order_request: 2, visit: 3 };
   const ordenesDelDia = diaSeleccionado ? ordenesPorFecha[diaSeleccionado] || [] : [];
-  const eventosDelDia = diaSeleccionado ? eventosPorFecha[diaSeleccionado] || [] : [];
+  const eventosDelDia = (diaSeleccionado ? eventosPorFecha[diaSeleccionado] || [] : [])
+    .slice()
+    .sort((a, b) => (TIPO_PRIORIDAD[a.tipo] ?? 9) - (TIPO_PRIORIDAD[b.tipo] ?? 9));
 
   const abrirModalEvento = (tipo: TipoEvento) => {
     setModalTipo(tipo);
@@ -1422,6 +1426,7 @@ const Facturas = () => {
   const [ncCliOpen, setNcCliOpen] = useState(false);
   const [ncSaving, setNcSaving] = useState(false);
   const [ncQ, setNcQ] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const clienteCodigo = (nom: string) =>
     clientes.find((c) => c.nom === nom)?.codigo_cliente || "—";
@@ -1450,8 +1455,11 @@ const Facturas = () => {
 
   const getInvSugeridos = (search: string) => {
     if (!search.trim()) return productosInvAlmacen.slice(0, 30);
-    return flexibleSearch(productosInvAlmacen, search, (p) =>
-      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    return flexibleSearch(
+      productosInvAlmacen,
+      search,
+      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+      (p) => p.nom
     ).slice(0, 50);
   };
 
@@ -1471,7 +1479,8 @@ const Facturas = () => {
   }, 0);
   const total = subtotal * 1.16;
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (saving) return;
     if (!clienteSeleccionado) {
       alert("Select a client");
       return;
@@ -1497,20 +1506,25 @@ const Facturas = () => {
         almacen: p.almacen || "palmhills",
       };
     });
-    addFactura({
-      cli: clienteSeleccionado,
-      fecha,
-      estado,
-      total: +total.toFixed(2),
-      lineas: lineasDetalle,
-    });
-    setShow(false);
-    setLineas([{ prodId: "", qty: 1 }]);
-    setClienteSeleccionado("");
-    setFecha("");
-    setEstado("Pending");
-    setInvSearches([""]);
-    setInvFocus(null);
+    setSaving(true);
+    try {
+      await addFactura({
+        cli: clienteSeleccionado,
+        fecha,
+        estado,
+        total: +total.toFixed(2),
+        lineas: lineasDetalle,
+      });
+      setShow(false);
+      setLineas([{ prodId: "", qty: 1 }]);
+      setClienteSeleccionado("");
+      setFecha("");
+      setEstado("Pending");
+      setInvSearches([""]);
+      setInvFocus(null);
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -1615,6 +1629,7 @@ const Facturas = () => {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search invoices..."
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
             className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
           />
           {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
@@ -1832,9 +1847,10 @@ const Facturas = () => {
             </button>
             <button
               onClick={handleSave}
-              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
+              disabled={saving}
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
             >
-              Save Invoice
+              {saving ? "Saving..." : "Save Invoice"}
             </button>
           </div>
         </Modal>
@@ -1902,7 +1918,10 @@ const Clientes = () => {
   const balanceCliente = (nom: string) => {
     const deuda = facturas
       .filter(f => f.cli === nom && !["Paid", "Completed", "Cancelled"].includes(f.estado))
-      .reduce((acc, f) => acc + f.total, 0);
+      .reduce((acc, f) => {
+        const pagado = (f.pagos || []).reduce((s, p) => s + p.monto, 0);
+        return acc + Math.max(0, f.total - pagado);
+      }, 0);
     const credito = notasCredito
       .filter(nc => nc.cli === nom)
       .reduce((acc, nc) => acc + nc.monto, 0);
@@ -2066,7 +2085,7 @@ const Clientes = () => {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search clients..."
-            autoComplete="off"
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
             className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
           />
           {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
@@ -2708,8 +2727,11 @@ const Inventario = () => {
     let list = productosAlmacen;
 
     if (q.trim()) {
-      list = flexibleSearch(productosAlmacen, q, (p) =>
-        [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+      list = flexibleSearch(
+        productosAlmacen,
+        q,
+        (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+        (p) => p.nom
       );
     }
 
@@ -3294,6 +3316,9 @@ const Inventario = () => {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by name, code or tag..."
           autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
         {q && (
@@ -4040,8 +4065,11 @@ const Ordenes = () => {
 
   const getProductosSugeridos = (search: string) => {
     if (!search.trim()) return productosNewOrder.slice(0, 30);
-    return flexibleSearch(productosNewOrder, search, (p) =>
-      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    return flexibleSearch(
+      productosNewOrder,
+      search,
+      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+      (p) => p.nom
     ).slice(0, 30);
   };
 
@@ -4238,8 +4266,11 @@ const Ordenes = () => {
   const editProductosFiltrados = (() => {
     const porAlmacen = editProductosOrdenados.filter((p) => (p.almacen || "palmhills") === editAlmacen);
     if (!editSearch.trim()) return porAlmacen;
-    return flexibleSearch(porAlmacen, editSearch, (p) =>
-      [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" ")
+    return flexibleSearch(
+      porAlmacen,
+      editSearch,
+      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
+      (p) => p.nom
     );
   })();
 
@@ -4722,6 +4753,8 @@ const Ordenes = () => {
                 onChange={(e) => setEditSearch(e.target.value)}
                 autoComplete="off"
                 autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
               {editSearch && <button onClick={() => setEditSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
@@ -5663,7 +5696,7 @@ function AppContent() {
   }, [tab]);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || ""));
+    supabase.auth.getUser().then(({ data }) => setEmail(data.user?.email || "")).catch(() => {});
   }, [supabase]);
 
   // Un visitante no tiene acceso a Usuarios; si quedo esa pestaña activa, regresa a Inicio

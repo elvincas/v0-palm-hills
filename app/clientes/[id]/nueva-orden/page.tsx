@@ -56,6 +56,7 @@ export default function NuevaOrdenPage() {
     return (Number(localStorage.getItem('ph_columnas_orden')) as 2 | 3) || 2
   })
   const [almacen, setAlmacen] = useState<'palmhills' | 'castillo'>('palmhills')
+  const [sortMode, setSortMode] = useState<'sku' | 'nom'>('sku')
   const [readOnly, setReadOnly] = useState(false)
 
   const cambiarColumnas = (n: 2 | 3) => {
@@ -140,19 +141,26 @@ export default function NuevaOrdenPage() {
       return matchAlmacen && matchTag
     })
     if (search.trim()) {
-      list = flexibleSearch(list, search, (p) =>
-        [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(' ')
+      // flexibleSearch ya devuelve por relevancia — no re-ordenar
+      return flexibleSearch(
+        list,
+        search,
+        (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(' '),
+        (p) => p.nom
       )
     }
-    return list
-      .sort((a, b) => {
-        const skuA = (a.sku || '').trim()
-        const skuB = (b.sku || '').trim()
-        if (!skuA && skuB) return 1
-        if (skuA && !skuB) return -1
-        return skuA.localeCompare(skuB, 'en', { numeric: true }) || a.nom.localeCompare(b.nom, 'en')
-      })
-  }, [productos, search, tagFilter, almacen])
+    if (sortMode === 'nom') {
+      return list.slice().sort((a, b) => a.nom.localeCompare(b.nom, 'en', { sensitivity: 'base' }))
+    }
+    // Default: SKU A-Z
+    return list.slice().sort((a, b) => {
+      const skuA = (a.sku || '').trim()
+      const skuB = (b.sku || '').trim()
+      if (!skuA && skuB) return 1
+      if (skuA && !skuB) return -1
+      return skuA.localeCompare(skuB, 'en', { numeric: true }) || a.nom.localeCompare(b.nom, 'en')
+    })
+  }, [productos, search, tagFilter, almacen, sortMode])
 
   const disponible = (p: Producto) => Number(p.stock || 0) - Number(p.reservado || 0)
 
@@ -378,25 +386,47 @@ export default function NuevaOrdenPage() {
               🏰 Castillo
             </button>
           </div>
-          <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
-            <button
-              onClick={() => cambiarColumnas(2)}
-              aria-label="2 columns"
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                columnas === 2 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-              }`}
-            >
-              ▥ 2
-            </button>
-            <button
-              onClick={() => cambiarColumnas(3)}
-              aria-label="3 columns"
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                columnas === 3 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-              }`}
-            >
-              ▦ 3
-            </button>
+          <div className="flex items-center gap-1.5">
+            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+              <button
+                onClick={() => setSortMode('sku')}
+                aria-label="Sort by SKU"
+                className={`px-2.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  sortMode === 'sku' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                SKU
+              </button>
+              <button
+                onClick={() => setSortMode('nom')}
+                aria-label="Sort by name"
+                className={`px-2.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  sortMode === 'nom' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                A–Z
+              </button>
+            </div>
+            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+              <button
+                onClick={() => cambiarColumnas(2)}
+                aria-label="2 columns"
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  columnas === 2 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                ▥ 2
+              </button>
+              <button
+                onClick={() => cambiarColumnas(3)}
+                aria-label="3 columns"
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  columnas === 3 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+                }`}
+              >
+                ▦ 3
+              </button>
+            </div>
           </div>
         </div>
         <div className={`grid gap-2.5 ${columnas === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
