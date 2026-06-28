@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { printOrShare } from "@/lib/print";
 
 interface LineaFactura {
   prodNom: string;
@@ -258,15 +259,7 @@ export default function FacturaPage() {
               </button>
             )}
             <button
-              onClick={() => {
-                if (typeof window !== "undefined") {
-                  if ((navigator as Navigator & {standalone?: boolean}).standalone) {
-                    window.open(window.location.href, "_blank");
-                  } else {
-                    window.print();
-                  }
-                }
-              }}
+              onClick={printOrShare}
               className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
             >
               🖨️ Print / PDF
