@@ -5063,7 +5063,7 @@ const Ordenes = () => {
               Complete order
             </button>
           </div>
-          <div className="h-16 shrink-0" />
+          <div className="h-20 shrink-0" />
           <BottomNav active="ord" />
         </div>
       )}
