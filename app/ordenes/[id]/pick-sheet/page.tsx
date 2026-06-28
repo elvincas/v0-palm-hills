@@ -72,7 +72,7 @@ export default function PickSheetPage() {
   }
 
   const pickSheetData = orden.pick_sheet as PickSheet
-  const items = pickSheetData?.items || []
+  const items = (pickSheetData?.items || []).sort((a, b) => a.cod.localeCompare(b.cod))
   const totalUnidades = items.reduce((sum, item) => sum + item.cantidad, 0)
   const checkedCount = Object.values(checkedItems).filter(Boolean).length
 
