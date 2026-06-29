@@ -403,28 +403,41 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
-  // timeout de la base de datos, asi que se piden en lotes pequenos.
-  const FOTO_CHUNK = 20;
+  // timeout de la base de datos. Con fotos de hasta 500KB, 5 por request = ~2.5MB,
+  // bien dentro del limite de Supabase (10MB por response).
+  const FOTO_CHUNK = 5;
 
   const loadFotosProductos = async (ids: string[]) => {
     for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
       const lote = ids.slice(i, i + FOTO_CHUNK);
-      const { data } = await supabase.from("productos").select("id, foto").in("id", lote);
-      if (!data) continue;
-      const fotoMap = new Map(data.map((r) => [r.id, r.foto]));
-      setProductos((prev) => prev.map((p) => (fotoMap.has(p.id) ? { ...p, foto: fotoMap.get(p.id) } : p)));
+      try {
+        const { data, error } = await supabase.from("productos").select("id, foto").in("id", lote);
+        if (error) { console.error("[v0] Error cargando fotos de productos:", error.message); continue; }
+        if (!data || data.length === 0) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fotoMap = new Map(data.map((r: any) => [r.id, r.foto]));
+        setProductos((prev) => prev.map((p) => (fotoMap.has(p.id) ? { ...p, foto: fotoMap.get(p.id) } : p)));
+      } catch (err) {
+        console.error("[v0] Error inesperado en lote de fotos de productos:", err);
+      }
     }
   };
 
   const loadFotosClientes = async (ids: string[]) => {
     for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
       const lote = ids.slice(i, i + FOTO_CHUNK);
-      const { data } = await supabase.from("clientes").select("id, foto_local").in("id", lote);
-      if (!data) continue;
-      const fotoMap = new Map(data.map((r) => [r.id, r.foto_local]));
-      setClientes((prev) =>
-        prev.map((c) => (fotoMap.has(c.id) ? { ...c, foto_local: fotoMap.get(c.id) } : c))
-      );
+      try {
+        const { data, error } = await supabase.from("clientes").select("id, foto_local").in("id", lote);
+        if (error) { console.error("[v0] Error cargando fotos de clientes:", error.message); continue; }
+        if (!data || data.length === 0) continue;
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const fotoMap = new Map(data.map((r: any) => [r.id, r.foto_local]));
+        setClientes((prev) =>
+          prev.map((c) => (fotoMap.has(c.id) ? { ...c, foto_local: fotoMap.get(c.id) } : c))
+        );
+      } catch (err) {
+        console.error("[v0] Error inesperado en lote de fotos de clientes:", err);
+      }
     }
   };
 
