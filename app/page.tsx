@@ -928,7 +928,7 @@ const Dashboard = () => {
         totals[key].monto += (Number(l.qty) || 0) * (Number(l.precio) || 0);
       }
     }
-    return Object.values(totals).sort((a, b) => b.qty - a.qty).slice(0, 15);
+    return Object.values(totals).sort((a, b) => b.monto - a.monto).slice(0, 15);
   }, [facturas]);
 
   return (
