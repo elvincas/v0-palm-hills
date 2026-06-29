@@ -936,6 +936,11 @@ const Dashboard = () => {
   });
   const [editMeta, setEditMeta] = useState(false);
   const [metaInp, setMetaInp] = useState("");
+  const [castilloEmail, setCastilloEmail] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("ph_castillo_email") || "" : ""
+  );
+  const [editingCastilloEmail, setEditingCastilloEmail] = useState(false);
+  const [castilloEmailInp, setCastilloEmailInp] = useState("");
 
   const facturasDelMes = useMemo(
     () => facturas.filter((f) => (f.fecha || "").slice(0, 7) === mesActualKey()),
@@ -1099,38 +1104,6 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* Remitos Pendientes (Castillo Pickup Receipts) */}
-      <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
-        <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-          Castillo Pickups Pending
-        </div>
-        {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
-          remitos
-            .filter((r) => !r.enviado)
-            .slice(0, 5)
-            .map((r) => (
-              <div key={r.id} className="flex items-center justify-between gap-2.5 py-2.5 border-b border-border last:border-b-0">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold truncate text-card-foreground">
-                    {r.cli}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    Remito #{r.num} - Order #{r.orden_num} - {fdate(r.fecha)}
-                  </div>
-                </div>
-                <button
-                  onClick={() => marcarRemitoEnviado(r.id)}
-                  className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 shrink-0"
-                >
-                  Mark Sent
-                </button>
-              </div>
-            ))
-        ) : (
-          <Empty text="No pending pickups" />
-        )}
-      </div>
-
       {todos.length > 0 && (
         <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
@@ -1198,6 +1171,105 @@ const Dashboard = () => {
           <Empty text="No activity" />
         )}
       </div>
+
+      {/* Castillo Pickups Pending — al final del dashboard */}
+      <div className="bg-card rounded-2xl p-3.5 mt-3 border border-border">
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+            Castillo Pickups Pending
+          </div>
+          <button
+            onClick={() => { setCastilloEmailInp(castilloEmail); setEditingCastilloEmail(true); }}
+            className="text-xs text-muted-foreground hover:text-primary"
+            title="Configure Castillo email"
+          >
+            ⚙ {castilloEmail ? castilloEmail.split("@")[0] : "Set email"}
+          </button>
+        </div>
+        {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
+          remitos
+            .filter((r) => !r.enviado)
+            .slice(0, 10)
+            .map((r) => {
+              const lineas = r.lineas || [];
+              const subject = encodeURIComponent(`Remito #${r.num} - Orden #${r.orden_num} - ${r.cli}`);
+              const body = encodeURIComponent(
+                `Estimados,\n\nLes enviamos el remito de retiro para su procesamiento:\n\n` +
+                `Cliente: ${r.cli}\nRemito #: ${r.num}\nOrden #: ${r.orden_num}\nFecha: ${r.fecha}\n\n` +
+                `PRODUCTOS:\n` +
+                lineas.map((l) => `- ${l.sku ? l.sku + " " : ""}${l.prodNom}  x${l.qty}  $${Number(l.precio).toFixed(2)}`).join("\n") +
+                `\n\nTotal: $${Number(r.total || 0).toFixed(2)}\n\nGracias,\nPalm Hills`
+              );
+              const mailtoUrl = `mailto:${castilloEmail}?subject=${subject}&body=${body}`;
+              return (
+                <div key={r.id} className="py-2.5 border-b border-border last:border-b-0">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold truncate text-card-foreground">{r.cli}</div>
+                      <div className="text-xs text-muted-foreground">Remito #{r.num} · Orden #{r.orden_num} · {fdate(r.fecha)}</div>
+                      {lineas.length > 0 && (
+                        <div className="mt-1 text-xs text-muted-foreground">
+                          {lineas.slice(0, 3).map((l, i) => (
+                            <span key={i}>{l.sku || l.prodNom} ×{l.qty}{i < Math.min(lineas.length, 3) - 1 ? ", " : ""}</span>
+                          ))}
+                          {lineas.length > 3 && <span> +{lineas.length - 3} more</span>}
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5 shrink-0">
+                      <a
+                        href={castilloEmail ? mailtoUrl : "#"}
+                        onClick={(e) => {
+                          if (!castilloEmail) { e.preventDefault(); alert("Configure the Castillo email first (tap ⚙ Set email)"); return; }
+                          setTimeout(() => marcarRemitoEnviado(r.id), 1500);
+                        }}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-center"
+                      >
+                        📧 Email
+                      </a>
+                      <button
+                        onClick={() => marcarRemitoEnviado(r.id)}
+                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
+                      >
+                        ✓ Mark Sent
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+        ) : (
+          <Empty text="No pending pickups" />
+        )}
+      </div>
+
+      {editingCastilloEmail && (
+        <Modal title="Castillo billing email" onClose={() => setEditingCastilloEmail(false)}>
+          <Field label="Email address">
+            <input
+              type="email"
+              value={castilloEmailInp}
+              onChange={(e) => setCastilloEmailInp(e.target.value)}
+              placeholder="facturacion@castillo.com"
+              autoFocus
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <div className="flex gap-2.5 mt-3">
+            <button onClick={() => setEditingCastilloEmail(false)} className={`flex-1 px-4 py-2.5 rounded-full text-sm font-medium ${GLASS_BTN}`}>Cancel</button>
+            <button
+              onClick={() => {
+                localStorage.setItem("ph_castillo_email", castilloEmailInp.trim());
+                setCastilloEmail(castilloEmailInp.trim());
+                setEditingCastilloEmail(false);
+              }}
+              className={`flex-1 px-4 py-2.5 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
+            >
+              Save
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {editMeta && (
         <Modal title={`Sales goal · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
