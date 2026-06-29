@@ -914,6 +914,23 @@ const Dashboard = () => {
 
   const ultimasFacturas = [...facturas].sort((a, b) => b.num - a.num).slice(0, 5);
 
+  const top15 = useMemo(() => {
+    const hace3meses = new Date();
+    hace3meses.setMonth(hace3meses.getMonth() - 3);
+    const desde = hace3meses.toISOString().slice(0, 10);
+    const totals: Record<string, { nom: string; sku: string; qty: number; monto: number }> = {};
+    for (const f of facturas) {
+      if ((f.fecha || "") < desde) continue;
+      for (const l of f.lineas || []) {
+        const key = l.sku || l.prodNom;
+        if (!totals[key]) totals[key] = { nom: l.prodNom, sku: l.sku || "", qty: 0, monto: 0 };
+        totals[key].qty += Number(l.qty) || 0;
+        totals[key].monto += (Number(l.qty) || 0) * (Number(l.precio) || 0);
+      }
+    }
+    return Object.values(totals).sort((a, b) => b.qty - a.qty).slice(0, 15);
+  }, [facturas]);
+
   return (
     <div>
       <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
@@ -1051,6 +1068,31 @@ const Dashboard = () => {
             ))
         ) : (
           <Empty text="No pending pickups" />
+        )}
+      </div>
+
+      <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
+        <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
+          Top 15 products · Last 3 months
+        </div>
+        {top15.length ? (
+          top15.map((p, i) => (
+            <div key={p.sku || p.nom} className="flex items-center gap-3 py-2 border-b border-border last:border-b-0">
+              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
+                {i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-card-foreground truncate">{p.nom}</div>
+                {p.sku && <div className="text-xs text-muted-foreground">{p.sku}</div>}
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-sm font-bold text-card-foreground">{p.qty.toLocaleString()} units</div>
+                <div className="text-xs text-muted-foreground">{fmt(p.monto)}</div>
+              </div>
+            </div>
+          ))
+        ) : (
+          <Empty text="No invoices yet" />
         )}
       </div>
 
