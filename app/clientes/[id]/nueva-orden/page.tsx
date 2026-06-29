@@ -59,6 +59,38 @@ export default function NuevaOrdenPage() {
   const [sortMode, setSortMode] = useState<'sku' | 'nom'>('sku')
   const [readOnly, setReadOnly] = useState(false)
 
+  // Draft: persist order across app closes
+  const DRAFT_KEY = `ph_draft_orden_${clienteId}`
+  const [initialized, setInitialized] = useState(false)
+  const [showDraftModal, setShowDraftModal] = useState(false)
+  const [pendingDraft, setPendingDraft] = useState<{ cantidades: Record<string, number>; descuentos: Record<string, number>; fecha: string } | null>(null)
+
+  // Auto-save draft whenever order state changes (after initial load)
+  useEffect(() => {
+    if (!initialized) return
+    if (Object.keys(cantidades).length === 0) {
+      localStorage.removeItem(DRAFT_KEY)
+    } else {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ cantidades, descuentos, fecha }))
+    }
+  }, [cantidades, descuentos, fecha, initialized])
+
+  const resumeDraft = () => {
+    if (pendingDraft) {
+      setCantidades(pendingDraft.cantidades)
+      setDescuentos(pendingDraft.descuentos || {})
+      if (pendingDraft.fecha) setFecha(pendingDraft.fecha)
+    }
+    setShowDraftModal(false)
+    setPendingDraft(null)
+  }
+
+  const discardDraft = () => {
+    localStorage.removeItem(DRAFT_KEY)
+    setShowDraftModal(false)
+    setPendingDraft(null)
+  }
+
   const cambiarColumnas = (n: 2 | 3) => {
     setColumnas(n)
     localStorage.setItem('ph_columnas_orden', String(n))
@@ -109,16 +141,30 @@ export default function NuevaOrdenPage() {
         const p = todos
         if (p.length) setProductos(p)
         setLoading(false)
-        // Fotos en segundo plano, en lotes (pesan varios MB en total y una sola
-        // consulta por todas supera el timeout de la base de datos)
+        // Check for existing draft
+        const savedDraft = localStorage.getItem(DRAFT_KEY)
+        if (savedDraft) {
+          try {
+            const draft = JSON.parse(savedDraft)
+            if (Object.keys(draft.cantidades || {}).length > 0) {
+              setPendingDraft(draft)
+              setShowDraftModal(true)
+            }
+          } catch {}
+        }
+        setInitialized(true)
+        // Fotos en segundo plano, en lotes pequeños para evitar el límite de 10MB de Supabase
         const ids = (p || []).map((r) => r.id)
-        const CHUNK = 20
+        const CHUNK = 5
         for (let i = 0; i < ids.length; i += CHUNK) {
           const lote = ids.slice(i, i + CHUNK)
-          const { data: fotos } = await supabase.from('productos').select('id, foto').in('id', lote)
-          if (!fotos) continue
-          const fotoMap = new Map(fotos.map((r) => [r.id, r.foto]))
-          setProductos((prev) => prev.map((prod) => (fotoMap.has(prod.id) ? { ...prod, foto: fotoMap.get(prod.id) } : prod)))
+          try {
+            const { data: fotos, error: fotoError } = await supabase.from('productos').select('id, foto').in('id', lote)
+            if (fotoError) { console.error('[v0] Error cargando fotos:', fotoError.message); continue }
+            if (!fotos) continue
+            const fotoMap = new Map(fotos.map((r) => [r.id, r.foto]))
+            setProductos((prev) => prev.map((prod) => (fotoMap.has(prod.id) ? { ...prod, foto: fotoMap.get(prod.id) } : prod)))
+          } catch (err) { console.error('[v0] Error inesperado en fotos:', err) }
         }
       } catch (error) {
         console.log('[v0] Error loading nueva orden:', error)
@@ -257,6 +303,7 @@ export default function NuevaOrdenPage() {
         await supabase.from('productos').update({ reservado: nuevoReservado }).eq('id', p.id)
       }
 
+      localStorage.removeItem(DRAFT_KEY)
       alert(`Order #${num} created. It's pending in Orders.`)
       router.push(`/clientes/${clienteId}`)
     } catch (error) {
@@ -672,6 +719,33 @@ export default function NuevaOrdenPage() {
                   {saving ? 'Submitting...' : 'Submit order'}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Draft resume modal */}
+      {showDraftModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 px-4">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-sm p-5">
+            <div className="text-2xl mb-2 text-center">📋</div>
+            <h3 className="text-base font-bold text-card-foreground text-center mb-1">Draft order found</h3>
+            <p className="text-sm text-muted-foreground text-center mb-5">
+              You have a saved draft for {cliente?.nom}. Would you like to continue where you left off?
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={discardDraft}
+                className="flex-1 px-4 py-2.5 rounded-full text-sm font-medium bg-secondary text-secondary-foreground"
+              >
+                Start fresh
+              </button>
+              <button
+                onClick={resumeDraft}
+                className="flex-1 px-4 py-2.5 rounded-full text-sm font-bold bg-primary text-primary-foreground"
+              >
+                Resume draft
+              </button>
             </div>
           </div>
         </div>

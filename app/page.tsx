@@ -18,6 +18,28 @@ const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as Comp
 // ------------------------------
 // Types
 // ------------------------------
+interface TelefonoContacto {
+  rol: string;
+  num: string;
+}
+
+interface NotaVisita {
+  id: string;
+  fecha: string;
+  texto: string;
+  ts: string;
+}
+
+interface Todo {
+  id: string;
+  cliente_id?: string;
+  cliente_nom?: string;
+  texto: string;
+  completado: boolean;
+  completado_at?: string;
+  created_at: string;
+}
+
 interface Cliente {
   id: string;
   nom: string;
@@ -31,6 +53,9 @@ interface Cliente {
   estado: string;
   abierto_sabados?: boolean;
   foto_local?: string;
+  telefonos?: TelefonoContacto[];
+  fax?: string;
+  notas_visita?: NotaVisita[];
 }
 
 interface Producto {
@@ -350,6 +375,9 @@ interface DataContextType {
   addEvento: (e: Omit<EventoCalendario, "id">) => Promise<void>;
   deleteEvento: (id: string) => Promise<void>;
   refreshLogs: () => void;
+  todos: Todo[];
+  addTodo: (t: Omit<Todo, "id" | "created_at" | "completado">) => Promise<void>;
+  toggleTodo: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -368,6 +396,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [remitos, setRemitos] = useState<Remito[]>([]);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -398,7 +427,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // Columnas livianas: las fotos (base64) se cargan despues, en segundo plano,
   // para que la app no tenga que esperar varios MB de imagenes antes de mostrar nada.
   const CLIENTE_COLS =
-    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, created_at";
+    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, created_at";
   const PRODUCTO_COLS =
     "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, created_at";
 
@@ -490,6 +519,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       await refreshLogs();
       loadFotosProductos(p.map((r) => r.id)).catch(() => {});
       loadFotosClientes(c.map((r) => r.id)).catch(() => {});
+      // Load pending todos
+      const { data: td } = await supabase.from("todos").select("*").eq("completado", false).order("created_at", { ascending: false });
+      setTodos((td as Todo[]) || []);
     } catch (err) {
       // Si la carga inicial falla (ej. corte de red), no dejamos la app
       // congelada en "Loading..." para siempre.
@@ -822,6 +854,18 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     [eventosCalendario]
   );
 
+  const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
+    const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
+    if (error) throw new Error(error.message);
+    setTodos((prev) => [data as Todo, ...prev]);
+  };
+
+  const toggleTodo = async (id: string) => {
+    const { error } = await supabase.from("todos").update({ completado: true, completado_at: new Date().toISOString() }).eq("id", id);
+    if (error) throw new Error(error.message);
+    setTodos((prev) => prev.filter((t) => t.id !== id));
+  };
+
   const value: DataContextType = {
     role,
     readOnly: role === "visitante",
@@ -860,6 +904,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addEvento,
     deleteEvento,
     refreshLogs,
+    todos,
+    addTodo,
+    toggleTodo,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -882,7 +929,7 @@ const mesActualNombre = () => {
 };
 
 const Dashboard = () => {
-  const { facturas, clientes, productos, logs, readOnly, remitos, marcarRemitoEnviado } = useData();
+  const { facturas, clientes, productos, logs, readOnly, remitos, marcarRemitoEnviado, todos, toggleTodo } = useData();
   const [meta, setMeta] = useState(() => {
     if (typeof window === "undefined") return 0;
     return Number(localStorage.getItem(`ph_meta_${mesActualKey()}`) || 0);
@@ -1083,6 +1130,27 @@ const Dashboard = () => {
           <Empty text="No pending pickups" />
         )}
       </div>
+
+      {todos.length > 0 && (
+        <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
+          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
+            To-do · {todos.length} pending
+          </div>
+          {todos.map((t) => (
+            <div key={t.id} className="flex items-start gap-3 py-2.5 border-b border-border last:border-b-0">
+              <button
+                onClick={() => toggleTodo(t.id)}
+                className="w-5 h-5 rounded border-2 border-muted-foreground mt-0.5 shrink-0 hover:border-primary transition-colors flex items-center justify-center"
+                title="Mark done"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm text-card-foreground">{t.texto}</div>
+                {t.cliente_nom && <div className="text-xs text-muted-foreground mt-0.5">{t.cliente_nom}</div>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
         <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
@@ -2027,6 +2095,8 @@ const Clientes = () => {
     estado: "Active",
     abierto_sabados: false,
     foto_local: "",
+    telefonos: [] as TelefonoContacto[],
+    fax: "",
   });
 
   const nextCodigoCliente = useMemo(() => {
@@ -2148,7 +2218,7 @@ const Clientes = () => {
   };
 
   const reset = () => {
-    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Active", abierto_sabados: false, foto_local: "" });
+    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Active", abierto_sabados: false, foto_local: "", telefonos: [], fax: "" });
     setFotoLocal("");
     setEditId(null);
     setShowCropModal(false);
@@ -2181,6 +2251,8 @@ const Clientes = () => {
       estado: c.estado,
       abierto_sabados: c.abierto_sabados || false,
       foto_local: c.foto_local || "",
+      telefonos: c.telefonos || [],
+      fax: c.fax || "",
     });
     setFotoLocal(c.foto_local || "");
     setShow(true);
@@ -2471,6 +2543,54 @@ const Clientes = () => {
               />
             </Field>
           </Row2>
+          {/* Additional phone numbers */}
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Contact Numbers</div>
+            {(form.telefonos || []).map((t, i) => (
+              <div key={i} className="flex gap-1.5 mb-1.5 items-center">
+                <select
+                  value={t.rol}
+                  onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, rol: e.target.value } : x) })}
+                  className="px-2 py-2 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring shrink-0"
+                >
+                  <option>Establecimiento</option>
+                  <option>Manager</option>
+                  <option>Dueño</option>
+                  <option>Pagos</option>
+                  <option>El que ordena</option>
+                </select>
+                <input
+                  value={t.num}
+                  onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, num: e.target.value } : x) })}
+                  placeholder="Number"
+                  autoComplete="off"
+                  className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, telefonos: (form.telefonos || []).filter((_, j) => j !== i) })}
+                  className="text-muted-foreground text-lg px-1 leading-none hover:text-card-foreground"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setForm({ ...form, telefonos: [...(form.telefonos || []), { rol: "Manager", num: "" }] })}
+              className="text-xs text-primary font-semibold mt-0.5"
+            >
+              + Add contact number
+            </button>
+          </div>
+          <Field label="Fax">
+            <input
+              value={form.fax || ""}
+              onChange={(e) => setForm({ ...form, fax: e.target.value })}
+              autoComplete="off"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
           <Field label="Email">
             <input
               value={form.email}
@@ -4144,6 +4264,8 @@ const Ordenes = () => {
   } = useData();
   const router = useRouter();
   const [show, setShow] = useState(false);
+  const [showClientPicker, setShowClientPicker] = useState(false);
+  const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
   const [pickAlmacen, setPickAlmacen] = useState<"todos" | "palmhills" | "castillo">("todos");
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
@@ -4615,10 +4737,40 @@ const Ordenes = () => {
       {!readOnly && (
         <button
           className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-          onClick={() => setShow(true)}
+          onClick={() => { setShowClientPicker(true); setPickerSearch(""); }}
         >
           +
         </button>
+      )}
+
+      {showClientPicker && !readOnly && (
+        <Modal title="New Order — Select Client" onClose={() => setShowClientPicker(false)}>
+          <div className="mb-3">
+            <input
+              type="text"
+              placeholder="Search client..."
+              value={pickerSearch}
+              onChange={(e) => setPickerSearch(e.target.value)}
+              autoFocus
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </div>
+          <div className="max-h-72 overflow-y-auto space-y-1">
+            {clientes
+              .filter((c) => !pickerSearch.trim() || c.nom.toLowerCase().includes(pickerSearch.toLowerCase()) || (c.codigo_cliente || "").includes(pickerSearch))
+              .slice(0, 60)
+              .map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => { setShowClientPicker(false); router.push(`/clientes/${c.id}/nueva-orden`); }}
+                  className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-muted text-sm text-card-foreground flex items-center gap-2"
+                >
+                  <span className="flex-1 font-medium truncate">{c.nom}</span>
+                  {c.codigo_cliente && <span className="text-xs text-muted-foreground font-mono shrink-0">#{c.codigo_cliente}</span>}
+                </button>
+              ))}
+          </div>
+        </Modal>
       )}
 
       {show && !readOnly && (

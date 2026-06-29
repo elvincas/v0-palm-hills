@@ -7,6 +7,18 @@ import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import { BottomNav } from "@/components/bottom-nav";
 
+interface TelefonoContacto {
+  rol: string;
+  num: string;
+}
+
+interface NotaVisita {
+  id: string;
+  fecha: string;
+  texto: string;
+  ts: string;
+}
+
 interface Cliente {
   id: string;
   nom: string;
@@ -20,6 +32,9 @@ interface Cliente {
   email?: string;
   abierto_sabados?: boolean;
   foto_local?: string;
+  telefonos?: TelefonoContacto[];
+  fax?: string;
+  notas_visita?: NotaVisita[];
 }
 
 interface Factura {
@@ -113,6 +128,9 @@ export default function ClientePerfilPage() {
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
   const [readOnly, setReadOnly] = useState(false);
+  const [showNota, setShowNota] = useState(false);
+  const [notaTexto, setNotaTexto] = useState("");
+  const [savingNota, setSavingNota] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -199,6 +217,27 @@ export default function ClientePerfilPage() {
       setForm(data as Cliente);
       setEditando(false);
     }
+  };
+
+  const handleSaveNota = async () => {
+    if (!notaTexto.trim() || !cliente) return;
+    setSavingNota(true);
+    const nota: NotaVisita = {
+      id: crypto.randomUUID(),
+      fecha: new Date().toISOString().slice(0, 10),
+      texto: notaTexto.trim(),
+      ts: new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" }),
+    };
+    const nuevasNotas = [nota, ...(cliente.notas_visita || [])];
+    await supabase.from("clientes").update({ notas_visita: nuevasNotas }).eq("id", clienteId);
+    // Auto-create todo from this note
+    await supabase.from("todos").insert({ cliente_id: clienteId, cliente_nom: cliente.nom, texto: nota.texto, completado: false });
+    const updated = { ...cliente, notas_visita: nuevasNotas };
+    setCliente(updated);
+    setForm(updated);
+    setNotaTexto("");
+    setShowNota(false);
+    setSavingNota(false);
   };
 
   if (error) {
@@ -389,6 +428,31 @@ export default function ClientePerfilPage() {
             </div>
           </div>
 
+          {/* Additional phone numbers (telefonos + fax) */}
+          {!editando && (
+            <>
+              {(cliente.telefonos || []).filter((t) => t.num).length > 0 && (
+                <div className="mt-4">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contact Numbers</label>
+                  <div className="mt-1 space-y-1">
+                    {(cliente.telefonos || []).filter((t) => t.num).map((t, i) => (
+                      <div key={i} className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-28 shrink-0">{t.rol}:</span>
+                        <a href={`tel:${t.num}`} className="text-sm text-primary font-medium">{t.num}</a>
+                      </div>
+                    ))}
+                    {cliente.fax && (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted-foreground w-28 shrink-0">Fax:</span>
+                        <span className="text-sm text-card-foreground">{cliente.fax}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
           {/* Toggle: Abierto los sabados */}
           <div className="mt-6 p-4 bg-muted rounded-xl flex items-center justify-between">
             <div>
@@ -422,6 +486,31 @@ export default function ClientePerfilPage() {
               </button>
             </div>
           )}
+
+          {/* Visit Notes */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Visit Notes</h2>
+              {!readOnly && (
+                <button
+                  onClick={() => setShowNota(true)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
+                >
+                  + Add Note
+                </button>
+              )}
+            </div>
+            {(cliente.notas_visita || []).length ? (
+              (cliente.notas_visita || []).map((n) => (
+                <div key={n.id} className="mb-2 p-3 bg-muted rounded-xl">
+                  <div className="text-xs text-muted-foreground mb-0.5">{n.fecha} · {n.ts}</div>
+                  <div className="text-sm text-card-foreground">{n.texto}</div>
+                </div>
+              ))
+            ) : (
+              <p className="text-xs text-muted-foreground">No visit notes yet.</p>
+            )}
+          </div>
 
           {/* Boton Nueva Orden */}
           {!readOnly && (
@@ -557,6 +646,42 @@ export default function ClientePerfilPage() {
         </div>
       </div>
       <BottomNav active="cli" />
+
+      {/* Add Visit Note modal */}
+      {showNota && (
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-6">
+          <div className="bg-card rounded-2xl shadow-xl w-full max-w-sm p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="font-bold text-card-foreground">Visit Note</h3>
+              <button onClick={() => { setShowNota(false); setNotaTexto(""); }} className="text-muted-foreground text-2xl leading-none">×</button>
+            </div>
+            <textarea
+              value={notaTexto}
+              onChange={(e) => setNotaTexto(e.target.value)}
+              placeholder="What happened during this visit..."
+              rows={4}
+              autoFocus
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring resize-none mb-3"
+            />
+            <p className="text-xs text-muted-foreground mb-3">This note will automatically create a to-do on the home dashboard.</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => { setShowNota(false); setNotaTexto(""); }}
+                className={`flex-1 px-4 py-2.5 rounded-full text-sm font-medium ${GLASS_BTN}`}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSaveNota}
+                disabled={savingNota || !notaTexto.trim()}
+                className={`flex-1 px-4 py-2.5 rounded-full text-sm font-bold disabled:opacity-50 ${GLASS_BTN_PRIMARY}`}
+              >
+                {savingNota ? "Saving..." : "Save Note"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
