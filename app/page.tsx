@@ -392,6 +392,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const supabase = useMemo(() => createClient(), []);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [productos, setProductos] = useState<Producto[]>([]);
+  const fotosProdRunRef = useRef(0);
+  const fotosCliRunRef = useRef(0);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
@@ -432,20 +434,24 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
-  // timeout de la base de datos. Con fotos de hasta 500KB, 5 por request = ~2.5MB,
+  // timeout de la base de datos. Con fotos de hasta 500KB, 10 por request = ~5MB,
   // bien dentro del limite de Supabase (10MB por response).
-  const FOTO_CHUNK = 5;
+  const FOTO_CHUNK = 10;
 
   const loadFotosProductos = async (ids: string[]) => {
+    const run = ++fotosProdRunRef.current;
     for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
+      if (fotosProdRunRef.current !== run) return; // nueva carga iniciada, abortar
       const lote = ids.slice(i, i + FOTO_CHUNK);
       try {
         const { data, error } = await supabase.from("productos").select("id, foto").in("id", lote);
         if (error) { console.error("[v0] Error cargando fotos de productos:", error.message); continue; }
         if (!data || data.length === 0) continue;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fotoMap = new Map(data.map((r: any) => [r.id, r.foto]));
-        setProductos((prev) => prev.map((p) => (fotoMap.has(p.id) ? { ...p, foto: fotoMap.get(p.id) } : p)));
+        const updates = new Map((data as any[]).filter((r) => r.foto).map((r) => [r.id, r.foto]));
+        if (updates.size > 0) {
+          setProductos((prev) => prev.map((p) => (updates.has(p.id) ? { ...p, foto: updates.get(p.id) } : p)));
+        }
       } catch (err) {
         console.error("[v0] Error inesperado en lote de fotos de productos:", err);
       }
@@ -453,17 +459,19 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const loadFotosClientes = async (ids: string[]) => {
+    const run = ++fotosCliRunRef.current;
     for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
+      if (fotosCliRunRef.current !== run) return; // nueva carga iniciada, abortar
       const lote = ids.slice(i, i + FOTO_CHUNK);
       try {
         const { data, error } = await supabase.from("clientes").select("id, foto_local").in("id", lote);
         if (error) { console.error("[v0] Error cargando fotos de clientes:", error.message); continue; }
         if (!data || data.length === 0) continue;
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const fotoMap = new Map(data.map((r: any) => [r.id, r.foto_local]));
-        setClientes((prev) =>
-          prev.map((c) => (fotoMap.has(c.id) ? { ...c, foto_local: fotoMap.get(c.id) } : c))
-        );
+        const updates = new Map((data as any[]).filter((r) => r.foto_local).map((r) => [r.id, r.foto_local]));
+        if (updates.size > 0) {
+          setClientes((prev) => prev.map((c) => (updates.has(c.id) ? { ...c, foto_local: updates.get(c.id) } : c)));
+        }
       } catch (err) {
         console.error("[v0] Error inesperado en lote de fotos de clientes:", err);
       }
@@ -517,7 +525,10 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setMejoras(e);
       setEventosCalendario(ev);
       await refreshLogs();
-      loadFotosProductos(p.map((r) => r.id)).catch(() => {});
+      // Priorizar Palm Hills (almacen=null) para que sus fotos carguen primero
+      const phIds = p.filter((r) => !r.almacen || r.almacen === "palmhills").map((r) => r.id);
+      const castIds = p.filter((r) => r.almacen === "castillo").map((r) => r.id);
+      loadFotosProductos([...phIds, ...castIds]).catch(() => {});
       loadFotosClientes(c.map((r) => r.id)).catch(() => {});
       // Load pending todos
       const { data: td } = await supabase.from("todos").select("*").eq("completado", false).order("created_at", { ascending: false });
