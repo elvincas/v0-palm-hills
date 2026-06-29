@@ -1042,7 +1042,6 @@ const Dashboard = () => {
     setEditMeta(false);
   };
 
-  const ultimasFacturas = [...facturas].sort((a, b) => b.num - a.num).slice(0, 5);
 
   const top15 = useMemo(() => {
     const hace3meses = new Date();
@@ -1138,36 +1137,6 @@ const Dashboard = () => {
         ))}
       </div>
 
-      <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
-        <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-          Recent invoices
-        </div>
-        {ultimasFacturas.length ? (
-          ultimasFacturas.map((f) => (
-            <Li
-              key={f.id}
-              left={
-                <>
-                  <div className="text-sm font-semibold truncate text-card-foreground">
-                    {f.cli}
-                  </div>
-                  <div className="text-xs text-muted-foreground">
-                    #{f.num} - {fdate(f.fecha)}
-                  </div>
-                </>
-              }
-              right={
-                <>
-                  <div className="text-sm font-bold mb-0.5 text-card-foreground">{fmt(f.total)}</div>
-                  <Badge e={f.estado} />
-                </>
-              }
-            />
-          ))
-        ) : (
-          <Empty text="No invoices yet" />
-        )}
-      </div>
 
       {todos.length > 0 && (
         <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
