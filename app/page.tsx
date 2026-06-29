@@ -382,6 +382,36 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
+// ── IndexedDB cache para fotos (persiste entre sesiones en el dispositivo) ──
+const IDB_NAME = "ph-fotos-v1";
+const idbOpen = (): Promise<IDBDatabase | null> => {
+  if (typeof indexedDB === "undefined") return Promise.resolve(null);
+  return new Promise((resolve) => {
+    const req = indexedDB.open(IDB_NAME, 1);
+    req.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains("prod")) db.createObjectStore("prod");
+      if (!db.objectStoreNames.contains("cli")) db.createObjectStore("cli");
+    };
+    req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
+    req.onerror = () => resolve(null);
+  });
+};
+const idbGetAll = (db: IDBDatabase, store: string): Promise<Map<string, string>> =>
+  new Promise((resolve) => {
+    const map = new Map<string, string>();
+    const req = db.transaction(store, "readonly").objectStore(store).openCursor();
+    req.onsuccess = (e) => {
+      const cur = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
+      if (cur) { if (cur.value) map.set(cur.key as string, cur.value); cur.continue(); }
+      else resolve(map);
+    };
+    req.onerror = () => resolve(map);
+  });
+const idbPut = (db: IDBDatabase, store: string, key: string, val: string) => {
+  try { db.transaction(store, "readwrite").objectStore(store).put(val, key); } catch { /* ignore */ }
+};
+
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -394,6 +424,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [productos, setProductos] = useState<Producto[]>([]);
   const fotosProdRunRef = useRef(0);
   const fotosCliRunRef = useRef(0);
+  const idbRef = useRef<IDBDatabase | null>(null);
   const [facturas, setFacturas] = useState<Factura[]>([]);
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
@@ -440,6 +471,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadFotosProductos = async (ids: string[]) => {
     const run = ++fotosProdRunRef.current;
+    const idb = idbRef.current;
     for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
       if (fotosProdRunRef.current !== run) return; // nueva carga iniciada, abortar
       const lote = ids.slice(i, i + FOTO_CHUNK);
@@ -451,6 +483,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         const updates = new Map((data as any[]).filter((r) => r.foto).map((r) => [r.id, r.foto]));
         if (updates.size > 0) {
           setProductos((prev) => prev.map((p) => (updates.has(p.id) ? { ...p, foto: updates.get(p.id) } : p)));
+          if (idb) updates.forEach((foto, id) => idbPut(idb, "prod", id, foto));
         }
       } catch (err) {
         console.error("[v0] Error inesperado en lote de fotos de productos:", err);
@@ -460,6 +493,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadFotosClientes = async (ids: string[]) => {
     const run = ++fotosCliRunRef.current;
+    const idb = idbRef.current;
     for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
       if (fotosCliRunRef.current !== run) return; // nueva carga iniciada, abortar
       const lote = ids.slice(i, i + FOTO_CHUNK);
@@ -471,6 +505,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         const updates = new Map((data as any[]).filter((r) => r.foto_local).map((r) => [r.id, r.foto_local]));
         if (updates.size > 0) {
           setClientes((prev) => prev.map((c) => (updates.has(c.id) ? { ...c, foto_local: updates.get(c.id) } : c)));
+          if (idb) updates.forEach((foto, id) => idbPut(idb, "cli", id, foto));
         }
       } catch (err) {
         console.error("[v0] Error inesperado en lote de fotos de clientes:", err);
@@ -525,7 +560,24 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setMejoras(e);
       setEventosCalendario(ev);
       await refreshLogs();
-      // Priorizar Palm Hills (almacen=null) para que sus fotos carguen primero
+
+      // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
+      if (!idbRef.current) idbRef.current = await idbOpen();
+      const idb = idbRef.current;
+      if (idb) {
+        const [cachedProd, cachedCli] = await Promise.all([
+          idbGetAll(idb, "prod"),
+          idbGetAll(idb, "cli"),
+        ]);
+        if (cachedProd.size > 0) {
+          setProductos((prev) => prev.map((pd) => cachedProd.has(pd.id) ? { ...pd, foto: cachedProd.get(pd.id) } : pd));
+        }
+        if (cachedCli.size > 0) {
+          setClientes((prev) => prev.map((cl) => cachedCli.has(cl.id) ? { ...cl, foto_local: cachedCli.get(cl.id) } : cl));
+        }
+      }
+
+      // Background: actualizar cache desde Supabase (palm hills primero)
       const phIds = p.filter((r) => !r.almacen || r.almacen === "palmhills").map((r) => r.id);
       const castIds = p.filter((r) => r.almacen === "castillo").map((r) => r.id);
       loadFotosProductos([...phIds, ...castIds]).catch(() => {});
@@ -569,6 +621,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
+    if (idbRef.current && updated.foto_local) idbPut(idbRef.current, "cli", id, updated.foto_local);
     await logAct(`Client updated: ${updated.nom}`);
   };
 
@@ -714,6 +767,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const { error } = await supabase.from("productos").update({ foto }).eq("id", id);
     if (error) throw new Error(error.message);
     setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, foto } : p)));
+    if (idbRef.current) idbPut(idbRef.current, "prod", id, foto);
   };
 
   const deleteProducto = async (id: string) => {
