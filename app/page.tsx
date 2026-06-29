@@ -2891,8 +2891,9 @@ const Inventario = () => {
       );
     } else if (sortBy === "nom") {
       sorted.sort((a, b) => textCmp(a.nom, b.nom));
-    } else if (!hasQuery) {
-      // Default: SKU A-Z (solo cuando no hay busqueda activa, para no pisar la relevancia)
+    } else if (sortBy === "sku" || !hasQuery) {
+      // SKU A-Z: se aplica siempre que el usuario lo elija explicitamente,
+      // o como default cuando no hay busqueda activa (para no pisar relevancia).
       sorted.sort(
         (a, b) =>
           blankLast(a.sku || "") - blankLast(b.sku || "") ||
