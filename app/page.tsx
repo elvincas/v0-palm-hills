@@ -869,7 +869,7 @@ const mesActualNombre = () => {
 };
 
 const Dashboard = () => {
-  const { facturas, clientes, productos, logs, readOnly } = useData();
+  const { facturas, clientes, productos, logs, readOnly, remitos, marcarRemitoEnviado } = useData();
   const [meta, setMeta] = useState(() => {
     if (typeof window === "undefined") return 0;
     return Number(localStorage.getItem(`ph_meta_${mesActualKey()}`) || 0);
