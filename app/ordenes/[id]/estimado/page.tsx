@@ -134,6 +134,16 @@ export default function EstimadoPage() {
     load();
   }, [ordenId, supabase]);
 
+  // Auto-print cuando se abre desde iOS PWA con ?print=1
+  useEffect(() => {
+    if (!loading && orden) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("print") === "1") {
+        setTimeout(() => window.print(), 400);
+      }
+    }
+  }, [loading, orden]);
+
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground text-center">Loading estimate...</div>;
   }
