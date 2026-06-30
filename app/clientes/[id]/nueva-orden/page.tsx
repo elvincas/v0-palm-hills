@@ -66,6 +66,8 @@ export default function NuevaOrdenPage() {
   const [pendingDraft, setPendingDraft] = useState<{ cantidades: Record<string, number>; descuentos: Record<string, number>; fecha: string } | null>(null)
 
   // Auto-save draft whenever order state changes (after initial load)
+  // initialized is intentionally excluded from deps — we only want to run when
+  // the user actually changes the order, not when initialization flips the flag.
   useEffect(() => {
     if (!initialized) return
     if (Object.keys(cantidades).length === 0) {
@@ -73,7 +75,8 @@ export default function NuevaOrdenPage() {
     } else {
       localStorage.setItem(DRAFT_KEY, JSON.stringify({ cantidades, descuentos, fecha }))
     }
-  }, [cantidades, descuentos, fecha, initialized])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cantidades, descuentos, fecha])
 
   const resumeDraft = () => {
     if (pendingDraft) {

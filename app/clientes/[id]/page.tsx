@@ -161,7 +161,7 @@ export default function ClientePerfilPage() {
     setForm(data as Cliente);
     cargarFacturas((data as Cliente).nom);
     cargarNotasCredito((data as Cliente).nom);
-    cargarOrdenes(clienteId);
+    cargarOrdenes(clienteId, (data as Cliente).nom);
   };
 
   const cargarFacturas = async (nombreCliente: string) => {
@@ -184,14 +184,24 @@ export default function ClientePerfilPage() {
     setNotasCredito((data as NotaCredito[]) || []);
   };
 
-  const cargarOrdenes = async (clienteIdParam: string) => {
+  const cargarOrdenes = async (clienteIdParam: string, clienteNom?: string) => {
     setLoadingOrdenes(true);
-    const { data } = await supabase
+    const { data: byId } = await supabase
       .from("ordenes")
       .select("*")
       .eq("cli", clienteIdParam)
       .order("num", { ascending: false });
-    setOrdenes((data as Orden[]) || []);
+    let todas = (byId as Orden[]) || [];
+    if (clienteNom) {
+      const { data: byNom } = await supabase
+        .from("ordenes")
+        .select("*")
+        .eq("cli", clienteNom)
+        .order("num", { ascending: false });
+      const byNomFiltered = ((byNom as Orden[]) || []).filter((o) => o.cli !== clienteIdParam);
+      todas = [...todas, ...byNomFiltered].sort((a, b) => b.num - a.num);
+    }
+    setOrdenes(todas);
     setLoadingOrdenes(false);
   };
 

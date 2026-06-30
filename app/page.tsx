@@ -176,7 +176,10 @@ const fmt = (n: number) =>
     maximumFractionDigits: 2,
   });
 
-const today = () => new Date().toISOString().slice(0, 10);
+const today = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
 
 const fdate = (s: string) => {
   if (!s) return "";
@@ -987,7 +990,10 @@ const useData = () => {
 // ------------------------------
 // Dashboard
 // ------------------------------
-const mesActualKey = () => new Date().toISOString().slice(0, 7); // "2026-06"
+const mesActualKey = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+};
 const mesActualNombre = () => {
   const nombre = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
@@ -4505,7 +4511,7 @@ const Ordenes = () => {
     return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0);
   }, 0);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.cli) {
       alert("Select a client");
       return;
@@ -4530,18 +4536,22 @@ const Ordenes = () => {
         qty: Number(l.qty),
       };
     });
-    addOrden({
-      cli: form.cli,
-      fecha: form.fecha,
-      estado: form.estado,
-      total: +total.toFixed(2),
-      lineas: lineasDetalle,
-    });
-    setShow(false);
-    setLineas([{ prodId: "", qty: 1 }]);
-    setForm({ cli: "", fecha: "", estado: "Pending" });
-    setNewOrderSearches([""]);
-    setNewOrderFocus(null);
+    try {
+      await addOrden({
+        cli: form.cli,
+        fecha: form.fecha,
+        estado: form.estado,
+        total: +total.toFixed(2),
+        lineas: lineasDetalle,
+      });
+      setShow(false);
+      setLineas([{ prodId: "", qty: 1 }]);
+      setForm({ cli: "", fecha: "", estado: "Pending" });
+      setNewOrderSearches([""]);
+      setNewOrderFocus(null);
+    } catch (err) {
+      alert("Error saving order: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const startPick = (ord: Orden) => {
@@ -4649,13 +4659,17 @@ const Ordenes = () => {
     }
   };
 
-  const handleDeleteOrden = (ord: Orden) => {
+  const handleDeleteOrden = async (ord: Orden) => {
     if (
       confirm(
         `Delete order #${ord.num}? This action cannot be undone and the order cannot be recovered.`
       )
     ) {
-      deleteOrden(ord.id);
+      try {
+        await deleteOrden(ord.id);
+      } catch (err) {
+        alert("Error deleting order: " + (err instanceof Error ? err.message : String(err)));
+      }
     }
   };
 
@@ -4992,7 +5006,7 @@ const Ordenes = () => {
             >
               <option value="">Selecciona...</option>
               {clientes.map((c) => (
-                <option key={c.id} value={c.nom}>
+                <option key={c.id} value={c.id}>
                   {c.nom}
                 </option>
               ))}
@@ -5738,7 +5752,7 @@ const Mejoras = () => {
     setShow(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.titulo.trim()) {
       alert("Enter the improvement title");
       return;
@@ -5750,10 +5764,14 @@ const Mejoras = () => {
       prioridad: form.prioridad,
       estado: form.estado,
     };
-    if (editId) updateMejora(editId, payload);
-    else addMejora(payload);
-    reset();
-    setShow(false);
+    try {
+      if (editId) await updateMejora(editId, payload);
+      else await addMejora(payload);
+      reset();
+      setShow(false);
+    } catch (err) {
+      alert("Error saving: " + (err instanceof Error ? err.message : String(err)));
+    }
   };
 
   const card = (m: Mejora) => (
@@ -5792,8 +5810,11 @@ const Mejoras = () => {
             </button>
             <button
               className="px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs font-bold"
-              onClick={() => {
-                if (confirm("Delete this improvement?")) deleteMejora(m.id);
+              onClick={async () => {
+                if (confirm("Delete this improvement?")) {
+                  try { await deleteMejora(m.id); }
+                  catch (err) { alert("Error deleting: " + (err instanceof Error ? err.message : String(err))); }
+                }
               }}
             >
               Delete
