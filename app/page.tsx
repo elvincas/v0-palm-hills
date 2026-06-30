@@ -1742,7 +1742,7 @@ const Calendario = () => {
                     <div className="fixed inset-0 z-10" onClick={() => setFormClienteOpen(false)} />
                     <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-52 overflow-y-auto w-full">
                       {clientes
-                        .filter((c) => !formClienteSearch.trim() || c.nom.toLowerCase().includes(formClienteSearch.toLowerCase()))
+                        .filter((c) => !formClienteSearch.trim() || c.nom.toLowerCase().includes(formClienteSearch.toLowerCase()) || (c.codigo_cliente || "").toLowerCase().includes(formClienteSearch.toLowerCase()))
                         .map((c) => (
                           <button
                             key={c.id}
@@ -1751,12 +1751,13 @@ const Calendario = () => {
                               setFormClienteSearch(c.nom);
                               setFormClienteOpen(false);
                             }}
-                            className={`w-full text-left px-3 py-2.5 text-sm hover:bg-muted ${formClienteId === c.id ? "font-bold text-primary" : "text-card-foreground"}`}
+                            className={`w-full text-left px-3 py-2.5 hover:bg-muted ${formClienteId === c.id ? "bg-muted/50" : ""}`}
                           >
-                            {c.nom}
+                            {c.codigo_cliente && <span className="block text-[11px] font-black font-mono text-primary leading-tight">{c.codigo_cliente}</span>}
+                            <span className={`text-sm ${formClienteId === c.id ? "font-bold text-primary" : "text-card-foreground"}`}>{c.nom}</span>
                           </button>
                         ))}
-                      {clientes.filter((c) => !formClienteSearch.trim() || c.nom.toLowerCase().includes(formClienteSearch.toLowerCase())).length === 0 && (
+                      {clientes.filter((c) => !formClienteSearch.trim() || c.nom.toLowerCase().includes(formClienteSearch.toLowerCase()) || (c.codigo_cliente || "").toLowerCase().includes(formClienteSearch.toLowerCase())).length === 0 && (
                         <div className="px-3 py-2.5 text-xs text-muted-foreground">No clients found</div>
                       )}
                     </div>
@@ -1963,8 +1964,11 @@ const Facturas = () => {
                     <>
                       <div className="fixed inset-0 z-10" onClick={() => setNcCliOpen(false)} />
                       <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-52 overflow-y-auto w-full">
-                        {clientes.filter(c => !ncCliSearch || c.nom.toLowerCase().includes(ncCliSearch.toLowerCase())).map(c => (
-                          <button key={c.id} onClick={() => { setNcForm(f => ({ ...f, cli: c.nom })); setNcCliSearch(c.nom); setNcCliOpen(false); }} className={`w-full text-left px-3 py-2.5 text-sm hover:bg-muted ${ncForm.cli === c.nom ? "font-bold text-primary" : "text-card-foreground"}`}>{c.nom}</button>
+                        {clientes.filter(c => !ncCliSearch || c.nom.toLowerCase().includes(ncCliSearch.toLowerCase()) || (c.codigo_cliente || "").toLowerCase().includes(ncCliSearch.toLowerCase())).map(c => (
+                          <button key={c.id} onClick={() => { setNcForm(f => ({ ...f, cli: c.nom })); setNcCliSearch(c.nom); setNcCliOpen(false); }} className={`w-full text-left px-3 py-2.5 hover:bg-muted ${ncForm.cli === c.nom ? "bg-muted/50" : ""}`}>
+                            {c.codigo_cliente && <span className="block text-[11px] font-black font-mono text-primary leading-tight">{c.codigo_cliente}</span>}
+                            <span className={`text-sm ${ncForm.cli === c.nom ? "font-bold text-primary" : "text-card-foreground"}`}>{c.nom}</span>
+                          </button>
                         ))}
                       </div>
                     </>
@@ -4991,10 +4995,10 @@ const Ordenes = () => {
                 <button
                   key={c.id}
                   onClick={() => { setShowClientPicker(false); router.push(`/clientes/${c.id}/nueva-orden`); }}
-                  className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-muted text-sm text-card-foreground flex items-center gap-2"
+                  className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-muted"
                 >
-                  <span className="flex-1 font-medium truncate">{c.nom}</span>
-                  {c.codigo_cliente && <span className="text-xs text-muted-foreground font-mono shrink-0">#{c.codigo_cliente}</span>}
+                  {c.codigo_cliente && <span className="block text-[11px] font-black font-mono text-primary leading-tight">{c.codigo_cliente}</span>}
+                  <span className="text-sm text-card-foreground font-medium">{c.nom}</span>
                 </button>
               ))}
           </div>
@@ -5215,7 +5219,7 @@ const Ordenes = () => {
                   <div className="fixed inset-0 z-10" onClick={() => setEditCliOpen(false)} />
                   <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto min-w-[200px]">
                     {clientes
-                      .filter((c) => !editCliSearch.trim() || c.nom.toLowerCase().includes(editCliSearch.toLowerCase()))
+                      .filter((c) => !editCliSearch.trim() || c.nom.toLowerCase().includes(editCliSearch.toLowerCase()) || (c.codigo_cliente || "").toLowerCase().includes(editCliSearch.toLowerCase()))
                       .map((c) => (
                         <button
                           key={c.id}
@@ -5224,12 +5228,13 @@ const Ordenes = () => {
                             setEditCliSearch(c.nom);
                             setEditCliOpen(false);
                           }}
-                          className={`w-full text-left px-3 py-2 text-sm hover:bg-muted ${editCli === c.id ? "font-bold text-primary" : "text-card-foreground"}`}
+                          className={`w-full text-left px-3 py-2 hover:bg-muted ${editCli === c.id ? "bg-muted/50" : ""}`}
                         >
-                          {c.nom}
+                          {c.codigo_cliente && <span className="block text-[11px] font-black font-mono text-primary leading-tight">{c.codigo_cliente}</span>}
+                          <span className={`text-sm ${editCli === c.id ? "font-bold text-primary" : "text-card-foreground"}`}>{c.nom}</span>
                         </button>
                       ))}
-                    {clientes.filter((c) => !editCliSearch.trim() || c.nom.toLowerCase().includes(editCliSearch.toLowerCase())).length === 0 && (
+                    {clientes.filter((c) => !editCliSearch.trim() || c.nom.toLowerCase().includes(editCliSearch.toLowerCase()) || (c.codigo_cliente || "").toLowerCase().includes(editCliSearch.toLowerCase())).length === 0 && (
                       <div className="px-3 py-2 text-xs text-muted-foreground">No clients found</div>
                     )}
                   </div>
