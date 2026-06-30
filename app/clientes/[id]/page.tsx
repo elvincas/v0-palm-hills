@@ -9,6 +9,7 @@ import { BottomNav } from "@/components/bottom-nav";
 
 interface TelefonoContacto {
   rol: string;
+  nombre?: string;
   num: string;
 }
 
@@ -142,6 +143,7 @@ export default function ClientePerfilPage() {
   const [savingNota, setSavingNota] = useState(false);
   const [showAddPhone, setShowAddPhone] = useState(false);
   const [newPhoneRol, setNewPhoneRol] = useState("");
+  const [newPhoneNombre, setNewPhoneNombre] = useState("");
   const [newPhoneNum, setNewPhoneNum] = useState("");
   const [savingPhone, setSavingPhone] = useState(false);
   const [editFax, setEditFax] = useState(false);
@@ -324,7 +326,7 @@ export default function ClientePerfilPage() {
   const handleAddTelefono = async () => {
     if (!newPhoneRol || !newPhoneNum.trim() || !cliente) return;
     setSavingPhone(true);
-    const nuevos: TelefonoContacto[] = [...(cliente.telefonos || []), { rol: newPhoneRol, num: newPhoneNum.trim() }];
+    const nuevos: TelefonoContacto[] = [...(cliente.telefonos || []), { rol: newPhoneRol, nombre: newPhoneNombre.trim() || undefined, num: newPhoneNum.trim() }];
     const { error: e } = await supabase.from("clientes").update({ telefonos: nuevos }).eq("id", clienteId);
     if (!e) {
       const updated = { ...cliente, telefonos: nuevos };
@@ -332,6 +334,7 @@ export default function ClientePerfilPage() {
       setForm(updated);
       setShowAddPhone(false);
       setNewPhoneRol("");
+      setNewPhoneNombre("");
       setNewPhoneNum("");
     }
     setSavingPhone(false);
@@ -553,7 +556,10 @@ export default function ClientePerfilPage() {
               {(cliente.telefonos || []).filter((t) => t.num).map((t, i) => (
                 <div key={i} className="flex items-center gap-2">
                   <span className="text-xs bg-secondary text-secondary-foreground rounded-full px-2 py-0.5 shrink-0">{t.rol}</span>
-                  <a href={`tel:${t.num}`} className="text-sm text-primary font-medium flex-1">{t.num}</a>
+                  <div className="flex-1 min-w-0">
+                    {t.nombre && <div className="text-xs font-semibold text-card-foreground leading-tight">{t.nombre}</div>}
+                    <a href={`tel:${t.num}`} className="text-sm text-primary font-medium">{t.num}</a>
+                  </div>
                   {!readOnly && (
                     <button
                       onClick={() => handleDeleteTelefono(i)}
@@ -620,15 +626,24 @@ export default function ClientePerfilPage() {
                   ))}
                 </div>
                 {newPhoneRol && (
-                  <input
-                    type="tel"
-                    value={newPhoneNum}
-                    onChange={(e) => setNewPhoneNum(e.target.value)}
-                    placeholder={`Teléfono — ${newPhoneRol}`}
-                    autoFocus
-                    onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()}
-                    className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      value={newPhoneNombre}
+                      onChange={(e) => setNewPhoneNombre(e.target.value)}
+                      placeholder={`Name (e.g. Pete, Rafael…)`}
+                      autoFocus
+                      className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <input
+                      type="tel"
+                      value={newPhoneNum}
+                      onChange={(e) => setNewPhoneNum(e.target.value)}
+                      placeholder={`Phone — ${newPhoneRol}`}
+                      onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()}
+                      className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                    />
+                  </div>
                 )}
                 <div className="flex gap-2">
                   <button
@@ -639,7 +654,7 @@ export default function ClientePerfilPage() {
                     {savingPhone ? "Saving..." : "Save"}
                   </button>
                   <button
-                    onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNum(""); }}
+                    onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNombre(""); setNewPhoneNum(""); }}
                     className="px-4 py-2 rounded-full text-sm text-muted-foreground"
                   >
                     Cancel
