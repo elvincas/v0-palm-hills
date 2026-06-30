@@ -1932,7 +1932,7 @@ const Facturas = () => {
                   <span>Date</span><span>Client</span><span>Amount</span><span>CN #</span>
                 </div>
                 {ncs.map(n => (
-                  <div key={n.id} className="grid grid-cols-[1fr_1.5fr_1fr_1fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border hover:bg-secondary/30 group">
+                  <div key={n.id} className="grid grid-cols-[1fr_1.5fr_1fr_1fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border hover:bg-secondary/30 group cursor-pointer" onClick={() => router.push(`/notas-credito/${n.id}`)}>
                     <span className="text-muted-foreground">{fdate(n.fecha)}</span>
                     <div className="min-w-0">
                       <div className="font-bold uppercase truncate text-card-foreground">{n.cli}</div>
@@ -1941,7 +1941,7 @@ const Facturas = () => {
                     <span className="font-bold text-green-700">{fmt(n.monto)}</span>
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-muted-foreground">#{String(n.num).padStart(3, "0")}</span>
-                      {!readOnly && <button onClick={() => { if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-xs px-1">×</button>}
+                      {!readOnly && <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-xs px-1">×</button>}
                     </div>
                   </div>
                 ))}
