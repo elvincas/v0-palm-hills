@@ -4445,6 +4445,7 @@ const Ordenes = () => {
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
+  const [completing, setCompleting] = useState(false);
   const [pickAlmacen, setPickAlmacen] = useState<"todos" | "palmhills" | "castillo">("todos");
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
     []
@@ -4580,7 +4581,8 @@ const Ordenes = () => {
   };
 
   const completePick = async () => {
-    if (!picking) return;
+    if (!picking || completing) return;
+    setCompleting(true);
     try {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
       await updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completed" });
@@ -4639,6 +4641,8 @@ const Ordenes = () => {
       alert(
         `Could not complete the order: ${err instanceof Error ? err.message : String(err)}. Please try again.`
       );
+    } finally {
+      setCompleting(false);
     }
   };
 
@@ -5597,7 +5601,7 @@ const Ordenes = () => {
             </div>
             <button
               onClick={completePick}
-              disabled={!pickItems.length || !pickItems.every((i) => i.picked)}
+              disabled={completing || !pickItems.length || !pickItems.every((i) => i.picked)}
               title={
                 !pickItems.every((i) => i.picked)
                   ? "Check off all products to complete the order"
@@ -5605,7 +5609,7 @@ const Ordenes = () => {
               }
               className="w-full px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              Complete order
+              {completing ? "Processing..." : "Complete order"}
             </button>
           </div>
           <div className="h-20 shrink-0" />
