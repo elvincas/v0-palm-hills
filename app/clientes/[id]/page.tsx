@@ -132,6 +132,12 @@ export default function ClientePerfilPage() {
   const [showNota, setShowNota] = useState(false);
   const [notaTexto, setNotaTexto] = useState("");
   const [savingNota, setSavingNota] = useState(false);
+  const [showAddPhone, setShowAddPhone] = useState(false);
+  const [newPhoneRol, setNewPhoneRol] = useState("");
+  const [newPhoneNum, setNewPhoneNum] = useState("");
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [editFax, setEditFax] = useState(false);
+  const [faxValue, setFaxValue] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -211,10 +217,6 @@ export default function ClientePerfilPage() {
       alert("Enter the name");
       return;
     }
-    if (!form.codigo_cliente?.trim()) {
-      alert("Enter the client number");
-      return;
-    }
     setGuardando(true);
     const { id, ...updated } = form;
     const { data } = await supabase
@@ -261,6 +263,46 @@ export default function ClientePerfilPage() {
     setSavingNota(false);
   };
 
+  const ROLES_TELEFONO = ["Establecimiento", "Dueño", "Manager", "Pagos", "El que ordena"];
+
+  const handleAddTelefono = async () => {
+    if (!newPhoneRol || !newPhoneNum.trim() || !cliente) return;
+    setSavingPhone(true);
+    const nuevos: TelefonoContacto[] = [...(cliente.telefonos || []), { rol: newPhoneRol, num: newPhoneNum.trim() }];
+    const { error: e } = await supabase.from("clientes").update({ telefonos: nuevos }).eq("id", clienteId);
+    if (!e) {
+      const updated = { ...cliente, telefonos: nuevos };
+      setCliente(updated);
+      setForm(updated);
+      setShowAddPhone(false);
+      setNewPhoneRol("");
+      setNewPhoneNum("");
+    }
+    setSavingPhone(false);
+  };
+
+  const handleDeleteTelefono = async (idx: number) => {
+    if (!cliente) return;
+    const nuevos = (cliente.telefonos || []).filter((_, i) => i !== idx);
+    const { error: e } = await supabase.from("clientes").update({ telefonos: nuevos }).eq("id", clienteId);
+    if (!e) {
+      const updated = { ...cliente, telefonos: nuevos };
+      setCliente(updated);
+      setForm(updated);
+    }
+  };
+
+  const handleSaveFax = async () => {
+    if (!cliente) return;
+    const { error: e } = await supabase.from("clientes").update({ fax: faxValue.trim() || null }).eq("id", clienteId);
+    if (!e) {
+      const updated = { ...cliente, fax: faxValue.trim() || undefined };
+      setCliente(updated);
+      setForm(updated);
+      setEditFax(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="p-6 max-w-md mx-auto text-center">
@@ -304,17 +346,9 @@ export default function ClientePerfilPage() {
             <div className="flex-1 min-w-0">
               <div className="mb-1.5">
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client Number</span>
-                {editando ? (
-                  <input
-                    value={form.codigo_cliente || ""}
-                    onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
-                    className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground font-mono text-lg outline-none focus:ring-2 focus:ring-ring"
-                  />
-                ) : (
-                  <p className="font-mono text-lg font-bold text-primary">
-                    {cliente.codigo_cliente || "Not assigned"}
-                  </p>
-                )}
+                <p className="font-mono text-lg font-bold text-primary">
+                  {cliente.codigo_cliente || "Not assigned"}
+                </p>
               </div>
 
               {editando ? (
@@ -401,19 +435,6 @@ export default function ClientePerfilPage() {
               )}
             </div>
 
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📞 Phone</label>
-              {editando ? (
-                <input
-                  type="tel"
-                  value={form.tel || ""}
-                  onChange={(e) => setForm({ ...form, tel: e.target.value })}
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.tel || "No especificado"}</p>
-              )}
-            </div>
 
             <div>
               <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">✉️ Email</label>
@@ -449,30 +470,128 @@ export default function ClientePerfilPage() {
             </div>
           </div>
 
-          {/* Additional phone numbers (telefonos + fax) */}
-          {!editando && (
-            <>
-              {(cliente.telefonos || []).filter((t) => t.num).length > 0 && (
-                <div className="mt-4">
-                  <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contact Numbers</label>
-                  <div className="mt-1 space-y-1">
-                    {(cliente.telefonos || []).filter((t) => t.num).map((t, i) => (
-                      <div key={i} className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-28 shrink-0">{t.rol}:</span>
-                        <a href={`tel:${t.num}`} className="text-sm text-primary font-medium">{t.num}</a>
-                      </div>
-                    ))}
-                    {cliente.fax && (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted-foreground w-28 shrink-0">Fax:</span>
-                        <span className="text-sm text-card-foreground">{cliente.fax}</span>
-                      </div>
-                    )}
-                  </div>
+          {/* Phones & Fax */}
+          <div className="mt-5">
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📞 Phones & Fax</label>
+              {!readOnly && !showAddPhone && (
+                <button
+                  onClick={() => setShowAddPhone(true)}
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
+                >
+                  + Add Phone
+                </button>
+              )}
+            </div>
+
+            {/* Lista de teléfonos existentes */}
+            <div className="space-y-1.5">
+              {/* Legacy tel field */}
+              {cliente.tel && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 shrink-0">Principal</span>
+                  <a href={`tel:${cliente.tel}`} className="text-sm text-primary font-medium">{cliente.tel}</a>
                 </div>
               )}
-            </>
-          )}
+              {/* telefonos array */}
+              {(cliente.telefonos || []).filter((t) => t.num).map((t, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="text-xs bg-secondary text-secondary-foreground rounded-full px-2 py-0.5 shrink-0">{t.rol}</span>
+                  <a href={`tel:${t.num}`} className="text-sm text-primary font-medium flex-1">{t.num}</a>
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleDeleteTelefono(i)}
+                      className="text-muted-foreground hover:text-destructive transition-colors text-xs shrink-0"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
+              {/* FAX */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 shrink-0">Fax</span>
+                {editFax ? (
+                  <div className="flex items-center gap-1.5 flex-1">
+                    <input
+                      type="tel"
+                      value={faxValue}
+                      onChange={(e) => setFaxValue(e.target.value)}
+                      placeholder="Número de fax"
+                      autoFocus
+                      className="flex-1 px-2 py-1 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                    />
+                    <button onClick={handleSaveFax} className={`px-2 py-1 rounded-lg text-xs font-bold ${GLASS_BTN_PRIMARY}`}>Save</button>
+                    <button onClick={() => { setEditFax(false); setFaxValue(""); }} className="text-xs text-muted-foreground">Cancel</button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="text-sm text-card-foreground flex-1">{cliente.fax || <span className="text-muted-foreground text-xs">—</span>}</span>
+                    {!readOnly && (
+                      <button
+                        onClick={() => { setFaxValue(cliente.fax || ""); setEditFax(true); }}
+                        className="text-xs text-primary shrink-0"
+                      >
+                        {cliente.fax ? "Edit" : "Add"}
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {!cliente.tel && (cliente.telefonos || []).length === 0 && !editFax && (
+                <p className="text-xs text-muted-foreground">No hay teléfonos registrados.</p>
+              )}
+            </div>
+
+            {/* Panel de agregar teléfono */}
+            {showAddPhone && (
+              <div className="mt-3 p-3 rounded-xl border border-border bg-muted/50 space-y-3">
+                <p className="text-xs font-semibold text-card-foreground">¿Quién atiende este número?</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {ROLES_TELEFONO.map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setNewPhoneRol(r)}
+                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
+                        newPhoneRol === r
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-card text-secondary-foreground border-border"
+                      }`}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+                {newPhoneRol && (
+                  <input
+                    type="tel"
+                    value={newPhoneNum}
+                    onChange={(e) => setNewPhoneNum(e.target.value)}
+                    placeholder={`Teléfono — ${newPhoneRol}`}
+                    autoFocus
+                    onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()}
+                    className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                  />
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddTelefono}
+                    disabled={!newPhoneRol || !newPhoneNum.trim() || savingPhone}
+                    className={`px-4 py-2 rounded-full text-sm font-bold disabled:opacity-40 ${GLASS_BTN_PRIMARY}`}
+                  >
+                    {savingPhone ? "Saving..." : "Save"}
+                  </button>
+                  <button
+                    onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNum(""); }}
+                    className="px-4 py-2 rounded-full text-sm text-muted-foreground"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
 
           {/* Toggle: Abierto los sabados */}
           <div className="mt-6 p-4 bg-muted rounded-xl flex items-center justify-between">
