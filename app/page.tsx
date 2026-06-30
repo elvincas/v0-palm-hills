@@ -1159,28 +1159,91 @@ const Dashboard = () => {
         </div>
       )}
 
-      <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
-        <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-          Top 15 products · Last 3 months
+      {/* ── TOP PRODUCTS ── */}
+      <div className="rounded-2xl overflow-hidden mb-3 border border-amber-900/40" style={{ background: "linear-gradient(160deg,#180a00 0%,#2e1400 60%,#110600 100%)" }}>
+        {/* Header */}
+        <div className="px-4 pt-4 pb-3 flex items-center gap-2.5">
+          <span className="text-2xl leading-none">🔥</span>
+          <div>
+            <div className="text-sm font-extrabold text-amber-300 tracking-wide uppercase">Top Products</div>
+            <div className="text-[10px] text-amber-500/70 font-medium tracking-wider">Last 3 months · by revenue</div>
+          </div>
         </div>
-        {top15.length ? (
-          top15.map((p, i) => (
-            <div key={p.sku || p.nom} className="flex items-center gap-3 py-2 border-b border-border last:border-b-0">
-              <div className="w-6 h-6 rounded-full bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground shrink-0">
-                {i + 1}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-card-foreground truncate">{p.nom}</div>
-                {p.sku && <div className="text-xs text-muted-foreground">{p.sku}</div>}
-              </div>
-              <div className="text-right shrink-0">
-                <div className="text-sm font-bold text-card-foreground">{p.qty.toLocaleString()} units</div>
-                <div className="text-xs text-muted-foreground">{fmt(p.monto)}</div>
-              </div>
-            </div>
-          ))
+
+        {top15.length === 0 ? (
+          <div className="px-4 pb-4 text-xs text-amber-700">No invoices yet</div>
         ) : (
-          <Empty text="No invoices yet" />
+          <>
+            {/* Podio top 3 */}
+            <div className="px-3 pb-4 grid grid-cols-3 gap-2">
+              {top15.slice(0, 3).map((p, i) => {
+                const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
+                const medals = ["🥇", "🥈", "🥉"];
+                const borders = ["border-amber-400", "border-slate-400", "border-orange-700"];
+                const glows = [
+                  "0 0 18px 4px rgba(251,191,36,0.55)",
+                  "0 0 12px 3px rgba(148,163,184,0.35)",
+                  "0 0 10px 2px rgba(194,65,12,0.35)",
+                ];
+                const nameCols = ["text-amber-300", "text-slate-300", "text-orange-400"];
+                return (
+                  <div key={p.sku || p.nom} className="flex flex-col items-center gap-1.5">
+                    <div
+                      className={`relative w-full aspect-square rounded-xl overflow-hidden border-2 ${borders[i]}`}
+                      style={{ boxShadow: glows[i] }}
+                    >
+                      {prod?.foto ? (
+                        <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-3xl" style={{ background: "rgba(255,120,0,0.08)" }}>📦</div>
+                      )}
+                      <div className="absolute top-1 left-1 text-base leading-none drop-shadow-lg">{medals[i]}</div>
+                      <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1" style={{ background: "linear-gradient(to top,rgba(0,0,0,0.85) 0%,transparent 100%)" }}>
+                        <div className="text-[9px] font-black text-white leading-tight truncate">{p.nom}</div>
+                      </div>
+                    </div>
+                    <div className={`text-[10px] font-bold ${nameCols[i]} text-center leading-tight`} style={{ minHeight: "2rem" }}>
+                      <span className="line-clamp-2">{p.nom}</span>
+                    </div>
+                    <div className="text-[10px] font-extrabold text-amber-400">{fmt(p.monto)}</div>
+                    <div className="text-[9px] text-amber-700">{p.qty.toLocaleString()} u</div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Posiciones 4-15 */}
+            <div className="border-t border-amber-900/40">
+              {top15.slice(3).map((p, i) => {
+                const rank = i + 4;
+                const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
+                const maxMonto = top15[0]?.monto || 1;
+                const barW = Math.round((p.monto / maxMonto) * 100);
+                return (
+                  <div key={p.sku || p.nom} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-amber-900/25 last:border-b-0">
+                    <div className="w-5 text-center text-xs font-black text-amber-700/80 shrink-0">{rank}</div>
+                    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-amber-900/50 flex items-center justify-center" style={{ background: "rgba(255,100,0,0.07)" }}>
+                      {prod?.foto ? (
+                        <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="text-base">📦</span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-amber-200 truncate leading-tight">{p.nom}</div>
+                      <div className="mt-1 h-1 rounded-full overflow-hidden" style={{ background: "rgba(255,100,0,0.15)" }}>
+                        <div className="h-full rounded-full" style={{ width: `${barW}%`, background: "linear-gradient(90deg,#d97706,#f59e0b)" }} />
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-xs font-extrabold text-amber-400">{fmt(p.monto)}</div>
+                      <div className="text-[9px] text-amber-700">{p.qty.toLocaleString()} u</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
