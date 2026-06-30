@@ -429,10 +429,14 @@ export default function NuevaOrdenPage() {
     )
   }
 
-  return (
-    <div className="min-h-screen bg-background">
-      {/* Header fijo */}
-      <div className="sticky top-0 z-10 bg-background border-b border-border">
+  const fechaLabel = fecha
+    ? new Date(fecha + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+    : ''
+
+  // Sin fecha seleccionada: pantalla de selección de fecha (sin productos)
+  if (!fecha) {
+    return (
+      <div className="min-h-screen bg-background">
         <div className="max-w-2xl mx-auto p-4" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
           <button
             onClick={() => router.push(`/clientes/${clienteId}`)}
@@ -441,16 +445,46 @@ export default function NuevaOrdenPage() {
             ← Back to client
           </button>
           <h1 className="text-xl font-bold text-card-foreground">New Order</h1>
-          {cliente && <p className="text-sm text-muted-foreground">Cliente: {cliente.nom}</p>}
+          {cliente && <p className="text-sm text-muted-foreground mb-4">{cliente.nom}</p>}
+          <p className="text-sm font-semibold text-card-foreground mb-3">Select a delivery date</p>
+          {fechasEntrega.length ? (
+            <DeliveryCalendar fechas={fechasEntrega} value={fecha} onChange={setFecha} />
+          ) : (
+            <p className="text-xs text-muted-foreground">
+              No hay días de entrega disponibles. Agrega fechas de entrega en el Calendario.
+            </p>
+          )}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="min-h-screen bg-background">
+      {/* Header fijo — solo visible cuando ya hay fecha seleccionada */}
+      <div className="sticky top-0 z-10 bg-background border-b border-border">
+        <div className="max-w-2xl mx-auto p-4" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
+          <button
+            onClick={() => router.push(`/clientes/${clienteId}`)}
+            className="text-primary text-sm font-medium mb-2 cursor-pointer"
+          >
+            ← Back to client
+          </button>
+          <div className="flex items-center justify-between gap-2">
+            <div className="min-w-0">
+              <h1 className="text-xl font-bold text-card-foreground leading-tight">New Order</h1>
+              {cliente && <p className="text-sm text-muted-foreground truncate">{cliente.nom}</p>}
+            </div>
+            <button
+              onClick={() => setFecha('')}
+              className="shrink-0 flex items-center gap-1.5 bg-secondary border border-primary/20 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary-foreground"
+            >
+              🚚 {fechaLabel}
+              <span className="text-muted-foreground font-normal">· Change</span>
+            </button>
+          </div>
 
           <div className="mt-3 flex flex-col gap-2">
-            {fechasEntrega.length ? (
-              <DeliveryCalendar fechas={fechasEntrega} value={fecha} onChange={setFecha} />
-            ) : (
-              <p className="text-xs text-muted-foreground">
-                No hay días de entrega disponibles. Agrega fechas de entrega en el Calendario.
-              </p>
-            )}
             <input
               type="search"
               inputMode="search"
