@@ -62,7 +62,7 @@ const GLASS_BTN = "backdrop-blur-md bg-white/50 border border-white/60 shadow-sm
 const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
 const GLASS_BTN_DANGER = "backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-red-700";
 
-function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
+function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Factura; cliente: Cliente | null; page: number; totalPages: number }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
@@ -78,6 +78,7 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
         <div className="text-right shrink-0">
           <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">INVOICE</div>
           <div className="text-xs font-mono text-gray-600">#{String(factura.num).padStart(3, "0")}</div>
+          <div className="text-[9px] text-gray-400 mt-0.5">Page {page} of {totalPages}</div>
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
@@ -261,7 +262,7 @@ export default function FacturaPage() {
   })();
 
   return (
-    <div className="min-h-screen bg-[#f0efe9]">
+    <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9]">
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
@@ -394,7 +395,7 @@ export default function FacturaPage() {
       )}
 
       {/* Invoice document — una sección por hoja para que el encabezado se repita */}
-      <div className="max-w-3xl mx-auto p-4 sm:p-8 print:p-0 space-y-6 print:space-y-0">
+      <div className="factura-doc max-w-3xl mx-auto p-4 sm:p-8 space-y-6 print:space-y-0">
         {chunks.map((pageLineas, pageIdx) => {
           const isLastPage = pageIdx === chunks.length - 1;
           return (
@@ -403,7 +404,7 @@ export default function FacturaPage() {
               className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden print:overflow-visible"
               style={{ breakAfter: isLastPage ? "auto" : "page" }}
             >
-              <EncabezadoFactura factura={factura} cliente={cliente} />
+              <EncabezadoFactura factura={factura} cliente={cliente} page={pageIdx + 1} totalPages={chunks.length} />
 
               <div className="px-6 sm:px-10 py-6">
                 <table className="w-full text-sm">
@@ -522,8 +523,9 @@ export default function FacturaPage() {
 
       <style jsx global>{`
         @media print {
-          @page { size: letter; margin: 0.5in; }
-          body { background: white !important; }
+          @page { size: letter portrait; margin: 0.5in; }
+          html, body { height: auto !important; min-height: 0 !important; background: white !important; }
+          .factura-doc { padding: 0 !important; max-width: none !important; }
           tr { break-inside: avoid; }
         }
       `}</style>
