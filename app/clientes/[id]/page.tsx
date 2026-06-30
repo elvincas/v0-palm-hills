@@ -558,9 +558,17 @@ export default function ClientePerfilPage() {
                       <div className="text-sm font-semibold text-card-foreground">Order #{o.num}</div>
                       <div className="text-xs text-muted-foreground">{fdate(o.fecha)}</div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
-                      <OrdenBadge e={o.estado} />
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
+                        className="px-2.5 py-1 rounded-full text-xs font-bold bg-white border border-border text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+                      >
+                        Estimate
+                      </button>
+                      <div className="text-right">
+                        <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
+                        <OrdenBadge e={o.estado} />
+                      </div>
                     </div>
                   </div>
                 ))}
