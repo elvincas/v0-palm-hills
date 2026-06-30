@@ -19,6 +19,14 @@ interface NotaVisita {
   ts: string;
 }
 
+interface TodoCliente {
+  id: string;
+  texto: string;
+  completado: boolean;
+  fecha_limite?: string;
+  created_at: string;
+}
+
 interface Cliente {
   id: string;
   nom: string;
@@ -138,6 +146,11 @@ export default function ClientePerfilPage() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [editFax, setEditFax] = useState(false);
   const [faxValue, setFaxValue] = useState("");
+  const [todos, setTodos] = useState<TodoCliente[]>([]);
+  const [showTodo, setShowTodo] = useState(false);
+  const [todoTexto, setTodoTexto] = useState("");
+  const [todoFecha, setTodoFecha] = useState("");
+  const [savingTodo, setSavingTodo] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -168,6 +181,7 @@ export default function ClientePerfilPage() {
     cargarFacturas((data as Cliente).nom);
     cargarNotasCredito((data as Cliente).nom);
     cargarOrdenes(clienteId, (data as Cliente).nom);
+    cargarTodos(clienteId);
   };
 
   const cargarFacturas = async (nombreCliente: string) => {
@@ -209,6 +223,50 @@ export default function ClientePerfilPage() {
     }
     setOrdenes(todas);
     setLoadingOrdenes(false);
+  };
+
+  const cargarTodos = async (cid: string) => {
+    const { data } = await supabase
+      .from("todos")
+      .select("id, texto, completado, fecha_limite, created_at")
+      .eq("cliente_id", cid)
+      .order("created_at", { ascending: false });
+    setTodos((data as TodoCliente[]) || []);
+  };
+
+  const handleAddTodo = async () => {
+    if (!todoTexto.trim() || !cliente) return;
+    setSavingTodo(true);
+    const { data } = await supabase
+      .from("todos")
+      .insert({
+        cliente_id: clienteId,
+        cliente_nom: cliente.nom,
+        texto: todoTexto.trim(),
+        fecha_limite: todoFecha || null,
+        completado: false,
+      })
+      .select()
+      .single();
+    if (data) setTodos((prev) => [data as TodoCliente, ...prev]);
+    setTodoTexto("");
+    setTodoFecha("");
+    setShowTodo(false);
+    setSavingTodo(false);
+  };
+
+  const handleToggleTodo = async (todo: TodoCliente) => {
+    const nuevoEstado = !todo.completado;
+    await supabase
+      .from("todos")
+      .update({ completado: nuevoEstado, completado_at: nuevoEstado ? new Date().toISOString() : null })
+      .eq("id", todo.id);
+    setTodos((prev) => prev.map((t) => t.id === todo.id ? { ...t, completado: nuevoEstado } : t));
+  };
+
+  const handleDeleteTodo = async (id: string) => {
+    await supabase.from("todos").delete().eq("id", id);
+    setTodos((prev) => prev.filter((t) => t.id !== id));
   };
 
   const handleGuardar = async () => {
@@ -253,8 +311,6 @@ export default function ClientePerfilPage() {
     };
     const nuevasNotas = [nota, ...(cliente.notas_visita || [])];
     await supabase.from("clientes").update({ notas_visita: nuevasNotas }).eq("id", clienteId);
-    // Auto-create todo from this note
-    await supabase.from("todos").insert({ cliente_id: clienteId, cliente_nom: cliente.nom, texto: nota.texto, completado: false });
     const updated = { ...cliente, notas_visita: nuevasNotas };
     setCliente(updated);
     setForm(updated);
@@ -661,6 +717,116 @@ export default function ClientePerfilPage() {
             ) : (
               <p className="text-xs text-muted-foreground">No visit notes yet.</p>
             )}
+          </div>
+
+          {/* Client To-Dos */}
+          <div className="mt-6">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">To-Do List</h2>
+              {!readOnly && (
+                <button
+                  onClick={() => { setShowTodo(true); setTodoTexto(""); setTodoFecha(""); }}
+                  className={`px-3 py-1 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
+                >
+                  + Add Task
+                </button>
+              )}
+            </div>
+
+            {showTodo && !readOnly && (
+              <div className="mb-3 bg-muted rounded-2xl p-3 space-y-2">
+                <textarea
+                  autoFocus
+                  rows={2}
+                  placeholder="Describe the task or requirement..."
+                  value={todoTexto}
+                  onChange={(e) => setTodoTexto(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
+                />
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-muted-foreground shrink-0">Due date (optional)</label>
+                  <input
+                    type="date"
+                    value={todoFecha}
+                    onChange={(e) => setTodoFecha(e.target.value)}
+                    className="flex-1 px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleAddTodo}
+                    disabled={savingTodo || !todoTexto.trim()}
+                    className={`flex-1 py-2 rounded-xl text-xs font-bold ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+                  >
+                    {savingTodo ? "Saving..." : "Save Task"}
+                  </button>
+                  <button
+                    onClick={() => setShowTodo(false)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold ${GLASS_BTN}`}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {(() => {
+              const pending = todos.filter((t) => !t.completado);
+              const done = todos.filter((t) => t.completado);
+              const today = new Date().toISOString().slice(0, 10);
+              return todos.length ? (
+                <div className="space-y-1.5">
+                  {pending.map((t) => {
+                    const overdue = t.fecha_limite && t.fecha_limite < today;
+                    return (
+                      <div key={t.id} className="flex items-start gap-2.5 p-3 bg-muted rounded-xl group">
+                        <button
+                          onClick={() => handleToggleTodo(t)}
+                          className="mt-0.5 w-5 h-5 rounded-full border-2 border-primary shrink-0 flex items-center justify-center hover:bg-primary/10 transition-colors"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-card-foreground leading-snug">{t.texto}</p>
+                          {t.fecha_limite && (
+                            <p className={`text-xs mt-0.5 font-medium ${overdue ? "text-red-500" : "text-muted-foreground"}`}>
+                              {overdue ? "⚠️ Overdue · " : "📅 "}{fdate(t.fecha_limite)}
+                            </p>
+                          )}
+                        </div>
+                        {!readOnly && (
+                          <button
+                            onClick={() => handleDeleteTodo(t.id)}
+                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                          >✕</button>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {done.length > 0 && (
+                    <details className="mt-2">
+                      <summary className="text-xs text-muted-foreground cursor-pointer select-none">
+                        {done.length} completed
+                      </summary>
+                      <div className="space-y-1.5 mt-1.5">
+                        {done.map((t) => (
+                          <div key={t.id} className="flex items-start gap-2.5 p-3 bg-muted/50 rounded-xl opacity-60 group">
+                            <div className="mt-0.5 w-5 h-5 rounded-full bg-primary shrink-0 flex items-center justify-center text-primary-foreground text-[10px]">✓</div>
+                            <p className="flex-1 text-sm text-card-foreground line-through leading-snug">{t.texto}</p>
+                            {!readOnly && (
+                              <button
+                                onClick={() => handleDeleteTodo(t.id)}
+                                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-colors shrink-0"
+                              >✕</button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">No pending tasks.</p>
+              );
+            })()}
           </div>
 
           {/* Boton Nueva Orden */}
