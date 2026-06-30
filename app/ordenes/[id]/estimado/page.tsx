@@ -184,7 +184,7 @@ export default function EstimadoPage() {
     while (pool.length > ROWS_LAST_PAGE) {
       result.push(pool.splice(0, ROWS_PER_PAGE));
     }
-    result.push(pool);
+    if (pool.length > 0) result.push(pool);
     return result;
   })();
 
