@@ -27,9 +27,100 @@ interface Producto {
   almacen?: 'palmhills' | 'castillo'
 }
 
-const today = () => new Date().toISOString().slice(0, 10)
+const today = () => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0)
+
+const DIAS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
+const MESES = ['January','February','March','April','May','June','July','August','September','October','November','December']
+
+function DeliveryCalendar({ fechas, value, onChange }: { fechas: string[]; value: string; onChange: (d: string) => void }) {
+  const fechaSet = useMemo(() => new Set(fechas), [fechas])
+
+  const initMes = () => {
+    const primera = fechas[0]
+    if (!primera) { const n = new Date(); return { year: n.getFullYear(), month: n.getMonth() } }
+    const [y, m] = primera.split('-').map(Number)
+    return { year: y, month: m - 1 }
+  }
+
+  const [mes, setMes] = useState(initMes)
+
+  const primerDia = new Date(mes.year, mes.month, 1).getDay()
+  const diasEnMes = new Date(mes.year, mes.month + 1, 0).getDate()
+  const todayStr = today()
+
+  const celdas: (string | null)[] = [
+    ...Array(primerDia).fill(null),
+    ...Array.from({ length: diasEnMes }, (_, i) => {
+      const d = String(i + 1).padStart(2, '0')
+      const m = String(mes.month + 1).padStart(2, '0')
+      return `${mes.year}-${m}-${d}`
+    }),
+  ]
+
+  const prevMes = () => setMes(({ year, month }) => month === 0 ? { year: year - 1, month: 11 } : { year, month: month - 1 })
+  const nextMes = () => setMes(({ year, month }) => month === 11 ? { year: year + 1, month: 0 } : { year, month: month + 1 })
+
+  const hayEntregasEnMes = celdas.some((f) => f && fechaSet.has(f))
+
+  return (
+    <div className="bg-card border border-border rounded-2xl p-3 shadow-sm">
+      {/* Header mes */}
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={prevMes} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground font-bold text-lg">‹</button>
+        <div className="text-sm font-bold text-card-foreground">{MESES[mes.month]} {mes.year}</div>
+        <button onClick={nextMes} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground font-bold text-lg">›</button>
+      </div>
+
+      {/* Días de la semana */}
+      <div className="grid grid-cols-7 gap-0.5 mb-1">
+        {DIAS.map((d) => (
+          <div key={d} className="text-center text-[10px] font-bold text-muted-foreground py-1">{d}</div>
+        ))}
+      </div>
+
+      {/* Celdas */}
+      <div className="grid grid-cols-7 gap-0.5">
+        {celdas.map((f, i) => {
+          if (!f) return <div key={i} />
+          const esEntrega = fechaSet.has(f)
+          const seleccionado = f === value
+          const esHoy = f === todayStr
+          return (
+            <button
+              key={f}
+              disabled={!esEntrega}
+              onClick={() => onChange(f)}
+              className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
+                seleccionado
+                  ? 'bg-primary text-primary-foreground font-bold shadow-sm'
+                  : esEntrega
+                    ? 'bg-secondary text-secondary-foreground hover:bg-primary/20 font-semibold cursor-pointer'
+                    : 'text-muted-foreground/40 cursor-default'
+              } ${esHoy && !seleccionado ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+            >
+              {Number(f.slice(-2))}
+            </button>
+          )
+        })}
+      </div>
+
+      {!hayEntregasEnMes && (
+        <p className="text-center text-[11px] text-muted-foreground mt-2">No deliveries this month</p>
+      )}
+
+      {value && (
+        <div className="mt-3 pt-2 border-t border-border text-center text-xs font-semibold text-primary">
+          🚚 {new Date(value + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+        </div>
+      )}
+    </div>
+  )
+}
 
 export default function NuevaOrdenPage() {
   const params = useParams()
@@ -354,21 +445,10 @@ export default function NuevaOrdenPage() {
 
           <div className="mt-3 flex flex-col gap-2">
             {fechasEntrega.length ? (
-              <select
-                value={fecha}
-                onChange={(e) => setFecha(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-sm"
-              >
-                <option value="">Selecciona una fecha de entrega...</option>
-                {fechasEntrega.map((f) => (
-                  <option key={f} value={f}>
-                    {f}
-                  </option>
-                ))}
-              </select>
+              <DeliveryCalendar fechas={fechasEntrega} value={fecha} onChange={setFecha} />
             ) : (
               <p className="text-xs text-muted-foreground">
-                No hay días de entrega disponibles todavía. Contacta a Palm Hills.
+                No hay días de entrega disponibles. Agrega fechas de entrega en el Calendario.
               </p>
             )}
             <input
