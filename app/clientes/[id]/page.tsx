@@ -219,6 +219,15 @@ export default function ClientePerfilPage() {
     }
   };
 
+  const handleDeleteNota = async (notaId: string) => {
+    if (!cliente) return;
+    const nuevasNotas = (cliente.notas_visita || []).filter((n) => n.id !== notaId);
+    await supabase.from("clientes").update({ notas_visita: nuevasNotas }).eq("id", clienteId);
+    const updated = { ...cliente, notas_visita: nuevasNotas };
+    setCliente(updated);
+    setForm(updated);
+  };
+
   const handleSaveNota = async () => {
     if (!notaTexto.trim() || !cliente) return;
     setSavingNota(true);
@@ -502,9 +511,20 @@ export default function ClientePerfilPage() {
             </div>
             {(cliente.notas_visita || []).length ? (
               (cliente.notas_visita || []).map((n) => (
-                <div key={n.id} className="mb-2 p-3 bg-muted rounded-xl">
-                  <div className="text-xs text-muted-foreground mb-0.5">{n.fecha} · {n.ts}</div>
-                  <div className="text-sm text-card-foreground">{n.texto}</div>
+                <div key={n.id} className="mb-2 p-3 bg-muted rounded-xl flex items-start gap-2">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-muted-foreground mb-0.5">{n.fecha} · {n.ts}</div>
+                    <div className="text-sm text-card-foreground">{n.texto}</div>
+                  </div>
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleDeleteNota(n.id)}
+                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-0.5"
+                      title="Delete note"
+                    >
+                      ✕
+                    </button>
+                  )}
                 </div>
               ))
             ) : (
