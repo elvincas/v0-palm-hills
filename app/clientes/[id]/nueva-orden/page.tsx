@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { proximaFechaEntrega } from '@/lib/delivery'
 import { flexibleSearch } from '@/lib/search'
 
 interface Cliente {
@@ -210,7 +209,6 @@ export default function NuevaOrdenPage() {
           .order('fecha')
         const fechas = Array.from(new Set((eventos || []).map((e) => e.fecha as string)))
         setFechasEntrega(fechas)
-        if (fechas.length) setFecha(proximaFechaEntrega(fechas))
         // Datos livianos primero (sin foto) para no esperar varios MB de imagenes.
         // Supabase/PostgREST limita cada respuesta (db-max-rows, normalmente 1000),
         // por lo que paginamos con .range() para traer TODOS los productos.
