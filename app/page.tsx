@@ -4437,6 +4437,7 @@ const Ordenes = () => {
     updateOrden,
     deleteOrden,
     addFactura,
+    addRemito,
     readOnly,
   } = useData();
   const router = useRouter();
