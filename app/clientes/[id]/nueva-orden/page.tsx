@@ -55,7 +55,7 @@ export default function NuevaOrdenPage() {
     if (typeof window === 'undefined') return 2
     return (Number(localStorage.getItem('ph_columnas_orden')) as 2 | 3) || 2
   })
-  const [almacen, setAlmacen] = useState<'palmhills' | 'castillo'>('palmhills')
+  const [almacen, setAlmacen] = useState<'palmhills' | 'castillo' | 'all'>('all')
   const [sortMode, setSortMode] = useState<'sku' | 'nom'>('sku')
   const [readOnly, setReadOnly] = useState(false)
 
@@ -182,7 +182,7 @@ export default function NuevaOrdenPage() {
 
   const filtered = useMemo(() => {
     let list = productos.filter((p) => {
-      const matchAlmacen = (p.almacen || 'palmhills') === almacen
+      const matchAlmacen = almacen === 'all' || (p.almacen || 'palmhills') === almacen
       const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
       return matchAlmacen && matchTag
     })
@@ -416,6 +416,14 @@ export default function NuevaOrdenPage() {
       <div className="max-w-2xl mx-auto p-4 pb-44" style={{ paddingBottom: "calc(11rem + env(safe-area-inset-bottom))" }}>
         <div className="flex items-center justify-between gap-2 mb-2.5">
           <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+            <button
+              onClick={() => setAlmacen('all')}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                almacen === 'all' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+              }`}
+            >
+              All
+            </button>
             <button
               onClick={() => setAlmacen('palmhills')}
               className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${

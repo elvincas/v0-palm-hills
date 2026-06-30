@@ -1786,7 +1786,7 @@ const Facturas = () => {
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [fecha, setFecha] = useState("");
   const [estado, setEstado] = useState("Pending");
-  const [invAlmacen, setInvAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const [invAlmacen, setInvAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
   const [invSearches, setInvSearches] = useState<string[]>([""]);
   const [invFocus, setInvFocus] = useState<number | null>(null);
   // Credit notes form
@@ -1816,6 +1816,7 @@ const Facturas = () => {
   const productosInvAlmacen = useMemo(
     () =>
       productosPorSku.filter((p) => {
+        if (invAlmacen === "all") return true;
         const alm = p.almacen ?? null;
         if (invAlmacen === "palmhills") return alm === "palmhills" || alm === null;
         return alm === invAlmacen;
@@ -2095,13 +2096,13 @@ const Facturas = () => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-muted-foreground">Products</div>
             <div className="flex gap-1">
-              {(["palmhills", "castillo"] as const).map((a) => (
+              {(["all", "palmhills", "castillo"] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => { setInvAlmacen(a); setInvSearches(lineas.map(() => "")); }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${invAlmacen === a ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"}`}
                 >
-                  {a === "palmhills" ? "Palm Hills" : "Castillo"}
+                  {a === "all" ? "All" : a === "palmhills" ? "Palm Hills" : "Castillo"}
                 </button>
               ))}
             </div>
@@ -4457,8 +4458,8 @@ const Ordenes = () => {
   const [editandoDescuentoId, setEditandoDescuentoId] = useState<string | null>(null);
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
-  const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo">("palmhills");
-  const [newOrderAlmacen, setNewOrderAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
+  const [newOrderAlmacen, setNewOrderAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
   const [newOrderSearches, setNewOrderSearches] = useState<string[]>([""]);
   const [newOrderFocus, setNewOrderFocus] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pending" });
@@ -4481,6 +4482,7 @@ const Ordenes = () => {
   const productosNewOrder = useMemo(
     () =>
       productosPorSku.filter((p) => {
+        if (newOrderAlmacen === "all") return true;
         const alm = p.almacen ?? null;
         if (newOrderAlmacen === "palmhills") return alm === "palmhills" || alm === null;
         return alm === newOrderAlmacen;
@@ -4717,7 +4719,7 @@ const Ordenes = () => {
     .filter((p): p is Producto => !!p);
 
   const editProductosFiltrados = (() => {
-    const porAlmacen = editProductosOrdenados.filter((p) => (p.almacen || "palmhills") === editAlmacen);
+    const porAlmacen = editAlmacen === "all" ? editProductosOrdenados : editProductosOrdenados.filter((p) => (p.almacen || "palmhills") === editAlmacen);
     if (!editSearch.trim()) return porAlmacen;
     return flexibleSearch(
       porAlmacen,
@@ -5032,13 +5034,13 @@ const Ordenes = () => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-muted-foreground">Products</div>
             <div className="flex gap-1">
-              {(["palmhills", "castillo"] as const).map((a) => (
+              {(["all", "palmhills", "castillo"] as const).map((a) => (
                 <button
                   key={a}
                   onClick={() => { setNewOrderAlmacen(a); setNewOrderSearches(lineas.map(() => "")); }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${newOrderAlmacen === a ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"}`}
                 >
-                  {a === "palmhills" ? "Palm Hills" : "Castillo"}
+                  {a === "all" ? "All" : a === "palmhills" ? "Palm Hills" : "Castillo"}
                 </button>
               ))}
             </div>
@@ -5247,6 +5249,14 @@ const Ordenes = () => {
               </select>
             </div>
             <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
+              <button
+                onClick={() => setEditAlmacen("all")}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                  editAlmacen === "all" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                }`}
+              >
+                All
+              </button>
               <button
                 onClick={() => setEditAlmacen("palmhills")}
                 className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
