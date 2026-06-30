@@ -4794,6 +4794,26 @@ const Ordenes = () => {
     return aDone - bDone;
   });
 
+  const draftOrdenes = useMemo(() => {
+    if (typeof window === "undefined") return [];
+    const drafts: { clienteId: string; clienteNom: string; fecha: string; total: number; itemCount: number }[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (!key?.startsWith("ph_draft_orden_")) continue;
+      const clienteId = key.replace("ph_draft_orden_", "");
+      try {
+        const raw = localStorage.getItem(key);
+        if (!raw) continue;
+        const draft = JSON.parse(raw) as { cantidades: Record<string, number>; descuentos: Record<string, number>; fecha: string };
+        if (!draft.cantidades || Object.keys(draft.cantidades).length === 0) continue;
+        const c = clientes.find((cl) => cl.id === clienteId);
+        const itemCount = Object.values(draft.cantidades).reduce((s, q) => s + q, 0);
+        drafts.push({ clienteId, clienteNom: c?.nom ?? "Unknown client", fecha: draft.fecha, total: 0, itemCount });
+      } catch { /* skip malformed */ }
+    }
+    return drafts;
+  }, [clientes]);
+
   const {
     visible: ordenesVisibles,
     hasMore: ordenesHasMore,
@@ -4803,6 +4823,23 @@ const Ordenes = () => {
 
   return (
     <div>
+      {draftOrdenes.length > 0 && (
+        <div className="mb-3 space-y-2">
+          {draftOrdenes.map((d) => (
+            <button
+              key={d.clienteId}
+              onClick={() => router.push(`/clientes/${d.clienteId}/nueva-orden`)}
+              className="w-full flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-3.5 py-2.5 text-left"
+            >
+              <div className="min-w-0">
+                <div className="text-xs font-bold text-amber-700 truncate">{d.clienteNom}</div>
+                <div className="text-[11px] text-amber-600">Draft · {d.itemCount} item{d.itemCount !== 1 ? "s" : ""}{d.fecha ? ` · ${fdate(d.fecha)}` : ""}</div>
+              </div>
+              <span className="text-amber-500 shrink-0 font-bold text-sm">Continue →</span>
+            </button>
+          ))}
+        </div>
+      )}
       <div className="bg-card rounded-2xl p-3.5 border border-border">
         {ordenesOrdenadas.length ? (
           ordenesVisibles.map((o) => {

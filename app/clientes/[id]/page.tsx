@@ -124,6 +124,7 @@ export default function ClientePerfilPage() {
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [loadingOrdenes, setLoadingOrdenes] = useState(true);
+  const [hasDraft, setHasDraft] = useState(false);
   const [editando, setEditando] = useState(false);
   const [guardando, setGuardando] = useState(false);
   const [error, setError] = useState("");
@@ -135,6 +136,7 @@ export default function ClientePerfilPage() {
 
   useEffect(() => {
     cargarCliente();
+    setHasDraft(!!localStorage.getItem(`ph_draft_orden_${clienteId}`));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [clienteId]);
 
@@ -539,6 +541,20 @@ export default function ClientePerfilPage() {
               className={`mt-6 w-full px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 ${GLASS_BTN_PRIMARY}`}
             >
               <span className="text-xl leading-none">+</span> New Order
+            </button>
+          )}
+
+          {/* Draft en progreso */}
+          {hasDraft && (
+            <button
+              onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
+              className="mt-4 w-full flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-3.5 py-2.5 text-left"
+            >
+              <div>
+                <div className="text-xs font-bold text-amber-700">Draft in progress</div>
+                <div className="text-[11px] text-amber-600">Tap to continue editing this order</div>
+              </div>
+              <span className="text-amber-500 text-lg">→</span>
             </button>
           )}
 
