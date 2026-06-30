@@ -251,7 +251,7 @@ export default function FacturaPage() {
   })();
 
   return (
-    <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9]">
+    <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9] print:bg-transparent">
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
@@ -384,13 +384,13 @@ export default function FacturaPage() {
       )}
 
       {/* Invoice — un div por hoja, header repetido manualmente en cada chunk */}
-      <div className="factura-doc max-w-3xl mx-auto p-4 sm:p-8 space-y-6 print:space-y-0">
+      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0 space-y-8 print:space-y-0">
         {chunks.map((pageLineas, pageIdx) => {
           const isLastPage = pageIdx === chunks.length - 1;
           return (
             <div
               key={pageIdx}
-              className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden print:overflow-visible"
+              className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
               style={{ breakAfter: isLastPage ? "auto" : "page" }}
             >
               <EncabezadoFactura factura={factura} cliente={cliente} page={pageIdx + 1} totalPages={chunks.length} />
@@ -496,10 +496,24 @@ export default function FacturaPage() {
       </div>
 
       <style jsx global>{`
+        @media screen {
+          .invoice-page {
+            min-height: 11in;
+            box-shadow: 0 8px 40px rgba(0,0,0,0.28);
+            border-radius: 2px;
+          }
+          .factura-doc {
+            background: #5a6272;
+            max-width: none;
+            padding: 1.5rem 1rem;
+            min-height: calc(100vh - 60px);
+          }
+        }
         @media print {
           @page { size: letter portrait; margin: 0.5in; }
           html, body { height: auto !important; min-height: 0 !important; background: white !important; }
-          .factura-doc { padding: 0 !important; max-width: none !important; }
+          .factura-doc { padding: 0 !important; }
+          .invoice-page { min-height: 0 !important; }
           tr { break-inside: avoid; }
         }
       `}</style>
