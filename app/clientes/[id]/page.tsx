@@ -380,458 +380,344 @@ export default function ClientePerfilPage() {
     return <div className="p-6 text-sm text-muted-foreground">Loading...</div>;
   }
 
-  return (
-    <div className="p-4 pb-24 max-w-3xl mx-auto" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
-      <button
-        onClick={() => router.push("/?tab=cli")}
-        className={`px-4 py-2 rounded-full text-sm font-medium mb-3 ${GLASS_BTN}`}
-      >
-        ← Back
-      </button>
+  const PH = "#4a6741";
 
-      <div className="bg-card rounded-2xl border border-border overflow-hidden">
-        {/* Banner con la foto del cliente */}
-        <div className="w-full h-40 bg-gradient-to-r from-secondary to-secondary-foreground flex items-center justify-center relative overflow-hidden">
-          {cliente.foto_local ? (
-            <img src={cliente.foto_local} alt={cliente.nom} className="w-full h-full object-cover" />
+  return (
+    <div className="min-h-screen pb-28" style={{ background: "linear-gradient(160deg,#eef5ea 0%,#f7faf5 100%)" }}>
+
+      {/* ── HERO ── */}
+      <div className="relative w-full h-60 overflow-hidden">
+        {cliente.foto_local ? (
+          <img src={cliente.foto_local} alt={cliente.nom} className="w-full h-full object-cover" />
+        ) : (
+          <div className="w-full h-full" style={{ background: `linear-gradient(135deg,#3d5636 0%,${PH} 55%,#7aaa64 100%)` }} />
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
+
+        {/* Back */}
+        <button
+          onClick={() => router.push("/?tab=cli")}
+          style={{ top: "calc(0.9rem + env(safe-area-inset-top))" }}
+          className="absolute left-4 flex items-center gap-1 text-white/90 text-sm font-semibold"
+        >
+          ‹ Clients
+        </button>
+
+        {/* Edit toggle */}
+        {!readOnly && (
+          <button
+            onClick={() => { if (editando) setForm(cliente); setEditando(!editando); }}
+            style={{ top: "calc(0.75rem + env(safe-area-inset-top))" }}
+            className="absolute right-4 px-4 py-1.5 rounded-full text-xs font-bold bg-white/20 backdrop-blur-md border border-white/30 text-white active:scale-95 transition-all"
+          >
+            {editando ? "Cancel" : "Edit"}
+          </button>
+        )}
+
+        {/* Name block */}
+        <div className="absolute bottom-0 left-0 right-0 px-5 pb-4">
+          {editando ? (
+            <input
+              value={form.nom}
+              onChange={(e) => setForm({ ...form, nom: e.target.value })}
+              className="w-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xl font-black uppercase rounded-2xl px-4 py-2.5 outline-none mb-2"
+            />
           ) : (
-            <div className="text-5xl">🏪</div>
+            <h1 className="text-[1.65rem] font-black uppercase tracking-wide text-white leading-tight drop-shadow-sm">{cliente.nom}</h1>
+          )}
+          <div className="flex items-center gap-2 mt-1">
+            {cliente.codigo_cliente && (
+              <span className="text-[11px] font-mono text-white/60 tracking-wider">#{cliente.codigo_cliente}</span>
+            )}
+            <EstadoClienteBadge e={cliente.estado} />
+          </div>
+        </div>
+      </div>
+
+      {/* ── CONTENT ── */}
+      <div className="px-4 pt-4 space-y-3 max-w-2xl mx-auto">
+
+        {/* Quick actions */}
+        {!readOnly && (
+          <div className="flex gap-2.5">
+            <button
+              onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
+              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm text-white shadow-md active:scale-[0.97] transition-all"
+              style={{ background: `linear-gradient(135deg,#3d5636,${PH})` }}
+            >
+              <span className="text-base leading-none">+</span> New Order
+            </button>
+            <button
+              onClick={() => router.push(`/clientes/${clienteId}/estado-cuenta`)}
+              className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-semibold text-sm bg-white/70 backdrop-blur-xl border border-white/60 shadow-sm active:scale-[0.97] transition-all"
+              style={{ color: PH }}
+            >
+              📄 Statement
+            </button>
+          </div>
+        )}
+
+        {/* Draft banner */}
+        {hasDraft && (
+          <button
+            onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
+            className="w-full flex items-center justify-between gap-3 bg-amber-50/90 backdrop-blur-sm border border-amber-200 rounded-2xl px-4 py-3 text-left active:scale-[0.98] transition-all"
+          >
+            <div>
+              <div className="text-xs font-bold text-amber-700">Draft in progress</div>
+              <div className="text-[11px] text-amber-500">Tap to continue editing</div>
+            </div>
+            <span className="text-amber-400 text-xl">→</span>
+          </button>
+        )}
+
+        {/* ── INFO CARD ── */}
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 pt-4 pb-1 space-y-3.5">
+
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: `${PH}99` }}>Address</p>
+              {editando ? (
+                <div className="space-y-1.5">
+                  <input value={form.dir || ""} onChange={(e) => setForm({ ...form, dir: e.target.value })} placeholder="Street" className="w-full px-3 py-2 rounded-xl border border-black/10 bg-white/80 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+                  <div className="grid grid-cols-2 gap-1.5">
+                    <input value={form.ciudad || ""} onChange={(e) => setForm({ ...form, ciudad: e.target.value })} placeholder="City" className="px-3 py-2 rounded-xl border border-black/10 bg-white/80 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+                    <input value={form.estado_dir || ""} onChange={(e) => setForm({ ...form, estado_dir: e.target.value })} placeholder="State" className="px-3 py-2 rounded-xl border border-black/10 bg-white/80 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-gray-700">
+                  {[cliente.dir, cliente.ciudad, cliente.estado_dir].filter(Boolean).join(", ") || <span className="text-gray-400 text-xs">Not specified</span>}
+                </p>
+              )}
+            </div>
+
+            <div className="border-t border-black/5" />
+
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: `${PH}99` }}>Email</p>
+              {editando ? (
+                <input type="email" value={form.email || ""} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="email@example.com" className="w-full px-3 py-2 rounded-xl border border-black/10 bg-white/80 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+              ) : (
+                <p className="text-sm text-gray-700 break-all">{cliente.email || <span className="text-gray-400 text-xs">Not specified</span>}</p>
+              )}
+            </div>
+
+            <div className="border-t border-black/5" />
+
+            <div className="flex items-center justify-between gap-4 pb-4">
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-widest mb-1" style={{ color: `${PH}99` }}>Status</p>
+                {editando ? (
+                  <select value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value })} className="px-3 py-1.5 rounded-xl border border-black/10 bg-white/80 text-sm outline-none">
+                    <option>Active</option><option>Inactive</option><option>Waiting</option>
+                  </select>
+                ) : (
+                  <EstadoClienteBadge e={cliente.estado} />
+                )}
+              </div>
+              <div className="flex items-center gap-2.5">
+                <span className="text-[11px] text-gray-400 text-right leading-tight">Open<br />Sat</span>
+                <button
+                  disabled={!editando}
+                  onClick={() => editando && setForm({ ...form, abierto_sabados: !form.abierto_sabados })}
+                  className={`relative w-12 h-6 rounded-full transition-all shrink-0 ${form.abierto_sabados ? "" : "bg-gray-200"} ${!editando ? "opacity-60" : ""}`}
+                  style={form.abierto_sabados ? { background: PH } : {}}
+                >
+                  <div className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-all ${form.abierto_sabados ? "right-0.5" : "left-0.5"}`} />
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {editando && (
+            <div className="px-5 pb-4">
+              <button disabled={guardando} onClick={handleGuardar} className="w-full py-3 rounded-xl font-bold text-sm text-white disabled:opacity-50 active:scale-[0.98] transition-all" style={{ background: PH }}>
+                {guardando ? "Saving…" : "Save Changes"}
+              </button>
+            </div>
           )}
         </div>
 
-        <div className="p-5">
-          {/* Encabezado: numero de cliente, nombre y boton de editar */}
-          <div className="flex items-start gap-4">
-            <div className="flex-1 min-w-0">
-              <div className="mb-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client Number</span>
-                <p className="font-mono text-lg font-bold text-primary">
-                  {cliente.codigo_cliente || "Not assigned"}
-                </p>
-              </div>
-
-              {editando ? (
-                <input
-                  value={form.nom}
-                  onChange={(e) => setForm({ ...form, nom: e.target.value })}
-                  className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-lg font-bold uppercase outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <h1 className="text-2xl font-bold uppercase tracking-wide text-card-foreground break-words">{cliente.nom}</h1>
-              )}
-
-              <div className="mt-2">
-                <EstadoClienteBadge e={cliente.estado} />
-              </div>
-            </div>
-
-            {!readOnly && (
-              <button
-                onClick={() => {
-                  if (editando) setForm(cliente);
-                  setEditando(!editando);
-                }}
-                className={`shrink-0 px-4 py-2 rounded-full font-medium text-sm ${GLASS_BTN}`}
-              >
-                {editando ? "Cancel" : "Edit"}
-              </button>
-            )}
-          </div>
-
-          {/* Informacion del cliente */}
-          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📍 Address</label>
-              {editando ? (
-                <input
-                  value={form.dir || ""}
-                  onChange={(e) => setForm({ ...form, dir: e.target.value })}
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.dir || "No especificada"}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Ciudad</label>
-              {editando ? (
-                <input
-                  value={form.ciudad || ""}
-                  onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.ciudad || "No especificada"}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Estado</label>
-              {editando ? (
-                <input
-                  value={form.estado_dir || ""}
-                  onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
-                  placeholder="Ej. New York"
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.estado_dir || "No especificado"}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Contacto</label>
-              {editando ? (
-                <input
-                  value={form.contacto || ""}
-                  onChange={(e) => setForm({ ...form, contacto: e.target.value })}
-                  placeholder="Contact person's name"
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <p className="text-sm font-medium text-card-foreground mt-0.5">{cliente.contacto || "No especificado"}</p>
-              )}
-            </div>
-
-
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">✉️ Email</label>
-              {editando ? (
-                <input
-                  type="email"
-                  value={form.email || ""}
-                  onChange={(e) => setForm({ ...form, email: e.target.value })}
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                />
-              ) : (
-                <p className="text-sm font-medium text-card-foreground mt-0.5 break-all">{cliente.email || "No especificado"}</p>
-              )}
-            </div>
-
-            <div>
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Client Status</label>
-              {editando ? (
-                <select
-                  value={form.estado}
-                  onChange={(e) => setForm({ ...form, estado: e.target.value })}
-                  className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option>Active</option>
-                  <option>Inactive</option>
-                  <option>Waiting</option>
-                </select>
-              ) : (
-                <div className="mt-0.5">
-                  <EstadoClienteBadge e={cliente.estado} />
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Phones & Fax */}
-          <div className="mt-5">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">📞 Phones & Fax</label>
+        {/* ── CONTACTS ── */}
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>Contacts & Phones</p>
               {!readOnly && !showAddPhone && (
-                <button
-                  onClick={() => setShowAddPhone(true)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
-                >
-                  + Add Phone
-                </button>
+                <button onClick={() => setShowAddPhone(true)} className="text-xs font-bold px-3 py-1 rounded-full active:scale-95 transition-all" style={{ color: PH, background: `${PH}18` }}>+ Add</button>
               )}
             </div>
 
-            {/* Lista de teléfonos existentes */}
-            <div className="space-y-1.5">
-              {/* Legacy tel field */}
+            <div className="space-y-3">
               {cliente.tel && (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 shrink-0">Principal</span>
-                  <a href={`tel:${cliente.tel}`} className="text-sm text-primary font-medium">{cliente.tel}</a>
-                </div>
+                <a href={`tel:${cliente.tel}`} className="flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-black text-white" style={{ background: PH }}>P</div>
+                  <div>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Principal</p>
+                    <p className="text-sm font-semibold" style={{ color: PH }}>{cliente.tel}</p>
+                  </div>
+                </a>
               )}
-              {/* telefonos array */}
-              {(cliente.telefonos || []).filter((t) => t.num).map((t, i) => (
-                <div key={i} className="flex items-center gap-2">
-                  <span className="text-xs bg-secondary text-secondary-foreground rounded-full px-2 py-0.5 shrink-0">{t.rol}</span>
+
+              {(cliente.telefonos || []).filter(t => t.num).map((t, i) => (
+                <div key={i} className="flex items-center gap-3 group">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 text-sm font-black text-white" style={{ background: `${PH}cc` }}>
+                    {(t.nombre || t.rol)[0].toUpperCase()}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    {t.nombre && <div className="text-xs font-semibold text-card-foreground leading-tight">{t.nombre}</div>}
-                    <a href={`tel:${t.num}`} className="text-sm text-primary font-medium">{t.num}</a>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{t.rol}</p>
+                    {t.nombre && <p className="text-xs font-semibold text-gray-700 leading-tight">{t.nombre}</p>}
+                    <a href={`tel:${t.num}`} className="text-sm font-semibold" style={{ color: PH }}>{t.num}</a>
                   </div>
                   {!readOnly && (
-                    <button
-                      onClick={() => handleDeleteTelefono(i)}
-                      className="text-muted-foreground hover:text-destructive transition-colors text-xs shrink-0"
-                    >
-                      ✕
-                    </button>
+                    <button onClick={() => handleDeleteTelefono(i)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all text-xl leading-none shrink-0">×</button>
                   )}
                 </div>
               ))}
+
               {/* FAX */}
-              <div className="flex items-center gap-2">
-                <span className="text-xs bg-muted text-muted-foreground rounded-full px-2 py-0.5 shrink-0">Fax</span>
-                {editFax ? (
-                  <div className="flex items-center gap-1.5 flex-1">
-                    <input
-                      type="tel"
-                      value={faxValue}
-                      onChange={(e) => setFaxValue(e.target.value)}
-                      placeholder="Número de fax"
-                      autoFocus
-                      className="flex-1 px-2 py-1 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <button onClick={handleSaveFax} className={`px-2 py-1 rounded-lg text-xs font-bold ${GLASS_BTN_PRIMARY}`}>Save</button>
-                    <button onClick={() => { setEditFax(false); setFaxValue(""); }} className="text-xs text-muted-foreground">Cancel</button>
-                  </div>
-                ) : (
-                  <>
-                    <span className="text-sm text-card-foreground flex-1">{cliente.fax || <span className="text-muted-foreground text-xs">—</span>}</span>
-                    {!readOnly && (
-                      <button
-                        onClick={() => { setFaxValue(cliente.fax || ""); setEditFax(true); }}
-                        className="text-xs text-primary shrink-0"
-                      >
-                        {cliente.fax ? "Edit" : "Add"}
-                      </button>
-                    )}
-                  </>
-                )}
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-full bg-gray-100 flex items-center justify-center shrink-0 text-xs font-black text-gray-400">F</div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">Fax</p>
+                  {editFax ? (
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <input type="tel" value={faxValue} onChange={(e) => setFaxValue(e.target.value)} autoFocus placeholder="Fax number" className="flex-1 px-2 py-1 rounded-lg border border-black/10 bg-white text-sm outline-none" />
+                      <button onClick={handleSaveFax} className="text-xs font-bold px-2 py-1 rounded-lg text-white" style={{ background: PH }}>Save</button>
+                      <button onClick={() => { setEditFax(false); setFaxValue(""); }} className="text-xs text-gray-400">✕</button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-700">{cliente.fax || <span className="text-gray-400 text-xs">—</span>}</span>
+                      {!readOnly && (
+                        <button onClick={() => { setFaxValue(cliente.fax || ""); setEditFax(true); }} className="text-xs font-semibold" style={{ color: PH }}>{cliente.fax ? "Edit" : "Add"}</button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              {!cliente.tel && (cliente.telefonos || []).length === 0 && !editFax && (
-                <p className="text-xs text-muted-foreground">No hay teléfonos registrados.</p>
+              {!cliente.tel && (cliente.telefonos || []).length === 0 && (
+                <p className="text-xs text-gray-400 text-center py-1">No contacts yet</p>
               )}
             </div>
 
-            {/* Panel de agregar teléfono */}
+            {/* Add phone panel */}
             {showAddPhone && (
-              <div className="mt-3 p-3 rounded-xl border border-border bg-muted/50 space-y-3">
-                <p className="text-xs font-semibold text-card-foreground">¿Quién atiende este número?</p>
+              <div className="mt-4 pt-4 border-t border-black/5 space-y-3">
+                <p className="text-[9px] font-black uppercase tracking-widest text-gray-400">Who answers this number?</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {ROLES_TELEFONO.map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setNewPhoneRol(r)}
-                      className={`px-3 py-1 rounded-full text-xs font-medium border transition-all ${
-                        newPhoneRol === r
-                          ? "bg-primary text-primary-foreground border-primary"
-                          : "bg-card text-secondary-foreground border-border"
-                      }`}
-                    >
+                  {ROLES_TELEFONO.map(r => (
+                    <button key={r} onClick={() => setNewPhoneRol(r)} className="px-3 py-1.5 rounded-full text-xs font-semibold transition-all active:scale-95" style={newPhoneRol === r ? { background: PH, color: "#fff" } : { background: `${PH}15`, color: PH }}>
                       {r}
                     </button>
                   ))}
                 </div>
                 {newPhoneRol && (
                   <div className="space-y-2">
-                    <input
-                      type="text"
-                      value={newPhoneNombre}
-                      onChange={(e) => setNewPhoneNombre(e.target.value)}
-                      placeholder={`Name (e.g. Pete, Rafael…)`}
-                      autoFocus
-                      className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-                    />
-                    <input
-                      type="tel"
-                      value={newPhoneNum}
-                      onChange={(e) => setNewPhoneNum(e.target.value)}
-                      placeholder={`Phone — ${newPhoneRol}`}
-                      onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()}
-                      className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-                    />
+                    <input type="text" value={newPhoneNombre} onChange={(e) => setNewPhoneNombre(e.target.value)} placeholder="Name (Pete, Rafael…)" autoFocus className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+                    <input type="tel" value={newPhoneNum} onChange={(e) => setNewPhoneNum(e.target.value)} placeholder={`Phone — ${newPhoneRol}`} onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()} className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
                   </div>
                 )}
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleAddTelefono}
-                    disabled={!newPhoneRol || !newPhoneNum.trim() || savingPhone}
-                    className={`px-4 py-2 rounded-full text-sm font-bold disabled:opacity-40 ${GLASS_BTN_PRIMARY}`}
-                  >
-                    {savingPhone ? "Saving..." : "Save"}
+                  <button onClick={handleAddTelefono} disabled={!newPhoneRol || !newPhoneNum.trim() || savingPhone} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 active:scale-[0.98] transition-all" style={{ background: PH }}>
+                    {savingPhone ? "Saving…" : "Save Contact"}
                   </button>
-                  <button
-                    onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNombre(""); setNewPhoneNum(""); }}
-                    className="px-4 py-2 rounded-full text-sm text-muted-foreground"
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNombre(""); setNewPhoneNum(""); }} className="px-4 py-2.5 rounded-xl text-sm text-gray-500 bg-gray-100">Cancel</button>
                 </div>
               </div>
             )}
           </div>
+        </div>
 
-          {/* Toggle: Abierto los sabados */}
-          <div className="mt-6 p-4 bg-muted rounded-xl flex items-center justify-between">
-            <div>
-              <span className="font-medium text-card-foreground">📅 Open on Saturdays</span>
-              <p className="text-sm text-muted-foreground">Does this client receive orders on Saturdays?</p>
-            </div>
-            <button
-              disabled={!editando}
-              onClick={() => editando && setForm({ ...form, abierto_sabados: !form.abierto_sabados })}
-              className={`relative w-14 h-8 rounded-full transition-all shrink-0 ${
-                form.abierto_sabados ? "bg-primary" : "bg-gray-300"
-              } ${!editando ? "opacity-70" : ""}`}
-            >
-              <div
-                className={`absolute top-1 w-6 h-6 bg-white rounded-full transition-all ${
-                  form.abierto_sabados ? "right-1" : "left-1"
-                }`}
-              />
-            </button>
-          </div>
-
-          {/* Boton Guardar (solo en modo edicion) */}
-          {editando && (
-            <div className="mt-4 flex justify-end">
-              <button
-                disabled={guardando}
-                onClick={handleGuardar}
-                className={`px-5 py-2.5 rounded-full font-bold text-sm disabled:opacity-50 ${GLASS_BTN_PRIMARY}`}
-              >
-                {guardando ? "Saving..." : "💾 Save Changes"}
-              </button>
-            </div>
-          )}
-
-          {/* Visit Notes */}
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Visit Notes</h2>
-              {!readOnly && (
-                <button
-                  onClick={() => setShowNota(true)}
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
-                >
-                  + Add Note
-                </button>
-              )}
-            </div>
-            {(cliente.notas_visita || []).length ? (
-              (cliente.notas_visita || []).map((n) => (
-                <div key={n.id} className="mb-2 p-3 bg-muted rounded-xl flex items-start gap-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs text-muted-foreground mb-0.5">{n.fecha} · {n.ts}</div>
-                    <div className="text-sm text-card-foreground">{n.texto}</div>
-                  </div>
-                  {!readOnly && (
-                    <button
-                      onClick={() => handleDeleteNota(n.id)}
-                      className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-0.5"
-                      title="Delete note"
-                    >
-                      ✕
-                    </button>
-                  )}
+        {/* ── ACCOUNT BALANCE ── */}
+        {!loadingFacturas && (() => {
+          const deuda = facturas.filter(f => !["Paid","Completed","Cancelled"].includes(f.estado)).reduce((acc, f) => {
+            const pagado = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
+            return acc + Math.max(0, f.total - pagado);
+          }, 0);
+          const credito = notasCredito.reduce((acc, n) => acc + n.monto, 0);
+          const neto = deuda - credito;
+          return (
+            <div className="rounded-2xl shadow-sm overflow-hidden" style={{ background: `linear-gradient(135deg,#2e4029 0%,${PH} 60%,#6b9660 100%)` }}>
+              <div className="px-5 py-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-white/50 mb-3">Account Balance</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Pending", val: fmt(deuda), color: "#fcd34d" },
+                    { label: "Credits", val: `−${fmt(credito)}`, color: "#6ee7b7" },
+                    { label: "Net Due",  val: `${neto < 0 ? "−" : ""}${fmt(Math.abs(neto))}`, color: neto > 0 ? "#fcd34d" : "#6ee7b7", border: true },
+                  ].map(item => (
+                    <div key={item.label} className={`rounded-xl p-3 text-center ${item.border ? "border border-white/25" : ""}`} style={{ background: "rgba(255,255,255,0.12)" }}>
+                      <p className="text-[8px] uppercase tracking-wide text-white/50 mb-1">{item.label}</p>
+                      <p className="text-sm font-black" style={{ color: item.color }}>{item.val}</p>
+                    </div>
+                  ))}
                 </div>
-              ))
-            ) : (
-              <p className="text-xs text-muted-foreground">No visit notes yet.</p>
-            )}
-          </div>
+              </div>
+            </div>
+          );
+        })()}
 
-          {/* Client To-Dos */}
-          <div className="mt-6">
-            <div className="flex items-center justify-between mb-2">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">To-Do List</h2>
+        {/* ── TO-DO LIST ── */}
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>To-Do List</p>
               {!readOnly && (
-                <button
-                  onClick={() => { setShowTodo(true); setTodoTexto(""); setTodoFecha(""); }}
-                  className={`px-3 py-1 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
-                >
-                  + Add Task
-                </button>
+                <button onClick={() => { setShowTodo(true); setTodoTexto(""); setTodoFecha(""); }} className="text-xs font-bold px-3 py-1 rounded-full active:scale-95 transition-all" style={{ color: PH, background: `${PH}18` }}>+ Add</button>
               )}
             </div>
 
             {showTodo && !readOnly && (
-              <div className="mb-3 bg-muted rounded-2xl p-3 space-y-2">
-                <textarea
-                  autoFocus
-                  rows={2}
-                  placeholder="Describe the task or requirement..."
-                  value={todoTexto}
-                  onChange={(e) => setTodoTexto(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
-                />
+              <div className="mb-3 p-3 rounded-xl space-y-2" style={{ background: `${PH}0d` }}>
+                <textarea autoFocus rows={2} placeholder="Describe the task or requirement…" value={todoTexto} onChange={(e) => setTodoTexto(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25 resize-none" />
                 <div className="flex items-center gap-2">
-                  <label className="text-xs text-muted-foreground shrink-0">Due date (optional)</label>
-                  <input
-                    type="date"
-                    value={todoFecha}
-                    onChange={(e) => setTodoFecha(e.target.value)}
-                    className="flex-1 px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring"
-                  />
+                  <span className="text-[11px] text-gray-400 shrink-0">Due date</span>
+                  <input type="date" value={todoFecha} onChange={(e) => setTodoFecha(e.target.value)} className="flex-1 px-2 py-1.5 rounded-lg border border-black/10 bg-white text-xs outline-none" />
                 </div>
                 <div className="flex gap-2">
-                  <button
-                    onClick={handleAddTodo}
-                    disabled={savingTodo || !todoTexto.trim()}
-                    className={`flex-1 py-2 rounded-xl text-xs font-bold ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
-                  >
-                    {savingTodo ? "Saving..." : "Save Task"}
+                  <button onClick={handleAddTodo} disabled={savingTodo || !todoTexto.trim()} className="flex-1 py-2.5 rounded-xl text-xs font-bold text-white disabled:opacity-40 active:scale-[0.98] transition-all" style={{ background: PH }}>
+                    {savingTodo ? "Saving…" : "Save Task"}
                   </button>
-                  <button
-                    onClick={() => setShowTodo(false)}
-                    className={`px-4 py-2 rounded-xl text-xs font-bold ${GLASS_BTN}`}
-                  >
-                    Cancel
-                  </button>
+                  <button onClick={() => setShowTodo(false)} className="px-4 py-2.5 rounded-xl text-xs text-gray-500 bg-gray-100">Cancel</button>
                 </div>
               </div>
             )}
 
             {(() => {
-              const pending = todos.filter((t) => !t.completado);
-              const done = todos.filter((t) => t.completado);
-              const today = new Date().toISOString().slice(0, 10);
+              const pending = todos.filter(t => !t.completado);
+              const done    = todos.filter(t => t.completado);
+              const today   = new Date().toISOString().slice(0, 10);
               return todos.length ? (
-                <div className="space-y-1.5">
-                  {pending.map((t) => {
+                <div className="space-y-2.5">
+                  {pending.map(t => {
                     const overdue = t.fecha_limite && t.fecha_limite < today;
                     return (
-                      <div key={t.id} className="flex items-start gap-2.5 p-3 bg-muted rounded-xl group">
-                        <button
-                          onClick={() => handleToggleTodo(t)}
-                          className="mt-0.5 w-5 h-5 rounded-full border-2 border-primary shrink-0 flex items-center justify-center hover:bg-primary/10 transition-colors"
-                        />
+                      <div key={t.id} className="flex items-start gap-3 group">
+                        <button onClick={() => handleToggleTodo(t)} className="mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 transition-colors flex-none" style={{ borderColor: overdue ? "#f87171" : PH }} />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm text-card-foreground leading-snug">{t.texto}</p>
+                          <p className="text-sm text-gray-800 leading-snug">{t.texto}</p>
                           {t.fecha_limite && (
-                            <p className={`text-xs mt-0.5 font-medium ${overdue ? "text-red-500" : "text-muted-foreground"}`}>
+                            <p className="text-[11px] mt-0.5 font-medium" style={{ color: overdue ? "#ef4444" : "#9ca3af" }}>
                               {overdue ? "⚠️ Overdue · " : "📅 "}{fdate(t.fecha_limite)}
                             </p>
                           )}
                         </div>
-                        {!readOnly && (
-                          <button
-                            onClick={() => handleDeleteTodo(t.id)}
-                            className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                          >✕</button>
-                        )}
+                        {!readOnly && <button onClick={() => handleDeleteTodo(t.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all text-xl leading-none shrink-0">×</button>}
                       </div>
                     );
                   })}
                   {done.length > 0 && (
-                    <details className="mt-2">
-                      <summary className="text-xs text-muted-foreground cursor-pointer select-none">
-                        {done.length} completed
-                      </summary>
-                      <div className="space-y-1.5 mt-1.5">
-                        {done.map((t) => (
-                          <div key={t.id} className="flex items-start gap-2.5 p-3 bg-muted/50 rounded-xl opacity-60 group">
-                            <div className="mt-0.5 w-5 h-5 rounded-full bg-primary shrink-0 flex items-center justify-center text-primary-foreground text-[10px]">✓</div>
-                            <p className="flex-1 text-sm text-card-foreground line-through leading-snug">{t.texto}</p>
-                            {!readOnly && (
-                              <button
-                                onClick={() => handleDeleteTodo(t.id)}
-                                className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                              >✕</button>
-                            )}
+                    <details className="mt-1">
+                      <summary className="text-[11px] text-gray-400 cursor-pointer select-none">{done.length} completed</summary>
+                      <div className="space-y-2 mt-2">
+                        {done.map(t => (
+                          <div key={t.id} className="flex items-start gap-3 opacity-50 group">
+                            <div className="mt-0.5 w-5 h-5 rounded-full flex items-center justify-center text-white text-[9px] shrink-0" style={{ background: PH }}>✓</div>
+                            <p className="flex-1 text-sm text-gray-600 line-through leading-snug">{t.texto}</p>
+                            {!readOnly && <button onClick={() => handleDeleteTodo(t.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all text-xl leading-none">×</button>}
                           </div>
                         ))}
                       </div>
@@ -839,60 +725,65 @@ export default function ClientePerfilPage() {
                   )}
                 </div>
               ) : (
-                <p className="text-xs text-muted-foreground">No pending tasks.</p>
+                <p className="text-xs text-gray-400 text-center py-1">No pending tasks</p>
               );
             })()}
           </div>
+        </div>
 
-          {/* Boton Nueva Orden */}
-          {!readOnly && (
-            <button
-              onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
-              className={`mt-6 w-full px-4 py-3 rounded-full font-bold text-sm flex items-center justify-center gap-2 ${GLASS_BTN_PRIMARY}`}
-            >
-              <span className="text-xl leading-none">+</span> New Order
-            </button>
-          )}
-
-          {/* Draft en progreso */}
-          {hasDraft && (
-            <button
-              onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
-              className="mt-4 w-full flex items-center justify-between gap-3 bg-amber-50 border border-amber-300 rounded-xl px-3.5 py-2.5 text-left"
-            >
-              <div>
-                <div className="text-xs font-bold text-amber-700">Draft in progress</div>
-                <div className="text-[11px] text-amber-600">Tap to continue editing this order</div>
+        {/* ── VISIT HISTORY ── */}
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>Visit History</p>
+              {!readOnly && (
+                <button onClick={() => setShowNota(true)} className="text-xs font-bold px-3 py-1 rounded-full active:scale-95 transition-all" style={{ color: PH, background: `${PH}18` }}>+ Add</button>
+              )}
+            </div>
+            {(cliente.notas_visita || []).length ? (
+              <div className="space-y-0">
+                {(cliente.notas_visita || []).map((n, idx) => (
+                  <div key={n.id} className="flex gap-3 group">
+                    <div className="flex flex-col items-center pt-1.5">
+                      <div className="w-2 h-2 rounded-full shrink-0" style={{ background: PH }} />
+                      {idx < (cliente.notas_visita || []).length - 1 && <div className="w-px flex-1 mt-1 mb-0" style={{ background: `${PH}30` }} />}
+                    </div>
+                    <div className="flex-1 min-w-0 pb-4">
+                      <p className="text-[10px] text-gray-400 mb-0.5">{n.fecha} · {n.ts}</p>
+                      <p className="text-sm text-gray-800 leading-relaxed">{n.texto}</p>
+                    </div>
+                    {!readOnly && (
+                      <button onClick={() => handleDeleteNota(n.id)} className="opacity-0 group-hover:opacity-100 text-gray-300 hover:text-red-400 transition-all text-xl leading-none shrink-0 mt-0.5">×</button>
+                    )}
+                  </div>
+                ))}
               </div>
-              <span className="text-amber-500 text-lg">→</span>
-            </button>
-          )}
+            ) : (
+              <p className="text-xs text-gray-400 text-center py-1">No visit history yet</p>
+            )}
+          </div>
+        </div>
 
-          {/* Seccion Ordenes */}
-          <div className="mt-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Orders</h2>
+        {/* ── ORDERS ── */}
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4">
+            <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{ color: `${PH}99` }}>Orders</p>
             {loadingOrdenes ? (
-              <p className="text-sm text-muted-foreground">Loading orders...</p>
+              <p className="text-xs text-gray-400 text-center py-1">Loading…</p>
             ) : ordenes.length ? (
-              <div className="space-y-2">
-                {ordenes.map((o) => (
-                  <div
-                    key={o.id}
-                    className="flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5"
-                  >
+              <div className="divide-y divide-black/5">
+                {ordenes.map(o => (
+                  <div key={o.id} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-card-foreground">Order #{o.num}</div>
-                      <div className="text-xs text-muted-foreground">{fdate(o.fecha)}</div>
+                      <p className="text-sm font-semibold text-gray-800">Order #{o.num}</p>
+                      <p className="text-[11px] text-gray-400">{fdate(o.fecha)}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
-                        className="px-2.5 py-1 rounded-full text-xs font-bold bg-white border border-border text-muted-foreground hover:text-primary hover:border-primary transition-colors"
-                      >
+                      <button onClick={() => router.push(`/ordenes/${o.id}/estimado`)} className="px-3 py-1 rounded-full text-xs font-semibold active:scale-95 transition-all" style={{ color: PH, background: `${PH}18` }}>
                         Estimate
                       </button>
                       <div className="text-right">
-                        <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
+                        <p className="text-sm font-bold text-gray-800">{fmt(o.total)}</p>
                         <OrdenBadge e={o.estado} />
                       </div>
                     </div>
@@ -900,137 +791,94 @@ export default function ClientePerfilPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No orders recorded.</p>
+              <p className="text-xs text-gray-400 text-center py-1">No orders recorded</p>
             )}
           </div>
+        </div>
 
-          {/* Balance Neto */}
-          {!loadingFacturas && (() => {
-            const deuda = facturas.filter(f => !["Paid", "Completed", "Cancelled"].includes(f.estado)).reduce((acc, f) => {
-              const pagado = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
-              return acc + Math.max(0, f.total - pagado);
-            }, 0);
-            const credito = notasCredito.reduce((acc, n) => acc + n.monto, 0);
-            const neto = deuda - credito;
-            return (
-              <div className="mt-6 rounded-2xl border-2 border-primary/30 bg-gradient-to-br from-[#f0f7ed] to-[#fafaf7] p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <h2 className="text-sm font-bold uppercase tracking-wider text-[#4a6741]">Account Balance</h2>
-                  <button
-                    onClick={() => router.push(`/clientes/${clienteId}/estado-cuenta`)}
-                    className={`px-3.5 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}
-                  >
-                    📄 Statement PDF
-                  </button>
-                </div>
-                <div className="grid grid-cols-3 gap-2 text-center">
-                  <div className="bg-white/70 rounded-xl p-2.5">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Pending</div>
-                    <div className="text-sm font-bold text-amber-700">{fmt(deuda)}</div>
-                  </div>
-                  <div className="bg-white/70 rounded-xl p-2.5">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Credits</div>
-                    <div className="text-sm font-bold text-green-700">−{fmt(credito)}</div>
-                  </div>
-                  <div className="bg-white/70 rounded-xl p-2.5 border border-primary/20">
-                    <div className="text-[10px] uppercase tracking-wide text-muted-foreground mb-0.5">Net Due</div>
-                    <div className={`text-sm font-bold ${neto > 0 ? "text-amber-700" : "text-green-700"}`}>{neto < 0 ? "-" : ""}{fmt(Math.abs(neto))}</div>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* Seccion Facturas */}
-          <div className="mt-6">
-            <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Invoices</h2>
+        {/* ── INVOICES ── */}
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="px-5 py-4">
+            <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{ color: `${PH}99` }}>Invoices</p>
             {loadingFacturas ? (
-              <p className="text-sm text-muted-foreground">Loading invoices...</p>
+              <p className="text-xs text-gray-400 text-center py-1">Loading…</p>
             ) : facturas.length ? (
-              <div className="space-y-2">
-                {facturas.map((f) => {
-                  const pagado = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
+              <div className="divide-y divide-black/5">
+                {facturas.map(f => {
+                  const pagado  = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
                   const balance = ["Paid","Completed","Cancelled"].includes(f.estado) ? 0 : Math.max(0, f.total - pagado);
                   return (
-                    <button
-                      key={f.id}
-                      onClick={() => router.push(`/facturas/${f.id}`)}
-                      className="w-full flex items-center justify-between gap-2 bg-muted rounded-xl px-3.5 py-2.5 hover:bg-muted/80 active:scale-[0.98] transition-all text-left"
-                    >
+                    <button key={f.id} onClick={() => router.push(`/facturas/${f.id}`)} className="w-full flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0 active:opacity-60 transition-opacity text-left">
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold text-card-foreground">Invoice #{f.num}</div>
-                        <div className="text-xs text-muted-foreground">{fdate(f.fecha)}</div>
+                        <p className="text-sm font-semibold text-gray-800">Invoice #{f.num}</p>
+                        <p className="text-[11px] text-gray-400">{fdate(f.fecha)}</p>
                       </div>
-                      <div className="text-right shrink-0 flex items-center gap-2">
-                        <div>
-                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">Balance</div>
-                          <div className="text-sm font-bold text-card-foreground">{fmt(balance)}</div>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-gray-800">{fmt(balance)}</p>
                           <FacturaBadge e={f.estado} />
                         </div>
-                        <span className="text-muted-foreground text-lg">›</span>
+                        <span className="text-gray-300 text-lg">›</span>
                       </div>
                     </button>
                   );
                 })}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">No invoices recorded.</p>
+              <p className="text-xs text-gray-400 text-center py-1">No invoices recorded</p>
             )}
           </div>
+        </div>
 
-          {/* Notas de Crédito */}
-          {notasCredito.length > 0 && (
-            <div className="mt-6">
-              <h2 className="text-sm font-bold uppercase tracking-wider text-muted-foreground mb-2">Credit Notes</h2>
-              <div className="space-y-2">
-                {notasCredito.map((n) => (
-                  <div key={n.id} className="flex items-center justify-between gap-2 bg-green-50 border border-green-200 rounded-xl px-3.5 py-2.5">
+        {/* ── CREDIT NOTES ── */}
+        {notasCredito.length > 0 && (
+          <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+            <div className="px-5 py-4">
+              <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{ color: `${PH}99` }}>Credit Notes</p>
+              <div className="divide-y divide-black/5">
+                {notasCredito.map(n => (
+                  <button key={n.id} onClick={() => router.push(`/notas-credito/${n.id}`)} className="w-full flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0 active:opacity-60 transition-opacity text-left">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-green-800">CN #{String(n.num).padStart(3,"0")}</div>
-                      <div className="text-xs text-green-700">{fdate(n.fecha)}{n.motivo ? ` · ${n.motivo}` : ""}</div>
+                      <p className="text-sm font-semibold" style={{ color: PH }}>CN #{String(n.num).padStart(3,"0")}</p>
+                      <p className="text-[11px] text-gray-400">{fdate(n.fecha)}{n.motivo ? ` · ${n.motivo}` : ""}</p>
                     </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-bold text-green-700">−{fmt(n.monto)}</div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <p className="text-sm font-bold text-emerald-600">−{fmt(n.monto)}</p>
+                      <span className="text-gray-300 text-lg">›</span>
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
+
       </div>
+
       <BottomNav active="cli" />
 
-      {/* Add Visit Note modal */}
+      {/* ── VISIT NOTE MODAL ── */}
       {showNota && (
-        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 px-4 pb-6">
-          <div className="bg-card rounded-2xl shadow-xl w-full max-w-sm p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="font-bold text-card-foreground">Visit Note</h3>
-              <button onClick={() => { setShowNota(false); setNotaTexto(""); }} className="text-muted-foreground text-2xl leading-none">×</button>
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 px-4 pb-8">
+          <div className="bg-white/90 backdrop-blur-xl rounded-3xl shadow-2xl w-full max-w-sm p-5 border border-white/60">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="font-black text-gray-800 text-base">Visit Note</h3>
+              <button onClick={() => { setShowNota(false); setNotaTexto(""); }} className="w-7 h-7 rounded-full bg-gray-100 flex items-center justify-center text-gray-400 text-lg leading-none">×</button>
             </div>
             <textarea
               value={notaTexto}
               onChange={(e) => setNotaTexto(e.target.value)}
-              placeholder="What happened during this visit..."
+              placeholder="What happened during this visit…"
               rows={4}
               autoFocus
-              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring resize-none mb-3"
+              className="w-full px-3 py-2.5 rounded-2xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25 resize-none mb-4"
             />
-            <p className="text-xs text-muted-foreground mb-3">This note will automatically create a to-do on the home dashboard.</p>
             <div className="flex gap-2">
-              <button
-                onClick={() => { setShowNota(false); setNotaTexto(""); }}
-                className={`flex-1 px-4 py-2.5 rounded-full text-sm font-medium ${GLASS_BTN}`}
-              >
+              <button onClick={() => { setShowNota(false); setNotaTexto(""); }} className="flex-1 px-4 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 bg-gray-100 active:scale-[0.98] transition-all">
                 Cancel
               </button>
-              <button
-                onClick={handleSaveNota}
-                disabled={savingNota || !notaTexto.trim()}
-                className={`flex-1 px-4 py-2.5 rounded-full text-sm font-bold disabled:opacity-50 ${GLASS_BTN_PRIMARY}`}
-              >
-                {savingNota ? "Saving..." : "Save Note"}
+              <button onClick={handleSaveNota} disabled={savingNota || !notaTexto.trim()} className="flex-1 px-4 py-2.5 rounded-2xl text-sm font-bold text-white disabled:opacity-50 active:scale-[0.98] transition-all" style={{ background: PH }}>
+                {savingNota ? "Saving…" : "Save Note"}
               </button>
             </div>
           </div>
