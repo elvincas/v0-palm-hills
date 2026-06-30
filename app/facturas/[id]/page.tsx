@@ -53,7 +53,8 @@ const fdate = (s: string) => {
 
 const today = () => new Date().toISOString().split("T")[0];
 
-const ROWS_PER_PAGE = 17;
+const ROWS_INTER = 18; // páginas intermedias: solo header + filas
+const ROWS_LAST  = 11; // última página: header + filas + totales + firma + thank you
 
 const GLASS_BTN ="backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]";
 const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
@@ -233,20 +234,34 @@ export default function FacturaPage() {
   const descuento = subtotal - factura.total;
   const isPaid = factura.estado === "Paid";
 
-  // Distribución uniforme: 53 filas → [14,13,13,13] en lugar de [17,17,17,2]
+  // Chunking con dos límites distintos:
+  // - Páginas intermedias: ROWS_INTER filas (sin footer)
+  // - Última página:       ROWS_LAST filas  (con totales + firma + thank you)
   const chunks: LineaFactura[][] = (() => {
-    if (lineas.length === 0) return [[]];
-    const numPages = Math.max(1, Math.ceil(lineas.length / ROWS_PER_PAGE));
-    if (numPages === 1) return [lineas];
-    const base = Math.floor(lineas.length / numPages);
-    const extra = lineas.length % numPages;
+    const n = lineas.length;
+    if (n === 0) return [[]];
+    if (n <= ROWS_LAST) return [lineas]; // cabe todo en una página
+
+    const numPages = 1 + Math.ceil((n - ROWS_LAST) / ROWS_INTER);
+
+    if (numPages === 2) {
+      // 2 páginas: balancear respetando el límite de la última
+      const lastCount = Math.min(ROWS_LAST, Math.ceil(n / 2));
+      return [lineas.slice(0, n - lastCount), lineas.slice(n - lastCount)];
+    }
+
+    // 3+ páginas: última = ROWS_LAST, intermedias se reparten uniformemente
+    const interRows = n - ROWS_LAST;
+    const numInter  = numPages - 1;
+    const base  = Math.floor(interRows / numInter);
+    const extra = interRows % numInter;
     const result: LineaFactura[][] = [];
     let idx = 0;
-    for (let p = 0; p < numPages; p++) {
-      const count = base + (p < extra ? 1 : 0);
-      result.push(lineas.slice(idx, idx + count));
-      idx += count;
+    for (let p = 0; p < numInter; p++) {
+      result.push(lineas.slice(idx, idx + base + (p < extra ? 1 : 0)));
+      idx += base + (p < extra ? 1 : 0);
     }
+    result.push(lineas.slice(idx)); // última página
     return result;
   })();
 
