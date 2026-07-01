@@ -1017,11 +1017,7 @@ const Dashboard = () => {
   });
   const [editMeta, setEditMeta] = useState(false);
   const [metaInp, setMetaInp] = useState("");
-  const [castilloEmail, setCastilloEmail] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem("ph_castillo_email") || "" : ""
-  );
-  const [editingCastilloEmail, setEditingCastilloEmail] = useState(false);
-  const [castilloEmailInp, setCastilloEmailInp] = useState("");
+
 
   const facturasDelMes = useMemo(
     () => facturas.filter((f) => (f.fecha || "").slice(0, 7) === mesActualKey()),
@@ -1288,17 +1284,10 @@ const Dashboard = () => {
 
       {/* Remitos pendientes por enviar */}
       <div className="bg-card rounded-2xl p-3.5 mt-3 border border-border">
-        <div className="flex items-center justify-between mb-2.5">
+        <div className="mb-2.5">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
             📦 Remitos pendientes por enviar
           </div>
-          <button
-            onClick={() => { setCastilloEmailInp(castilloEmail); setEditingCastilloEmail(true); }}
-            className="text-xs text-muted-foreground hover:text-primary"
-            title="Configurar email de Castillo"
-          >
-            ⚙ {castilloEmail ? castilloEmail.split("@")[0] : "Set email"}
-          </button>
         </div>
         {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
           remitos
@@ -1308,15 +1297,6 @@ const Dashboard = () => {
               const lineas = [...(r.lineas || [])].sort((a, b) =>
                 (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en")
               );
-              const subject = encodeURIComponent(`Remito #${r.num} - Orden #${r.orden_num} - ${r.cli}`);
-              const body = encodeURIComponent(
-                `Estimados,\n\nAdjuntamos remito de retiro para procesamiento:\n\n` +
-                `Cliente: ${r.cli}\nRemito #: ${r.num}\nOrden #: ${r.orden_num}\nFecha: ${r.fecha}\n\n` +
-                `PRODUCTOS (ordenados por SKU):\n` +
-                lineas.map((l) => `${l.sku ? l.sku.padEnd(12) : "".padEnd(12)} x${String(l.qtyEnviada ?? l.qty).padStart(3)}   ${l.prodNom}`).join("\n") +
-                `\n\nTotal unidades: ${lineas.reduce((s, l) => s + (l.qtyEnviada ?? l.qty), 0)}\n\nGracias,\nPalm Hills`
-              );
-              const mailtoUrl = `mailto:${castilloEmail}?subject=${subject}&body=${body}`;
               return (
                 <div key={r.id} className="py-2.5 border-b border-border last:border-b-0">
                   <div className="flex items-start justify-between gap-2.5">
@@ -1334,13 +1314,10 @@ const Dashboard = () => {
                     </div>
                     <div className="flex flex-col gap-1.5 shrink-0">
                       <a
-                        href={castilloEmail ? mailtoUrl : "#"}
-                        onClick={(e) => {
-                          if (!castilloEmail) { e.preventDefault(); alert("Configura el email de Castillo primero (toca ⚙ Set email)"); }
-                        }}
+                        href={`/remitos/${r.id}`}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-center"
                       >
-                        📧 Email
+                        📄 Ver Remito
                       </a>
                       <button
                         onClick={() => { if (confirm("¿Confirmar que este remito fue enviado?")) marcarRemitoEnviado(r.id); }}
@@ -1358,33 +1335,6 @@ const Dashboard = () => {
         )}
       </div>
 
-      {editingCastilloEmail && (
-        <Modal title="Castillo billing email" onClose={() => setEditingCastilloEmail(false)}>
-          <Field label="Email address">
-            <input
-              type="email"
-              value={castilloEmailInp}
-              onChange={(e) => setCastilloEmailInp(e.target.value)}
-              placeholder="facturacion@castillo.com"
-              autoFocus
-              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            />
-          </Field>
-          <div className="flex gap-2.5 mt-3">
-            <button onClick={() => setEditingCastilloEmail(false)} className={`flex-1 px-4 py-2.5 rounded-full text-sm font-medium ${GLASS_BTN}`}>Cancel</button>
-            <button
-              onClick={() => {
-                localStorage.setItem("ph_castillo_email", castilloEmailInp.trim());
-                setCastilloEmail(castilloEmailInp.trim());
-                setEditingCastilloEmail(false);
-              }}
-              className={`flex-1 px-4 py-2.5 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
-            >
-              Save
-            </button>
-          </div>
-        </Modal>
-      )}
 
       {editMeta && (
         <Modal title={`Sales goal · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
