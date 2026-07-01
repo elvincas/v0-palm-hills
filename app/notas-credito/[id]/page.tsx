@@ -46,16 +46,7 @@ export default function NotaCreditoPage() {
     load()
   }, [id])
 
-  const handlePrint = async () => {
-    if (typeof navigator !== 'undefined' && 'share' in navigator) {
-      try {
-        await (navigator as Navigator & { share: (data: object) => Promise<void> }).share({
-          title: `Credit Note #${String(nota?.num).padStart(3, '0')}`,
-          text: `Palm Hills Credit Note #${String(nota?.num).padStart(3, '0')} — ${nota?.cli}`,
-        })
-        return
-      } catch {}
-    }
+  const handlePrint = () => {
     window.print()
   }
 
