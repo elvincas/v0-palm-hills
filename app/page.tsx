@@ -163,6 +163,7 @@ interface EventoCalendario {
   fecha: string;
   tipo: TipoEvento;
   cliente_id: string | null;
+  nota?: string;
   created_at?: string;
 }
 
@@ -1450,6 +1451,7 @@ const Calendario = () => {
   const [formClienteId, setFormClienteId] = useState("");
   const [formClienteSearch, setFormClienteSearch] = useState("");
   const [formClienteOpen, setFormClienteOpen] = useState(false);
+  const [formNota, setFormNota] = useState("");
   const [saving, setSaving] = useState(false);
 
   const ordenesPorFecha = useMemo(() => {
@@ -1506,6 +1508,7 @@ const Calendario = () => {
     setFormClienteId("");
     setFormClienteSearch("");
     setFormClienteOpen(false);
+    setFormNota("");
     setMenuOpen(false);
   };
 
@@ -1521,6 +1524,7 @@ const Calendario = () => {
         fecha: formFecha,
         tipo: modalTipo,
         cliente_id: modalTipo === "delivery" ? null : formClienteId,
+        ...(formNota.trim() ? { nota: formNota.trim() } : {}),
       });
       setModalTipo(null);
     } catch (err) {
@@ -1630,6 +1634,7 @@ const Calendario = () => {
                           {cInfo ? cInfo.nom : info.label}
                         </div>
                         <div className="text-xs text-muted-foreground">{info.label}</div>
+                        {ev.nota && <div className="text-xs text-muted-foreground italic mt-0.5 truncate">"{ev.nota}"</div>}
                       </div>
                     </div>
                     {!readOnly && (
@@ -1766,6 +1771,15 @@ const Calendario = () => {
               </div>
             </Field>
           )}
+          <Field label="Note (optional)">
+            <textarea
+              value={formNota}
+              onChange={(e) => setFormNota(e.target.value)}
+              placeholder={modalTipo === "visit" ? "e.g. Before noon, ask for Rafael…" : "Add a note…"}
+              rows={2}
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring resize-none"
+            />
+          </Field>
           <button
             onClick={handleCrearEvento}
             disabled={saving}
