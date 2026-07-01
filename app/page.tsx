@@ -96,6 +96,13 @@ interface Factura {
   pagos?: { monto: number; fecha: string; nota?: string }[];
 }
 
+interface LineaNC {
+  prodNom: string;
+  sku?: string;
+  qty: number;
+  precio: number;
+}
+
 interface NotaCredito {
   id: string;
   num: number;
@@ -103,6 +110,8 @@ interface NotaCredito {
   fecha: string;
   monto: number;
   motivo: string;
+  tipo?: "amount" | "product";
+  lineas?: LineaNC[];
 }
 
 interface Remito {
@@ -1812,10 +1821,13 @@ const Facturas = () => {
   const [invFocus, setInvFocus] = useState<number | null>(null);
   // Credit notes form
   const [showNcForm, setShowNcForm] = useState(false);
+  const [ncTipo, setNcTipo] = useState<"amount" | "product">("amount");
   const [ncForm, setNcForm] = useState({ cli: "", fecha: today(), monto: "", motivo: "" });
   const [ncCliSearch, setNcCliSearch] = useState("");
   const [ncCliOpen, setNcCliOpen] = useState(false);
   const [ncSaving, setNcSaving] = useState(false);
+  const [ncLineas, setNcLineas] = useState<{ prodSearch: string; prodId: string; qty: number; precio: string }[]>([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]);
+  const [ncProdOpen, setNcProdOpen] = useState<number | null>(null);
   const [ncQ, setNcQ] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -1966,10 +1978,20 @@ const Facturas = () => {
             );
           })()}
           {!readOnly && (
-            <button onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setShowNcForm(true); }} className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}>+</button>
+            <button onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setNcTipo("amount"); setNcLineas([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]); setShowNcForm(true); }} className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}>+</button>
           )}
           {showNcForm && !readOnly && (
             <Modal title="New Credit Note" onClose={() => setShowNcForm(false)}>
+              {/* Tipo selector */}
+              <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-1">
+                {(["amount", "product"] as const).map(t => (
+                  <button key={t} onClick={() => setNcTipo(t)} className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${ncTipo === t ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}>
+                    {t === "amount" ? "By Amount" : "By Product"}
+                  </button>
+                ))}
+              </div>
+
+              {/* Client */}
               <Field label="Client">
                 <div className="relative">
                   <input type="text" value={ncCliSearch} onChange={(e) => { setNcCliSearch(e.target.value); setNcForm(f => ({ ...f, cli: "" })); setNcCliOpen(true); }} onFocus={() => setNcCliOpen(true)} placeholder="Search client..." autoComplete="off" className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
@@ -1989,24 +2011,123 @@ const Facturas = () => {
                   )}
                 </div>
               </Field>
+
+              {/* Date */}
               <Field label="Date">
                 <input type="date" value={ncForm.fecha} onChange={(e) => setNcForm(f => ({ ...f, fecha: e.target.value }))} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
               </Field>
-              <Field label="Amount ($)">
-                <input type="number" min="0" step="0.01" value={ncForm.monto} onChange={(e) => setNcForm(f => ({ ...f, monto: e.target.value }))} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
-              </Field>
-              <Field label="Reason / Notes">
-                <input type="text" value={ncForm.motivo} onChange={(e) => setNcForm(f => ({ ...f, motivo: e.target.value }))} placeholder="Reason for credit..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
-              </Field>
+
+              {ncTipo === "amount" ? (
+                <>
+                  <Field label="Amount ($)">
+                    <input type="number" min="0" step="0.01" value={ncForm.monto} onChange={(e) => setNcForm(f => ({ ...f, monto: e.target.value }))} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+                  </Field>
+                  <Field label="Reason / Notes">
+                    <input type="text" value={ncForm.motivo} onChange={(e) => setNcForm(f => ({ ...f, motivo: e.target.value }))} placeholder="Reason for credit..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+                  </Field>
+                </>
+              ) : (
+                <>
+                  {/* Product lines */}
+                  <div className="space-y-2">
+                    {ncLineas.map((ln, idx) => {
+                      const prod = productos.find(p => p.id === ln.prodId);
+                      const lineTotal = prod ? (parseFloat(ln.precio) || 0) * ln.qty : 0;
+                      return (
+                        <div key={idx} className="bg-muted rounded-xl p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Product {idx + 1}</span>
+                            {ncLineas.length > 1 && (
+                              <button onClick={() => setNcLineas(prev => prev.filter((_, i) => i !== idx))} className="text-muted-foreground hover:text-destructive text-lg leading-none">×</button>
+                            )}
+                          </div>
+                          {/* Product search */}
+                          <div className="relative">
+                            <input
+                              type="text"
+                              value={ln.prodSearch}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, prodSearch: v, prodId: "", precio: "" } : l));
+                                setNcProdOpen(idx);
+                              }}
+                              onFocus={() => setNcProdOpen(idx)}
+                              placeholder="Search product..."
+                              autoComplete="off"
+                              className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                            />
+                            {ln.prodId && <span className="absolute right-3 top-1/2 -translate-y-1/2 text-primary text-xs font-bold">✓</span>}
+                            {ncProdOpen === idx && (
+                              <>
+                                <div className="fixed inset-0 z-10" onClick={() => setNcProdOpen(null)} />
+                                <div className="absolute left-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-48 overflow-y-auto w-full">
+                                  {productos.filter(p => !ln.prodSearch || p.nom.toLowerCase().includes(ln.prodSearch.toLowerCase()) || (p.sku || "").toLowerCase().includes(ln.prodSearch.toLowerCase())).slice(0, 30).map(p => (
+                                    <button key={p.id} onClick={() => {
+                                      setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, prodId: p.id, prodSearch: p.nom, precio: String(p.precio) } : l));
+                                      setNcProdOpen(null);
+                                    }} className="w-full text-left px-3 py-2 hover:bg-muted border-b border-border last:border-0">
+                                      <div className="text-sm font-medium text-card-foreground">{p.nom}</div>
+                                      <div className="text-xs text-muted-foreground">{p.sku ? `SKU: ${p.sku} · ` : ""}${fmt(p.precio)}</div>
+                                    </button>
+                                  ))}
+                                </div>
+                              </>
+                            )}
+                          </div>
+                          {/* Qty + Price */}
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Qty</label>
+                              <input type="number" min="1" value={ln.qty} onChange={(e) => setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, qty: parseInt(e.target.value) || 1 } : l))} className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                            </div>
+                            <div>
+                              <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Unit Price ($)</label>
+                              <input type="number" min="0" step="0.01" value={ln.precio} onChange={(e) => setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, precio: e.target.value } : l))} placeholder="0.00" className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                            </div>
+                          </div>
+                          {ln.prodId && <div className="text-right text-xs font-bold text-primary">Line total: {fmt(lineTotal)}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <button onClick={() => setNcLineas(prev => [...prev, { prodSearch: "", prodId: "", qty: 1, precio: "" }])} className={`w-full py-2 rounded-xl text-sm font-bold mt-1 ${GLASS_BTN}`}>
+                    + Add Product
+                  </button>
+                  {/* Total preview */}
+                  {ncLineas.some(l => l.prodId) && (
+                    <div className="flex items-center justify-between bg-primary/10 rounded-xl px-4 py-2.5 mt-1">
+                      <span className="text-sm font-bold text-card-foreground">Credit Total</span>
+                      <span className="text-base font-black text-primary">{fmt(ncLineas.reduce((s, l) => s + (parseFloat(l.precio) || 0) * l.qty, 0))}</span>
+                    </div>
+                  )}
+                  <Field label="Reason / Notes">
+                    <input type="text" value={ncForm.motivo} onChange={(e) => setNcForm(f => ({ ...f, motivo: e.target.value }))} placeholder="Reason for credit..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+                  </Field>
+                </>
+              )}
+
               <button
-                disabled={ncSaving || !ncForm.cli || !ncForm.monto}
+                disabled={ncSaving || !ncForm.cli || (ncTipo === "amount" ? !ncForm.monto : !ncLineas.some(l => l.prodId && parseFloat(l.precio) > 0))}
                 onClick={async () => {
                   if (!ncForm.cli) { alert("Select a client"); return; }
-                  const m = parseFloat(ncForm.monto);
-                  if (!m || m <= 0) { alert("Enter a valid amount"); return; }
                   setNcSaving(true);
-                  try { await addNotaCredito({ cli: ncForm.cli, fecha: ncForm.fecha, monto: m, motivo: ncForm.motivo }); setShowNcForm(false); }
-                  catch (err) { alert(`Error: ${err instanceof Error ? err.message : String(err)}`); }
+                  try {
+                    if (ncTipo === "amount") {
+                      const m = parseFloat(ncForm.monto);
+                      if (!m || m <= 0) { alert("Enter a valid amount"); return; }
+                      await addNotaCredito({ cli: ncForm.cli, fecha: ncForm.fecha, monto: m, motivo: ncForm.motivo, tipo: "amount" });
+                    } else {
+                      const validLines = ncLineas.filter(l => l.prodId && parseFloat(l.precio) > 0);
+                      if (!validLines.length) { alert("Add at least one product with a price"); return; }
+                      const lineasNC: LineaNC[] = validLines.map(l => {
+                        const p = productos.find(pr => pr.id === l.prodId)!;
+                        return { prodNom: p.nom, sku: p.sku, qty: l.qty, precio: parseFloat(l.precio) };
+                      });
+                      const total = lineasNC.reduce((s, l) => s + l.precio * l.qty, 0);
+                      await addNotaCredito({ cli: ncForm.cli, fecha: ncForm.fecha, monto: total, motivo: ncForm.motivo, tipo: "product", lineas: lineasNC });
+                    }
+                    setShowNcForm(false);
+                  } catch (err) { alert(`Error: ${err instanceof Error ? err.message : String(err)}`); }
                   finally { setNcSaving(false); }
                 }}
                 className={`w-full mt-2 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}

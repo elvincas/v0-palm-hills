@@ -4,6 +4,13 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
+interface LineaNC {
+  prodNom: string
+  sku?: string
+  qty: number
+  precio: number
+}
+
 interface NotaCredito {
   id: string
   num: number
@@ -11,6 +18,8 @@ interface NotaCredito {
   fecha: string
   monto: number
   motivo?: string
+  tipo?: 'amount' | 'product'
+  lineas?: LineaNC[]
 }
 
 const fmt = (n: number) =>
@@ -131,19 +140,54 @@ export default function NotaCreditoPage() {
           </div>
 
           {/* Body */}
-          <div className="px-8 py-8">
-            {/* Amount box */}
-            <div className="flex items-center justify-between bg-[#f0f4ee] border border-[#4a6741]/20 rounded-2xl px-6 py-5 mb-6">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Credit Amount</div>
-                <div className="text-3xl font-black text-[#4a6741]">{fmt(nota.monto)}</div>
+          <div className="px-8 py-6">
+            {nota.tipo === 'product' && nota.lineas?.length ? (
+              <>
+                {/* Product lines table */}
+                <table className="w-full text-sm mb-5" style={{ borderCollapse: 'collapse' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #4a6741' }}>
+                      <th className="text-left py-2 text-[10px] font-black uppercase tracking-widest text-gray-500">Product</th>
+                      <th className="text-center py-2 text-[10px] font-black uppercase tracking-widest text-gray-500 w-12">Qty</th>
+                      <th className="text-right py-2 text-[10px] font-black uppercase tracking-widest text-gray-500 w-20">Price</th>
+                      <th className="text-right py-2 text-[10px] font-black uppercase tracking-widest text-gray-500 w-20">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {nota.lineas.map((l, i) => (
+                      <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
+                        <td className="py-2.5 pr-3">
+                          <div className="font-semibold text-gray-800 text-sm">{l.prodNom}</div>
+                          {l.sku && <div className="text-[10px] text-gray-400 font-mono">SKU: {l.sku}</div>}
+                        </td>
+                        <td className="text-center py-2.5 text-gray-700">{l.qty}</td>
+                        <td className="text-right py-2.5 text-gray-700">{fmt(l.precio)}</td>
+                        <td className="text-right py-2.5 font-semibold text-gray-800">{fmt(l.precio * l.qty)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr style={{ borderTop: '2px solid #4a6741' }}>
+                      <td colSpan={3} className="pt-3 text-right text-sm font-black text-gray-700 pr-3">Credit Total</td>
+                      <td className="pt-3 text-right text-base font-black text-[#4a6741]">{fmt(nota.monto)}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </>
+            ) : (
+              /* Amount box */
+              <div className="flex items-center justify-between bg-[#f0f4ee] border border-[#4a6741]/20 rounded-2xl px-6 py-5 mb-6">
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Credit Amount</div>
+                  <div className="text-3xl font-black text-[#4a6741]">{fmt(nota.monto)}</div>
+                </div>
+                <div className="text-4xl opacity-20">$</div>
               </div>
-              <div className="text-4xl opacity-20">$</div>
-            </div>
+            )}
 
             {/* Reason */}
             {nota.motivo && (
-              <div className="mb-8">
+              <div className="mb-6">
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1.5">Reason</div>
                 <p className="text-sm text-gray-700 leading-relaxed">{nota.motivo}</p>
               </div>
