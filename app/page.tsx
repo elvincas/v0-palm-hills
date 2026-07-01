@@ -1218,6 +1218,7 @@ const Dashboard = () => {
                     <div className="text-[9px] font-semibold text-card-foreground text-center leading-tight line-clamp-2" style={{ minHeight: "1.8rem" }}>
                       {p.nom}
                     </div>
+                    {p.sku && <div className="text-[8px] font-mono text-primary/60 text-center truncate w-full">{p.sku}</div>}
                     <div className="text-[10px] font-bold" style={{ color: "var(--accent)" }}>{fmt(p.monto)}</div>
                     <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
                   </div>
@@ -1244,7 +1245,8 @@ const Dashboard = () => {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{p.nom}</div>
-                      <div className="mt-1.5 h-1 rounded-full overflow-hidden bg-secondary">
+                      {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
+                      <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
                         <div className="h-full rounded-full" style={{ width: `${barW}%`, background: "var(--primary)" }} />
                       </div>
                     </div>
