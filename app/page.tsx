@@ -4771,7 +4771,7 @@ const Ordenes = () => {
       const cInfo = clienteFor(picking.cli);
       await addFactura({
         cli: cInfo?.nom || picking.cli,
-        fecha: picking.fecha,
+        fecha: today(),
         estado: "Pending",
         total: +facturaTotal.toFixed(2),
         lineas: facturaLineas,
@@ -4797,7 +4797,7 @@ const Ordenes = () => {
           orden_id: picking.id,
           orden_num: picking.num,
           cli: cInfo?.nom || picking.cli,
-          fecha: picking.fecha,
+          fecha: today(),
           lineas: remitoCastilloLineas,
           enviado: false,
           total: +remitoCastilloTotal.toFixed(2),
