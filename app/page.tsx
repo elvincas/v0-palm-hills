@@ -1331,16 +1331,12 @@ const Dashboard = () => {
                       )}
                     </div>
                     <div className="flex flex-col gap-1.5 shrink-0">
-                      <a
-                        href={castilloEmail ? mailtoUrl : "#"}
-                        onClick={(e) => {
-                          if (!castilloEmail) { e.preventDefault(); alert("Configure the Castillo email first (tap ⚙ Set email)"); return; }
-                          setTimeout(() => marcarRemitoEnviado(r.id), 1500);
-                        }}
+                      <button
+                        onClick={() => router.push(`/remitos/${r.id}`)}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-center"
                       >
-                        📧 Email
-                      </a>
+                        📄 PDF
+                      </button>
                       <button
                         onClick={() => marcarRemitoEnviado(r.id)}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
@@ -1806,10 +1802,10 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, readOnly } =
+  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly } =
     useData();
   const router = useRouter();
-  const [subTab, setSubTab] = useState<"invoices" | "creditos">("invoices");
+  const [subTab, setSubTab] = useState<"invoices" | "creditos" | "remitos">("invoices");
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
@@ -1940,6 +1936,9 @@ const Facturas = () => {
         </button>
         <button onClick={() => setSubTab("creditos")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "creditos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
           📋 Credit Notes
+        </button>
+        <button onClick={() => setSubTab("remitos")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "remitos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          📦 Remitos
         </button>
       </div>
 
@@ -2136,6 +2135,29 @@ const Facturas = () => {
               </button>
             </Modal>
           )}
+        </div>
+      ) : subTab === "remitos" ? (
+        <div>
+          {(() => {
+            const sent = [...remitos].filter(r => r.enviado).sort((a, b) => b.num - a.num);
+            return sent.length ? (
+              <div className="bg-card border border-border rounded-2xl overflow-hidden mb-3">
+                <div className="grid grid-cols-[1fr_1.5fr_0.8fr_0.8fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
+                  <span>Date</span><span>Client</span><span>Order #</span><span>Remito #</span>
+                </div>
+                {sent.map(r => (
+                  <button key={r.id} onClick={() => router.push(`/remitos/${r.id}`)} className="w-full grid grid-cols-[1fr_1.5fr_0.8fr_0.8fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border hover:bg-secondary/30 text-left">
+                    <span className="text-muted-foreground">{fdate(r.fecha)}</span>
+                    <span className="font-bold uppercase truncate text-card-foreground">{r.cli}</span>
+                    <span className="text-muted-foreground">#{r.orden_num}</span>
+                    <span className="font-mono text-muted-foreground">#{r.num}</span>
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-card rounded-2xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No sent remitos yet.</p></div>
+            );
+          })()}
         </div>
       ) : (
       <div>
@@ -4703,7 +4725,9 @@ const Ordenes = () => {
     setPicking(ord);
     setPickAlmacen("todos");
     setPickItems(
-      ord.lineas.map((l) => ({ ...l, qtyEnviada: l.qtyEnviada ?? l.qty, picked: l.picked ?? false }))
+      [...ord.lineas]
+        .sort((a, b) => (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en"))
+        .map((l) => ({ ...l, qtyEnviada: l.qtyEnviada ?? l.qty, picked: l.picked ?? false }))
     );
   };
 
