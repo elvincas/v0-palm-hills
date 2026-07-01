@@ -4938,6 +4938,8 @@ const Ordenes = () => {
         return null;
       }
       const precioFinal = editPrecios[prodId] ?? Number(p.precio);
+      // Preserve pick progress for products that were already in the order
+      const lineaExistente = (editingOrden.lineas || []).find((l) => l.prodId === prodId);
       return {
         prodId: p.id,
         prodNom: p.nom,
@@ -4946,7 +4948,8 @@ const Ordenes = () => {
         precio: Number(p.precio),
         precioFinal,
         qty,
-        qtyEnviada: qty,
+        qtyEnviada: lineaExistente ? Math.min(lineaExistente.qtyEnviada ?? lineaExistente.qty, qty) : qty,
+        picked: lineaExistente?.picked ?? false,
         almacen: p.almacen || "palmhills",
       };
     }).filter((l): l is NonNullable<typeof l> => l !== null);
