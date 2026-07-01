@@ -1286,16 +1286,16 @@ const Dashboard = () => {
         )}
       </div>
 
-      {/* Castillo Pickups Pending — al final del dashboard */}
+      {/* Remitos pendientes por enviar */}
       <div className="bg-card rounded-2xl p-3.5 mt-3 border border-border">
         <div className="flex items-center justify-between mb-2.5">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            Castillo Pickups Pending
+            📦 Remitos pendientes por enviar
           </div>
           <button
             onClick={() => { setCastilloEmailInp(castilloEmail); setEditingCastilloEmail(true); }}
             className="text-xs text-muted-foreground hover:text-primary"
-            title="Configure Castillo email"
+            title="Configurar email de Castillo"
           >
             ⚙ {castilloEmail ? castilloEmail.split("@")[0] : "Set email"}
           </button>
@@ -1303,45 +1303,50 @@ const Dashboard = () => {
         {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
           remitos
             .filter((r) => !r.enviado)
-            .slice(0, 10)
+            .sort((a, b) => b.num - a.num)
             .map((r) => {
-              const lineas = r.lineas || [];
+              const lineas = [...(r.lineas || [])].sort((a, b) =>
+                (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en")
+              );
               const subject = encodeURIComponent(`Remito #${r.num} - Orden #${r.orden_num} - ${r.cli}`);
               const body = encodeURIComponent(
-                `Estimados,\n\nLes enviamos el remito de retiro para su procesamiento:\n\n` +
+                `Estimados,\n\nAdjuntamos remito de retiro para procesamiento:\n\n` +
                 `Cliente: ${r.cli}\nRemito #: ${r.num}\nOrden #: ${r.orden_num}\nFecha: ${r.fecha}\n\n` +
-                `PRODUCTOS:\n` +
-                lineas.map((l) => `- ${l.sku ? l.sku + " " : ""}${l.prodNom}  x${l.qty}  $${Number(l.precio).toFixed(2)}`).join("\n") +
-                `\n\nTotal: $${Number(r.total || 0).toFixed(2)}\n\nGracias,\nPalm Hills`
+                `PRODUCTOS (ordenados por SKU):\n` +
+                lineas.map((l) => `${l.sku ? l.sku.padEnd(12) : "".padEnd(12)} x${String(l.qtyEnviada ?? l.qty).padStart(3)}   ${l.prodNom}`).join("\n") +
+                `\n\nTotal unidades: ${lineas.reduce((s, l) => s + (l.qtyEnviada ?? l.qty), 0)}\n\nGracias,\nPalm Hills`
               );
               const mailtoUrl = `mailto:${castilloEmail}?subject=${subject}&body=${body}`;
               return (
                 <div key={r.id} className="py-2.5 border-b border-border last:border-b-0">
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold truncate text-card-foreground">{r.cli}</div>
+                      <div className="text-sm font-semibold truncate text-card-foreground uppercase">{r.cli}</div>
                       <div className="text-xs text-muted-foreground">Remito #{r.num} · Orden #{r.orden_num} · {fdate(r.fecha)}</div>
                       {lineas.length > 0 && (
-                        <div className="mt-1 text-xs text-muted-foreground">
-                          {lineas.slice(0, 3).map((l, i) => (
-                            <span key={i}>{l.sku || l.prodNom} ×{l.qty}{i < Math.min(lineas.length, 3) - 1 ? ", " : ""}</span>
+                        <div className="mt-1 text-xs text-muted-foreground font-mono">
+                          {lineas.slice(0, 4).map((l, i) => (
+                            <span key={i} className="block">{l.sku || "—"} ×{l.qtyEnviada ?? l.qty}</span>
                           ))}
-                          {lineas.length > 3 && <span> +{lineas.length - 3} more</span>}
+                          {lineas.length > 4 && <span className="not-italic font-sans">+{lineas.length - 4} más</span>}
                         </div>
                       )}
                     </div>
                     <div className="flex flex-col gap-1.5 shrink-0">
-                      <button
-                        onClick={() => router.push(`/remitos/${r.id}`)}
+                      <a
+                        href={castilloEmail ? mailtoUrl : "#"}
+                        onClick={(e) => {
+                          if (!castilloEmail) { e.preventDefault(); alert("Configura el email de Castillo primero (toca ⚙ Set email)"); }
+                        }}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-center"
                       >
-                        📄 PDF
-                      </button>
+                        📧 Email
+                      </a>
                       <button
-                        onClick={() => marcarRemitoEnviado(r.id)}
+                        onClick={() => { if (confirm("¿Confirmar que este remito fue enviado?")) marcarRemitoEnviado(r.id); }}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
                       >
-                        ✓ Mark Sent
+                        ✓ Enviado
                       </button>
                     </div>
                   </div>
@@ -1349,7 +1354,7 @@ const Dashboard = () => {
               );
             })
         ) : (
-          <Empty text="No pending pickups" />
+          <Empty text="No hay remitos pendientes" />
         )}
       </div>
 
