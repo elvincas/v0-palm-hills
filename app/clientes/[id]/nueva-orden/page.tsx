@@ -33,6 +33,11 @@ const today = () => {
 const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0)
 
+const fdate = (s: string) => {
+  const [y, m, d] = s.split('-')
+  return `${m}/${d}/${y}`
+}
+
 const DIAS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']
 const MESES = ['January','February','March','April','May','June','July','August','September','October','November','December']
 
@@ -114,7 +119,7 @@ function DeliveryCalendar({ fechas, value, onChange }: { fechas: string[]; value
 
       {value && (
         <div className="mt-3 pt-2 border-t border-border text-center text-xs font-semibold text-primary">
-          🚚 {new Date(value + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          🚚 {fdate(value)}
         </div>
       )}
     </div>
@@ -367,10 +372,13 @@ export default function NuevaOrdenPage() {
         almacen: p.almacen || 'palmhills',
       }))
 
-      // Siguiente número de orden global
-      const { data: allOrdenes } = await supabase.from('ordenes').select('num')
-      const maxNum = (allOrdenes || []).reduce((m, o) => Math.max(m, o.num || 0), 0)
-      const num = maxNum + 1
+      // Siguiente número de orden global (consulta solo el máximo, no toda la tabla)
+      const { data: maxRow } = await supabase
+        .from('ordenes')
+        .select('num')
+        .order('num', { ascending: false })
+        .limit(1)
+      const num = (maxRow && maxRow.length ? Number(maxRow[0].num) || 0 : 0) + 1
 
       // Insertar orden (pendiente, lista para tomarse desde "Ordenes")
       const { data: orden, error: ordenError } = await supabase
@@ -427,9 +435,7 @@ export default function NuevaOrdenPage() {
     )
   }
 
-  const fechaLabel = fecha
-    ? new Date(fecha + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-    : ''
+  const fechaLabel = fecha ? fdate(fecha) : ''
 
   // Sin fecha seleccionada: pantalla de selección de fecha (sin productos)
   if (!fecha) {
@@ -787,7 +793,7 @@ export default function NuevaOrdenPage() {
               <p className="text-sm text-muted-foreground mb-1">
                 Client: <span className="font-medium text-card-foreground">{cliente?.nom}</span>
               </p>
-              <p className="text-sm text-muted-foreground mb-4">Fecha: {fecha}</p>
+              <p className="text-sm text-muted-foreground mb-4">Fecha: {fdate(fecha)}</p>
 
               <div className="space-y-2 mb-4">
                 {seleccionados.map(({ p, qty }) => {

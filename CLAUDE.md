@@ -25,7 +25,7 @@ app/
   auth/                     # Login, sign-up, callback OAuth
   api/admin/users/          # API admin-only para gestión de usuarios
   clientes/[id]/            # Perfil de cliente, nueva-orden, estado-cuenta (PDF)
-  ordenes/[id]/             # pick-sheet (fulfillment), estimado
+  ordenes/[id]/             # estimado (el pick se hace dentro del tab Ordenes)
   facturas/[id]/            # Detalle de factura
 components/
   bottom-nav.tsx            # Navegación inferior mobile (8 tabs)
@@ -53,7 +53,7 @@ supabase/
 | **Home** | Dashboard con meta de ventas (localStorage: `ph_meta_YYYY-MM`), métricas, últimas facturas, log de actividad |
 | **Clientes** | CRUD clientes, importación Excel, foto de local, código auto-numérico (`01-0001`) |
 | **Inventario** | Dual almacén (palmhills / castillo), fotos, SKU, stock mínimo, importación masiva Excel+ZIP |
-| **Facturas** | Sub-tabs Facturas y Notas de Crédito, IVA 16%, detalle con pagos |
+| **Facturas** | Sub-tabs Facturas, Notas de Crédito y Remitos; sin impuestos; detalle con pagos |
 | **Ordenes** | Flujo orden → pick → factura, envíos parciales por almacén |
 | **Calendario** | Fechas de entrega (🚚), visitas, cobros, pedidos; los eventos alimentan el selector de fecha en órdenes/facturas |
 | **Mejoras** | Backlog de tareas internas con prioridad y costo estimado |

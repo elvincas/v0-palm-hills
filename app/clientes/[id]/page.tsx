@@ -65,6 +65,7 @@ interface NotaCredito {
 interface Orden {
   id: string;
   num: number;
+  cli: string;
   fecha: string;
   estado: string;
   total: number;

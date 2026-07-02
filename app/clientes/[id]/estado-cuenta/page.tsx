@@ -21,6 +21,7 @@ interface Factura {
   fecha: string;
   estado: string;
   total: number;
+  pagos?: { monto: number }[];
 }
 
 interface NotaCredito {
@@ -42,7 +43,7 @@ const fdate = (s: string) => {
 
 const hoy = () => {
   const d = new Date();
-  return `${String(d.getDate()).padStart(2,"0")}/${String(d.getMonth()+1).padStart(2,"0")}/${d.getFullYear()}`;
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
 export default function EstadoCuentaPage() {
@@ -75,7 +76,7 @@ export default function EstadoCuentaPage() {
       const [{ data: fData }, { data: ncData }] = await Promise.all([
         supabase
           .from("facturas")
-          .select("id, num, fecha, estado, total")
+          .select("id, num, fecha, estado, total, pagos")
           .eq("cli", (c as Cliente).nom)
           .order("num", { ascending: true }),
         supabase
@@ -99,8 +100,13 @@ export default function EstadoCuentaPage() {
     </div>
   );
 
-  const pendingFacturas = facturas.filter(f => !["Paid", "Completed", "Cancelled"].includes(f.estado));
-  const totalDeuda = pendingFacturas.reduce((acc, f) => acc + f.total, 0);
+  // Saldo real por factura: total menos pagos parciales ya registrados.
+  const balanceDe = (f: Factura) =>
+    Math.max(0, f.total - (f.pagos || []).reduce((s, p) => s + p.monto, 0));
+  const pendingFacturas = facturas
+    .filter(f => !["Paid", "Completed", "Cancelled"].includes(f.estado))
+    .filter(f => balanceDe(f) > 0);
+  const totalDeuda = pendingFacturas.reduce((acc, f) => acc + balanceDe(f), 0);
   const totalCredito = notasCredito.reduce((acc, n) => acc + n.monto, 0);
   const neto = totalDeuda - totalCredito;
 
@@ -186,7 +192,7 @@ export default function EstadoCuentaPage() {
                           : "bg-gray-100 text-gray-600"
                         }`}>{f.estado}</span>
                       </td>
-                      <td className="py-2 text-right font-semibold text-gray-800 text-sm">{fmt(f.total)}</td>
+                      <td className="py-2 text-right font-semibold text-gray-800 text-sm">{fmt(balanceDe(f))}</td>
                     </tr>
                   ))}
                 </tbody>

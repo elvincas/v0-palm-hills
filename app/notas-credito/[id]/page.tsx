@@ -26,8 +26,8 @@ const fmt = (n: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(n || 0)
 
 const fdate = (s: string) => {
-  const [y, m, d] = s.split('-').map(Number)
-  return new Date(y, m - 1, d).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
+  const [y, m, d] = s.split('-')
+  return `${m}/${d}/${y}`
 }
 
 export default function NotaCreditoPage() {

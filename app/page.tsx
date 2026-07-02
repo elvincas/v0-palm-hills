@@ -70,6 +70,7 @@ interface Producto {
   cajas: number;
   stock: number;
   min: number;
+  reservado?: number;
   icon?: string;
   foto?: string | null;
   almacen?: "palmhills" | "castillo";
@@ -382,6 +383,9 @@ interface DataContextType {
   updateOrden: (id: string, o: Orden) => Promise<void>;
   addRemito: (r: Omit<Remito, "id" | "num">) => Promise<void>;
   marcarRemitoEnviado: (id: string) => Promise<void>;
+  ajustarInventario: (
+    cambios: { prodId: string; deltaReservado?: number; deltaStock?: number }[]
+  ) => Promise<void>;
   addMejora: (m: Omit<Mejora, "id">) => Promise<void>;
   deleteMejora: (id: string) => Promise<void>;
   updateMejora: (id: string, m: Omit<Mejora, "id">) => Promise<void>;
@@ -612,8 +616,65 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const nextNum = (rows: { num: number }[], start: number) =>
-    Math.max(start - 1, ...rows.map((r) => r.num)) + 1;
+  // Numeracion consultada a la base al momento de insertar (no del estado en
+  // memoria): reduce el riesgo de numeros duplicados cuando dos dispositivos
+  // crean documentos a la vez con datos locales desactualizados.
+  const nextNumDb = async (table: string, start: number): Promise<number> => {
+    const { data } = await supabase
+      .from(table)
+      .select("num")
+      .order("num", { ascending: false })
+      .limit(1);
+    const max = data && data.length ? Number(data[0].num) || 0 : 0;
+    return Math.max(start - 1, max) + 1;
+  };
+
+  // Una orden "activa" retiene reservas de inventario; al completarse o
+  // cancelarse las libera.
+  const ordenActiva = (estado: string) => estado !== "Completed" && estado !== "Cancelled";
+
+  // Ajusta reservas y/o stock de varios productos. Lee los valores actuales de
+  // la base (no del estado local) para no pisar cambios de otras sesiones, y
+  // nunca deja valores negativos. Castillo no lleva stock en vivo: se omite.
+  const ajustarInventario = async (
+    cambios: { prodId: string; deltaReservado?: number; deltaStock?: number }[]
+  ) => {
+    const efectivos = cambios.filter(
+      (c) => c.prodId && ((c.deltaReservado || 0) !== 0 || (c.deltaStock || 0) !== 0)
+    );
+    if (!efectivos.length) return;
+    const { data } = await supabase
+      .from("productos")
+      .select("id, stock, reservado, almacen")
+      .in("id", efectivos.map((c) => c.prodId));
+    if (!data) return;
+    const porId = new Map(
+      (data as { id: string; stock: number; reservado: number | null; almacen: string | null }[]).map((r) => [r.id, r])
+    );
+    const updates: { id: string; stock: number; reservado: number }[] = [];
+    for (const c of efectivos) {
+      const row = porId.get(c.prodId);
+      if (!row || (row.almacen || "palmhills") === "castillo") continue;
+      updates.push({
+        id: row.id,
+        stock: Math.max(0, Number(row.stock || 0) + (c.deltaStock || 0)),
+        reservado: Math.max(0, Number(row.reservado || 0) + (c.deltaReservado || 0)),
+      });
+    }
+    if (!updates.length) return;
+    await Promise.all(
+      updates.map((u) =>
+        supabase.from("productos").update({ stock: u.stock, reservado: u.reservado }).eq("id", u.id)
+      )
+    );
+    const porIdUpd = new Map(updates.map((u) => [u.id, u]));
+    setProductos((prev) =>
+      prev.map((p) => {
+        const u = porIdUpd.get(p.id);
+        return u ? { ...p, stock: u.stock, reservado: u.reservado } : p;
+      })
+    );
+  };
 
   // --- Clientes ---
   const addCliente = async (cliente: Omit<Cliente, "id">) => {
@@ -631,10 +692,25 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateCliente = async (id: string, updated: Omit<Cliente, "id">) => {
+    const anterior = clientes.find((c) => c.id === id);
     const { data, error } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
     if (idbRef.current && updated.foto_local) idbPut(idbRef.current, "cli", id, updated.foto_local);
+    // Facturas, notas de credito, ordenes y remitos quedan ligados por NOMBRE:
+    // si el nombre cambia, se renombran en cascada para no dejar huerfanos.
+    if (anterior && anterior.nom !== updated.nom) {
+      await Promise.all([
+        supabase.from("facturas").update({ cli: updated.nom }).eq("cli", anterior.nom),
+        supabase.from("notas_credito").update({ cli: updated.nom }).eq("cli", anterior.nom),
+        supabase.from("ordenes").update({ cli: updated.nom }).eq("cli", anterior.nom),
+        supabase.from("remitos").update({ cli: updated.nom }).eq("cli", anterior.nom),
+      ]);
+      setFacturas((prev) => prev.map((f) => (f.cli === anterior.nom ? { ...f, cli: updated.nom } : f)));
+      setNotasCredito((prev) => prev.map((n) => (n.cli === anterior.nom ? { ...n, cli: updated.nom } : n)));
+      setOrdenes((prev) => prev.map((o) => (o.cli === anterior.nom ? { ...o, cli: updated.nom } : o)));
+      setRemitos((prev) => prev.map((r) => (r.cli === anterior.nom ? { ...r, cli: updated.nom } : r)));
+    }
     await logAct(`Client updated: ${updated.nom}`);
   };
 
@@ -792,7 +868,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Facturas ---
   const addFactura = async (factura: Omit<Factura, "id" | "num">) => {
-    const num = nextNum(facturas, 1001);
+    const num = await nextNumDb("facturas", 1001);
     const { data, error } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
     if (error) throw new Error(error.message);
     setFacturas((prev) => [data as Factura, ...prev]);
@@ -801,7 +877,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Remitos (Constancia de Retiro Castillo) ---
   const addRemito = async (remito: Omit<Remito, "id" | "num">) => {
-    const num = nextNum(remitos as any, 5001);
+    const num = await nextNumDb("remitos", 5001);
     const { data, error } = await supabase.from("remitos").insert({ ...remito, num }).select().single();
     if (error) throw new Error(error.message);
     setRemitos((prev) => [data as Remito, ...prev]);
@@ -831,7 +907,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Notas de Crédito ---
   const addNotaCredito = async (nota: Omit<NotaCredito, "id" | "num">) => {
-    const num = nextNum(notasCredito, 1);
+    const num = await nextNumDb("notas_credito", 1);
     const { data, error } = await supabase.from("notas_credito").insert({ ...nota, num }).select().single();
     if (error) throw new Error(error.message);
     setNotasCredito((prev) => [data as NotaCredito, ...prev]);
@@ -847,21 +923,35 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   // --- Ordenes ---
   const addOrden = async (orden: Omit<Orden, "id" | "num">) => {
-    const num = nextNum(ordenes, 1);
+    const num = await nextNumDb("ordenes", 1);
     const { data, error } = await supabase.from("ordenes").insert({ ...orden, num }).select().single();
     if (error) throw new Error(error.message);
     setOrdenes((prev) => [{ ...(data as Orden), lineas: (data as Orden).lineas || [] }, ...prev]);
+    if (ordenActiva(orden.estado)) {
+      await ajustarInventario(
+        (orden.lineas || []).map((l) => ({ prodId: l.prodId, deltaReservado: l.qty }))
+      );
+    }
     await logAct(`Order #${num} → ${orden.cli}`);
   };
 
   const deleteOrden = async (id: string) => {
+    const orden = ordenes.find((o) => o.id === id);
     const { error } = await supabase.from("ordenes").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setOrdenes((prev) => prev.filter((o) => o.id !== id));
+    // Liberar las reservas que la orden retenia (las completadas ya las
+    // consumieron al generar la factura).
+    if (orden && ordenActiva(orden.estado)) {
+      await ajustarInventario(
+        (orden.lineas || []).map((l) => ({ prodId: l.prodId, deltaReservado: -l.qty }))
+      );
+    }
     await logAct(`Order deleted`);
   };
 
   const updateOrden = async (id: string, updated: Orden) => {
+    const anterior = ordenes.find((o) => o.id === id);
     const { id: _omit, ...payload } = updated;
     const { data, error } = await supabase.from("ordenes").update(payload).eq("id", id).select().single();
     if (error) {
@@ -869,6 +959,23 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       throw new Error(error.message);
     }
     setOrdenes((prev) => prev.map((o) => (o.id === id ? { ...(data as Orden), lineas: (data as Orden).lineas || [] } : o)));
+    // Ajustar reservas por la DIFERENCIA entre lo que la orden retenia antes y
+    // lo que retiene ahora. Una orden Completed/Cancelled ya no retiene nada,
+    // asi que completarla o cancelarla libera sus reservas automaticamente.
+    const qtyMap = (o?: { estado: string; lineas?: LineaOrden[] } | null) => {
+      const m = new Map<string, number>();
+      if (o && ordenActiva(o.estado)) {
+        for (const l of o.lineas || []) m.set(l.prodId, (m.get(l.prodId) || 0) + l.qty);
+      }
+      return m;
+    };
+    const antes = qtyMap(anterior);
+    const despues = qtyMap(updated);
+    const idsProd = new Set([...antes.keys(), ...despues.keys()]);
+    const deltas = Array.from(idsProd)
+      .map((prodId) => ({ prodId, deltaReservado: (despues.get(prodId) || 0) - (antes.get(prodId) || 0) }))
+      .filter((c) => c.deltaReservado !== 0);
+    if (deltas.length) await ajustarInventario(deltas);
     await logAct(`Order #${updated.num} updated`);
   };
 
@@ -976,6 +1083,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     updateOrden,
     addRemito,
     marcarRemitoEnviado,
+    ajustarInventario,
     addMejora,
     deleteMejora,
     updateMejora,
@@ -1830,11 +1938,11 @@ const Facturas = () => {
 
   const { visible: visibleFacturas, hasMore, remaining, loadMore } = usePagedList(filtered, [q]);
 
-  const subtotal = lineas.reduce((acc, l) => {
+  // Sin impuestos: el total es la suma directa de las lineas.
+  const total = lineas.reduce((acc, l) => {
     const p = productos.find((x) => x.id === l.prodId);
     return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0);
   }, 0);
-  const total = subtotal * 1.16;
 
   const handleSave = async () => {
     if (saving) return;
@@ -2328,9 +2436,6 @@ const Facturas = () => {
             + Add product
           </button>
           <div className="border-t border-border pt-2.5 text-right mb-3">
-            <div className="text-sm text-muted-foreground mb-0.5">
-              Subtotal: {fmt(subtotal)} - IVA 16%: {fmt(subtotal * 0.16)}
-            </div>
             <strong className="text-lg text-card-foreground">Total: {fmt(total)}</strong>
           </div>
           <div className="flex gap-2.5">
@@ -4556,6 +4661,7 @@ const Ordenes = () => {
     deleteOrden,
     addFactura,
     addRemito,
+    ajustarInventario,
     readOnly,
   } = useData();
   const router = useRouter();
@@ -4654,6 +4760,7 @@ const Ordenes = () => {
         sku: p.sku || "",
         precio: Number(p.precio),
         qty: Number(l.qty),
+        almacen: p.almacen || ("palmhills" as const),
       };
     });
     try {
@@ -4705,7 +4812,12 @@ const Ordenes = () => {
     setCompleting(true);
     try {
       const lineasFinal = pickItems.map(({ picked, ...rest }) => rest);
+      // Al pasar a Completed, updateOrden libera las reservas de la orden;
+      // aqui solo falta descontar del stock lo que realmente salio del almacen.
       await updateOrden(picking.id, { ...picking, lineas: lineasFinal, estado: "Completed" });
+      await ajustarInventario(
+        pickItems.map((it) => ({ prodId: it.prodId, deltaStock: -(it.qtyEnviada ?? it.qty) }))
+      );
 
       // Genera la factura solo con lo que realmente se envio (cantidad enviada > 0)
       const facturaLineas: LineaFactura[] = pickItems
@@ -6219,7 +6331,7 @@ const GestionarUsuarios = () => {
               <div className="flex-1 min-w-0">
                 <div className="text-sm font-bold text-card-foreground truncate">{u.email}</div>
                 <div className="text-xs text-muted-foreground mb-1">
-                  Created: {new Date(u.created_at).toLocaleDateString("en-US")}
+                  Created: {new Date(u.created_at).toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" })}
                 </div>
                 <button
                   onClick={() => handleChangeRole(u.email, u.role === "admin" ? "visitante" : "admin")}

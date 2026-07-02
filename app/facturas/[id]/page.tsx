@@ -159,8 +159,14 @@ export default function FacturaPage() {
   const handleMarkPaid = async () => {
     if (!factura) return;
     const newEstado = "Paid";
-    const fullPago: Pago = { monto: factura.total, fecha: today(), nota: "Marked as fully paid" };
-    const newPagos = [...(factura.pagos || []), fullPago];
+    // Registrar solo el saldo restante: si ya habia pagos parciales, agregar
+    // el total completo inflaria el historial de pagos.
+    const pagado = (factura.pagos || []).reduce((acc, p) => acc + p.monto, 0);
+    const restante = +(factura.total - pagado).toFixed(2);
+    const newPagos =
+      restante > 0
+        ? [...(factura.pagos || []), { monto: restante, fecha: today(), nota: "Marked as fully paid" }]
+        : [...(factura.pagos || [])];
     const { error } = await supabase.from("facturas").update({ estado: newEstado, pagos: newPagos }).eq("id", facturaId);
     if (error) { alert("Error: " + error.message); return; }
     setFactura(f => f ? { ...f, estado: newEstado, pagos: newPagos } : f);
