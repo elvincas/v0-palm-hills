@@ -30,6 +30,20 @@ interface Factura {
   total: number;
   lineas?: LineaFactura[];
   pagos?: Pago[];
+  orden_id?: string | null;
+}
+
+interface LineaOrdenRev {
+  prodId: string;
+  prodNom: string;
+  barcode?: string;
+  sku?: string;
+  precio: number;
+  precioFinal?: number;
+  qty: number;
+  qtyEnviada?: number;
+  picked?: boolean;
+  almacen?: string;
 }
 
 interface Cliente {
@@ -118,6 +132,7 @@ export default function FacturaPage() {
   const [pagoNota, setPagoNota] = useState("");
   const [savingPago, setSavingPago] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [reverting, setReverting] = useState(false);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -146,6 +161,165 @@ export default function FacturaPage() {
     };
     load();
   }, [facturaId, supabase]);
+
+  // Ajusta stock/reservado leyendo los valores actuales de la base; nunca deja
+  // negativos y omite Castillo (no lleva stock en vivo). Misma logica que el
+  // DataProvider, duplicada aqui porque esta pagina no vive dentro de el.
+  const ajustarInventario = async (
+    cambios: { prodId: string; deltaReservado?: number; deltaStock?: number }[]
+  ) => {
+    const efectivos = cambios.filter(
+      (c) => c.prodId && ((c.deltaReservado || 0) !== 0 || (c.deltaStock || 0) !== 0)
+    );
+    if (!efectivos.length) return;
+    const { data } = await supabase
+      .from("productos")
+      .select("id, stock, reservado, almacen")
+      .in("id", efectivos.map((c) => c.prodId));
+    if (!data) return;
+    const porId = new Map(
+      (data as { id: string; stock: number; reservado: number | null; almacen: string | null }[]).map((r) => [r.id, r])
+    );
+    await Promise.all(
+      efectivos.flatMap((c) => {
+        const row = porId.get(c.prodId);
+        if (!row || (row.almacen || "palmhills") === "castillo") return [];
+        return [
+          supabase
+            .from("productos")
+            .update({
+              stock: Math.max(0, Number(row.stock || 0) + (c.deltaStock || 0)),
+              reservado: Math.max(0, Number(row.reservado || 0) + (c.deltaReservado || 0)),
+            })
+            .eq("id", row.id),
+        ];
+      })
+    );
+  };
+
+  // Revierte la factura a una orden "In Progress" con todo pickeado, lista
+  // para ajustar y volver a facturar. Devuelve al stock lo enviado y vuelve a
+  // reservar lo pedido; elimina remitos pendientes de esa orden y la factura.
+  const handleRevert = async () => {
+    if (!factura || reverting) return;
+    if (
+      !confirm(
+        `Revert invoice #${factura.num} back to an order? The invoice will be deleted (including its payments) and the order will appear in Orders with everything picked, ready to modify.`
+      )
+    )
+      return;
+    setReverting(true);
+    try {
+      let reabierta = false;
+
+      // 1) Si la factura esta ligada a su orden original, reabrirla tal cual
+      if (factura.orden_id) {
+        const { data: orden } = await supabase
+          .from("ordenes")
+          .select("*")
+          .eq("id", factura.orden_id)
+          .maybeSingle();
+        if (orden) {
+          const lineas = ((orden.lineas || []) as LineaOrdenRev[]).map((l) => ({ ...l, picked: true }));
+          const { error: updErr } = await supabase
+            .from("ordenes")
+            .update({ estado: "In Progress", lineas })
+            .eq("id", orden.id);
+          if (updErr) throw new Error(updErr.message);
+          await ajustarInventario(
+            lineas.map((l) => ({
+              prodId: l.prodId,
+              deltaStock: l.qtyEnviada ?? l.qty,
+              deltaReservado: l.qty,
+            }))
+          );
+          // El remito pendiente ya no aplica: se regenera al completar de nuevo
+          await supabase.from("remitos").delete().eq("orden_id", orden.id).eq("enviado", false);
+          reabierta = true;
+        }
+      }
+
+      // 2) Sin orden ligada (facturas antiguas): reconstruir una orden nueva
+      //    desde las lineas de la factura, resolviendo productos por SKU/nombre
+      if (!reabierta) {
+        const lineasF = factura.lineas || [];
+        if (!lineasF.length) throw new Error("This invoice has no product lines to revert.");
+        const skus = Array.from(new Set(lineasF.map((l) => (l.sku || "").trim()).filter(Boolean)));
+        const noms = Array.from(new Set(lineasF.map((l) => l.prodNom).filter(Boolean)));
+        const [porSku, porNom] = await Promise.all([
+          skus.length
+            ? supabase.from("productos").select("id, nom, sku, almacen").in("sku", skus)
+            : Promise.resolve({ data: [] as never[] }),
+          noms.length
+            ? supabase.from("productos").select("id, nom, sku, almacen").in("nom", noms)
+            : Promise.resolve({ data: [] as never[] }),
+        ]);
+        const prods = [...(porSku.data || []), ...(porNom.data || [])] as {
+          id: string; nom: string; sku: string | null; almacen: string | null;
+        }[];
+        const buscar = (l: LineaFactura) =>
+          prods.find(
+            (p) =>
+              l.sku &&
+              (p.sku || "").trim().toLowerCase() === l.sku.trim().toLowerCase() &&
+              (p.almacen || "palmhills") === (l.almacen || "palmhills")
+          ) || prods.find((p) => p.nom === l.prodNom);
+        const lineasOrden: LineaOrdenRev[] = [];
+        let omitidas = 0;
+        for (const l of lineasF) {
+          const p = buscar(l);
+          if (!p) { omitidas++; continue; }
+          lineasOrden.push({
+            prodId: p.id,
+            prodNom: l.prodNom,
+            barcode: l.barcode || "",
+            sku: l.sku || "",
+            precio: l.precioOriginal ?? l.precio,
+            precioFinal: l.precio,
+            qty: l.qty,
+            qtyEnviada: l.qty,
+            picked: true,
+            almacen: l.almacen || p.almacen || "palmhills",
+          });
+        }
+        if (!lineasOrden.length) throw new Error("None of the invoice products exist in inventory anymore.");
+        const { data: maxRow } = await supabase
+          .from("ordenes")
+          .select("num")
+          .order("num", { ascending: false })
+          .limit(1);
+        const num = (maxRow && maxRow.length ? Number(maxRow[0].num) || 0 : 0) + 1;
+        const total = lineasOrden.reduce((a, l) => a + l.qty * (l.precioFinal ?? l.precio), 0);
+        const { error: insErr } = await supabase.from("ordenes").insert({
+          num,
+          cli: factura.cli,
+          fecha: factura.fecha,
+          estado: "In Progress",
+          total: +total.toFixed(2),
+          lineas: lineasOrden,
+        });
+        if (insErr) throw new Error(insErr.message);
+        await ajustarInventario(
+          lineasOrden.map((l) => ({
+            prodId: l.prodId,
+            deltaStock: l.qtyEnviada ?? l.qty,
+            deltaReservado: l.qty,
+          }))
+        );
+        if (omitidas > 0) {
+          alert(`${omitidas} product(s) from the invoice no longer exist in inventory and were skipped.`);
+        }
+      }
+
+      // 3) Eliminar la factura y volver a la pestaña de ordenes
+      const { error: delErr } = await supabase.from("facturas").delete().eq("id", facturaId);
+      if (delErr) throw new Error(delErr.message);
+      router.push("/?tab=ord");
+    } catch (err) {
+      alert(`Could not revert: ${err instanceof Error ? err.message : String(err)}`);
+      setReverting(false);
+    }
+  };
 
   const handleDelete = async () => {
     if (!factura) return;
@@ -295,6 +469,16 @@ export default function FacturaPage() {
                 className="px-4 py-2 rounded-full text-sm font-bold backdrop-blur-md bg-green-600/85 border border-white/30 shadow-md hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
               >
                 ✓ Paid
+              </button>
+            )}
+            {!readOnly && (
+              <button
+                onClick={handleRevert}
+                disabled={reverting}
+                title="Revert this invoice back to an order to adjust products and re-invoice"
+                className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN} disabled:opacity-50`}
+              >
+                {reverting ? "Reverting..." : "↩️ To Order"}
               </button>
             )}
             <button

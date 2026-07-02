@@ -95,6 +95,9 @@ interface Factura {
   total: number;
   lineas?: LineaFactura[];
   pagos?: { monto: number; fecha: string; nota?: string }[];
+  // Orden que genero esta factura (via completePick). Permite "revertir" la
+  // factura reabriendo esa orden para ajustarla y volver a facturar.
+  orden_id?: string | null;
 }
 
 interface LineaNC {
@@ -869,7 +872,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // --- Facturas ---
   const addFactura = async (factura: Omit<Factura, "id" | "num">) => {
     const num = await nextNumDb("facturas", 1001);
-    const { data, error } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
+    let { data, error } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
+    // Si la columna orden_id aun no existe en la base (migracion pendiente),
+    // reintentar sin ella para no bloquear la facturacion.
+    if (error && /orden_id/i.test(error.message) && "orden_id" in factura) {
+      const { orden_id: _skip, ...sinOrden } = factura;
+      ({ data, error } = await supabase.from("facturas").insert({ ...sinOrden, num }).select().single());
+    }
     if (error) throw new Error(error.message);
     setFacturas((prev) => [data as Factura, ...prev]);
     await logAct(`Invoice #${num} → ${factura.cli}`);
@@ -4839,6 +4848,7 @@ const Ordenes = () => {
         estado: "Pending",
         total: +facturaTotal.toFixed(2),
         lineas: facturaLineas,
+        orden_id: picking.id,
       });
 
       // Genera remito SOLO para productos de Castillo (constancia de retiro)
