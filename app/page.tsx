@@ -4674,7 +4674,6 @@ const Ordenes = () => {
     readOnly,
   } = useData();
   const router = useRouter();
-  const [show, setShow] = useState(false);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
@@ -4683,12 +4682,6 @@ const Ordenes = () => {
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
     []
   );
-  const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
-  const [form, setForm] = useState({
-    cli: "",
-    fecha: "",
-    estado: "Pending",
-  });
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
   const [editCli, setEditCli] = useState("");
@@ -4700,95 +4693,10 @@ const Ordenes = () => {
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
   const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
-  const [newOrderAlmacen, setNewOrderAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
-  const [newOrderSearches, setNewOrderSearches] = useState<string[]>([""]);
-  const [newOrderFocus, setNewOrderFocus] = useState<number | null>(null);
   const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pending" });
 
   const clienteFor = (cli: string) =>
     clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
-
-  const productosPorSku = useMemo(
-    () =>
-      [...productos].sort((a, b) => {
-        const skuA = (a.sku || "").trim();
-        const skuB = (b.sku || "").trim();
-        if (!skuA && skuB) return 1;
-        if (skuA && !skuB) return -1;
-        return skuA.localeCompare(skuB, "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
-      }),
-    [productos]
-  );
-
-  const productosNewOrder = useMemo(
-    () =>
-      productosPorSku.filter((p) => {
-        if (newOrderAlmacen === "all") return true;
-        const alm = p.almacen ?? null;
-        if (newOrderAlmacen === "palmhills") return alm === "palmhills" || alm === null;
-        return alm === newOrderAlmacen;
-      }),
-    [productosPorSku, newOrderAlmacen]
-  );
-
-  const getProductosSugeridos = (search: string) => {
-    if (!search.trim()) return productosNewOrder.slice(0, 30);
-    return flexibleSearch(
-      productosNewOrder,
-      search,
-      (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(" "),
-      (p) => p.nom
-    ).slice(0, 30);
-  };
-
-  const total = lineas.reduce((acc, l) => {
-    const p = productos.find((x) => x.id === l.prodId);
-    return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0);
-  }, 0);
-
-  const handleSave = async () => {
-    if (!form.cli) {
-      alert("Select a client");
-      return;
-    }
-    if (!form.fecha) {
-      alert("Select a delivery date");
-      return;
-    }
-    const items = lineas.filter((l) => l.prodId);
-    if (items.length === 0) {
-      alert("Add at least one product");
-      return;
-    }
-    const lineasDetalle = items.map((l) => {
-      const p = productos.find((x) => x.id === l.prodId)!;
-      return {
-        prodId: p.id,
-        prodNom: p.nom,
-        barcode: p.barcode || "",
-        sku: p.sku || "",
-        precio: Number(p.precio),
-        qty: Number(l.qty),
-        almacen: p.almacen || ("palmhills" as const),
-      };
-    });
-    try {
-      await addOrden({
-        cli: form.cli,
-        fecha: form.fecha,
-        estado: form.estado,
-        total: +total.toFixed(2),
-        lineas: lineasDetalle,
-      });
-      setShow(false);
-      setLineas([{ prodId: "", qty: 1 }]);
-      setForm({ cli: "", fecha: "", estado: "Pending" });
-      setNewOrderSearches([""]);
-      setNewOrderFocus(null);
-    } catch (err) {
-      alert("Error saving order: " + (err instanceof Error ? err.message : String(err)));
-    }
-  };
 
   const startPick = (ord: Orden) => {
     if (!ord.lineas?.length) {
@@ -5242,185 +5150,6 @@ const Ordenes = () => {
                   <span className="text-sm text-card-foreground font-medium">{c.nom}</span>
                 </button>
               ))}
-          </div>
-        </Modal>
-      )}
-
-      {show && !readOnly && (
-        <Modal title="New Order" onClose={() => setShow(false)}>
-          <Field label="Client">
-            <select
-              value={form.cli}
-              onChange={(e) => setForm({ ...form, cli: e.target.value })}
-              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-            >
-              <option value="">Selecciona...</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nom}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Row2>
-            <Field label="Delivery">
-              {proximasFechasEntrega.length ? (
-                <select
-                  value={form.fecha}
-                  onChange={(e) => setForm({ ...form, fecha: e.target.value })}
-                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-                >
-                  <option value="">Selecciona...</option>
-                  {proximasFechasEntrega.map((f) => (
-                    <option key={f} value={f}>
-                      {fdate(f)}
-                    </option>
-                  ))}
-                </select>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  No hay días marcados — agrega uno desde Calendario.
-                </p>
-              )}
-            </Field>
-            <Field label="Estado">
-              <select
-                value={form.estado}
-                onChange={(e) => setForm({ ...form, estado: e.target.value })}
-                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-              >
-                <option>Pending</option>
-                <option>In Progress</option>
-                <option>Completed</option>
-              </select>
-            </Field>
-          </Row2>
-          <div className="flex items-center justify-between mb-2">
-            <div className="text-sm font-semibold text-muted-foreground">Products</div>
-            <div className="flex gap-1">
-              {(["all", "palmhills", "castillo"] as const).map((a) => (
-                <button
-                  key={a}
-                  onClick={() => { setNewOrderAlmacen(a); setNewOrderSearches(lineas.map(() => "")); }}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${newOrderAlmacen === a ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"}`}
-                >
-                  {a === "all" ? "All" : a === "palmhills" ? "Palm Hills" : "Castillo"}
-                </button>
-              ))}
-            </div>
-          </div>
-          {lineas.map((l, i) => {
-            const selectedProd = productos.find((p) => p.id === l.prodId);
-            const search = newOrderSearches[i] ?? "";
-            const sugeridos = getProductosSugeridos(search);
-            const isFocused = newOrderFocus === i;
-            return (
-              <div key={i} className="mb-2 bg-muted rounded-lg p-2">
-                <div className="flex gap-1.5 items-center mb-1">
-                  <div className="flex-[2] relative">
-                    {selectedProd ? (
-                      <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-primary bg-card text-card-foreground text-sm">
-                        <span className="flex-1 truncate">
-                          {selectedProd.sku ? `${selectedProd.sku} — ` : ""}{selectedProd.nom}
-                        </span>
-                        <button
-                          onClick={() => {
-                            setLineas((ls) => ls.map((x, j) => j === i ? { ...x, prodId: "" } : x));
-                            setNewOrderSearches((ss) => ss.map((s, j) => j === i ? "" : s));
-                          }}
-                          className="text-muted-foreground text-xs ml-1"
-                        >
-                          X
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            placeholder="Buscar producto..."
-                            value={search}
-                            onChange={(e) => setNewOrderSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
-                            onFocus={() => setNewOrderFocus(i)}
-                            onBlur={() => setTimeout(() => setNewOrderFocus(null), 200)}
-                            className="w-full px-2.5 py-2 pr-7 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-                          />
-                          {search && <button onMouseDown={(e) => { e.preventDefault(); setNewOrderSearches((ss) => ss.map((s, j) => j === i ? "" : s)); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-lg leading-none">×</button>}
-                        </div>
-                        {isFocused && sugeridos.length > 0 && (
-                          <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
-                            {sugeridos.map((p) => (
-                              <button
-                                key={p.id}
-                                onMouseDown={() => {
-                                  setLineas((ls) => ls.map((x, j) => j === i ? { ...x, prodId: p.id } : x));
-                                  setNewOrderSearches((ss) => ss.map((s, j) => j === i ? "" : s));
-                                  setNewOrderFocus(null);
-                                }}
-                                className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b border-border last:border-0 text-card-foreground"
-                              >
-                                <span className="font-medium">{p.sku ? `${p.sku} — ` : ""}{p.nom}</span>
-                                <span className="text-muted-foreground ml-1">{fmt(p.precio)}</span>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    value={l.qty}
-                    onChange={(e) =>
-                      setLineas((ls) =>
-                        ls.map((x, j) =>
-                          j === i ? { ...x, qty: Math.max(1, Number(e.target.value)) } : x
-                        )
-                      )
-                    }
-                    autoComplete="off"
-                    className="w-14 px-1.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm text-center outline-none"
-                  />
-                  <button
-                    onClick={() => {
-                      setLineas((ls) => ls.filter((_, j) => j !== i));
-                      setNewOrderSearches((ss) => ss.filter((_, j) => j !== i));
-                    }}
-                    className="bg-transparent border-none text-lg cursor-pointer text-muted-foreground"
-                  >
-                    X
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-          <button
-            onClick={() => {
-              setLineas((l) => [...l, { prodId: "", qty: 1 }]);
-              setNewOrderSearches((ss) => [...ss, ""]);
-            }}
-            className="w-full px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm mb-3"
-          >
-            + Add product
-          </button>
-          <div className="text-right border-t border-border pt-2.5 mb-3">
-            <strong className="text-base text-card-foreground">Total: {fmt(total)}</strong>
-          </div>
-          <div className="flex gap-2.5">
-            <button
-              onClick={() => setShow(false)}
-              className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
-            >
-              Cancel
-            </button>
-            <button
-              onClick={handleSave}
-              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
-            >
-              Save Order
-            </button>
           </div>
         </Modal>
       )}

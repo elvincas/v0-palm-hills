@@ -489,16 +489,31 @@ export default function NuevaOrdenPage() {
           </div>
 
           <div className="mt-3 flex flex-col gap-2">
-            <input
-              type="search"
-              inputMode="search"
-              placeholder="Search by name, SKU or barcode"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              autoComplete="off"
-              autoCorrect="off"
-              className="w-full px-3 py-2 rounded-lg border border-input bg-background text-card-foreground text-base"
-            />
+            <div className="relative">
+              <input
+                type="text"
+                inputMode="search"
+                placeholder="Search by name, SKU or barcode"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                // Al volver al buscador (despues de fijar una cantidad, por
+                // ejemplo) todo el texto queda seleccionado: escribir la
+                // siguiente busqueda lo reemplaza de inmediato.
+                onFocus={(e) => e.target.select()}
+                autoComplete="off"
+                autoCorrect="off"
+                className="w-full px-3 py-2 pr-8 rounded-lg border border-input bg-background text-card-foreground text-base"
+              />
+              {search && (
+                <button
+                  onClick={() => setSearch('')}
+                  aria-label="Clear search"
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none"
+                >
+                  ×
+                </button>
+              )}
+            </div>
             {allTags.length > 0 && (
               <div
                 className="flex gap-1.5 overflow-x-auto no-scrollbar pb-1"
