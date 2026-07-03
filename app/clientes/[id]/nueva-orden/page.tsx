@@ -578,11 +578,11 @@ export default function NuevaOrdenPage() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-md p-0.5 shadow-sm gap-0.5">
               <button
                 onClick={() => setSortMode('sku')}
                 aria-label="Sort by SKU"
-                className={`px-2.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
                   sortMode === 'sku' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
                 }`}
               >
@@ -591,7 +591,7 @@ export default function NuevaOrdenPage() {
               <button
                 onClick={() => setSortMode('nom')}
                 aria-label="Sort by name"
-                className={`px-2.5 py-1.5 rounded-full text-xs font-bold transition-all ${
+                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
                   sortMode === 'nom' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
                 }`}
               >
