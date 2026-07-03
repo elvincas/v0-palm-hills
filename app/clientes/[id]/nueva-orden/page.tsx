@@ -286,18 +286,19 @@ export default function NuevaOrdenPage() {
       return matchAlmacen && matchTag
     })
     if (search.trim()) {
-      // flexibleSearch ya devuelve por relevancia — no re-ordenar
-      return flexibleSearch(
+      list = flexibleSearch(
         list,
         search,
         (p) => [p.nom, p.sku, p.barcode, ...(p.etiquetas || [])].filter(Boolean).join(' '),
         (p) => p.nom
       )
     }
+    // El orden elegido (SKU o A-Z) se respeta SIEMPRE, tambien sobre los
+    // resultados de una busqueda — no se deja el orden de relevancia.
     if (sortMode === 'nom') {
       return list.slice().sort((a, b) => a.nom.localeCompare(b.nom, 'en', { sensitivity: 'base' }))
     }
-    // Default: SKU A-Z
+    // SKU A-Z (los sin SKU van al final)
     return list.slice().sort((a, b) => {
       const skuA = (a.sku || '').trim()
       const skuB = (b.sku || '').trim()
