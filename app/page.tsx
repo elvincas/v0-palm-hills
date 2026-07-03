@@ -4682,6 +4682,12 @@ const Ordenes = () => {
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
     []
   );
+  // Ultimo producto pickeado de la orden abierta (persistido en localStorage
+  // por orden): al reabrir el pick se resalta y se hace scroll hasta el, para
+  // refrescar la memoria de por donde iba el progreso.
+  const [lastPickedId, setLastPickedId] = useState<string | null>(null);
+  const [pickDirty, setPickDirty] = useState(false);
+  const lastPickedRef = useRef<HTMLDivElement | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [editingOrden, setEditingOrden] = useState<Orden | null>(null);
   const [editCli, setEditCli] = useState("");
@@ -4705,6 +4711,12 @@ const Ordenes = () => {
     }
     setPicking(ord);
     setPickAlmacen("todos");
+    setPickDirty(false);
+    try {
+      setLastPickedId(localStorage.getItem(`ph_lastpick_${ord.id}`));
+    } catch {
+      setLastPickedId(null);
+    }
     setPickItems(
       [...ord.lineas]
         .sort((a, b) => (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en"))
@@ -4713,7 +4725,14 @@ const Ordenes = () => {
   };
 
   const togglePicked = (idx: number) => {
-    setPickItems((prev) => prev.map((it, i) => (i === idx ? { ...it, picked: !it.picked } : it)));
+    setPickItems((prev) => {
+      const item = prev[idx];
+      if (item && !item.picked && picking) {
+        try { localStorage.setItem(`ph_lastpick_${picking.id}`, item.prodId); } catch { /* ignore */ }
+      }
+      return prev.map((it, i) => (i === idx ? { ...it, picked: !it.picked } : it));
+    });
+    setPickDirty(true);
   };
 
   const setQtyEnviada = (idx: number, qty: number) => {
@@ -4722,7 +4741,32 @@ const Ordenes = () => {
         i === idx ? { ...it, qtyEnviada: Math.max(0, Math.min(qty, it.qty)) } : it
       )
     );
+    setPickDirty(true);
   };
+
+  // Al cerrar el pick sin completar, guardar el progreso automaticamente para
+  // no perder lo ya cotejado. Si hay algo pickeado, la orden pasa a In Progress.
+  const cerrarPick = async () => {
+    if (!picking) return;
+    if (pickDirty && picking.estado !== "Completed") {
+      const nuevoEstado =
+        pickItems.some((i) => i.picked) && picking.estado === "Pending" ? "In Progress" : picking.estado;
+      try {
+        await updateOrden(picking.id, { ...picking, lineas: pickItems, estado: nuevoEstado });
+      } catch (err) {
+        console.error("[v0] No se pudo guardar el progreso del pick:", err);
+      }
+    }
+    setPicking(null);
+  };
+
+  // Al reabrir el pick, llevar la vista hasta el ultimo producto pickeado.
+  useEffect(() => {
+    if (!picking) return;
+    const t = setTimeout(() => lastPickedRef.current?.scrollIntoView({ block: "center" }), 150);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [picking?.id]);
 
   const completePick = async () => {
     if (!picking || completing) return;
@@ -4786,6 +4830,7 @@ const Ordenes = () => {
         });
       }
 
+      try { localStorage.removeItem(`ph_lastpick_${picking.id}`); } catch { /* ignore */ }
       setPicking(null);
     } catch (err) {
       alert(
@@ -5412,7 +5457,7 @@ const Ordenes = () => {
             style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}
           >
             <button
-              onClick={() => setPicking(null)}
+              onClick={cerrarPick}
               className="bg-white/20 border-none text-white text-lg cursor-pointer rounded-full w-8 h-8 flex items-center justify-center"
             >
               X
@@ -5463,10 +5508,12 @@ const Ordenes = () => {
                 const qtyEnviada = item.qtyEnviada ?? item.qty;
                 const missing = qtyEnviada === 0;
                 const parcial = qtyEnviada > 0 && qtyEnviada < item.qty;
+                const esUltimoPickeado = !!lastPickedId && item.prodId === lastPickedId;
                 return (
                   <div
                     key={i}
-                    className={`bg-card border rounded-2xl p-3 flex items-center gap-3 ${item.picked ? "border-primary" : "border-border"}`}
+                    ref={esUltimoPickeado ? lastPickedRef : undefined}
+                    className={`bg-card border rounded-2xl p-3 flex items-center gap-3 ${item.picked ? "border-primary" : "border-border"} ${esUltimoPickeado ? "ring-2 ring-amber-300" : ""}`}
                   >
                     <button
                       onClick={() => togglePicked(i)}
@@ -5511,6 +5558,9 @@ const Ordenes = () => {
                         {item.prodNom}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">Pedido: {item.qty}</div>
+                      {esUltimoPickeado && (
+                        <div className="text-[11px] text-amber-600 font-bold mt-0.5">⭐ Last picked</div>
+                      )}
                       {missing && (
                         <div className="text-[11px] text-destructive font-bold mt-0.5">MISSING</div>
                       )}
@@ -5556,7 +5606,7 @@ const Ordenes = () => {
             )}
             <div className="flex gap-2 mb-2">
               <button
-                onClick={() => setPicking(null)}
+                onClick={cerrarPick}
                 className={`flex-1 px-3 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}
               >
                 Close

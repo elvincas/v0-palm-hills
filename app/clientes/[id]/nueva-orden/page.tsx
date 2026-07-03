@@ -550,76 +550,32 @@ export default function NuevaOrdenPage() {
 
       {/* Catálogo de productos */}
       <div className="max-w-2xl mx-auto p-4 pb-44" style={{ paddingBottom: "calc(11rem + env(safe-area-inset-bottom))" }}>
-        <div className="flex items-center justify-between gap-2 mb-2.5">
-          <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
-            <button
-              onClick={() => setAlmacen('all')}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                almacen === 'all' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-              }`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setAlmacen('palmhills')}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                almacen === 'palmhills' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-              }`}
-            >
-              🌴 Palm Hills
-            </button>
-            <button
-              onClick={() => setAlmacen('castillo')}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                almacen === 'castillo' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-              }`}
-            >
-              🏰 Castillo
-            </button>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <div className="inline-flex bg-white/30 border border-border/60 rounded p-px gap-px">
-              <button
-                onClick={() => setSortMode('sku')}
-                aria-label="Sort by SKU"
-                className={`px-1.5 py-0.5 rounded-sm text-[9px] font-semibold transition-all ${
-                  sortMode === 'sku' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                SKU
-              </button>
-              <button
-                onClick={() => setSortMode('nom')}
-                aria-label="Sort by name"
-                className={`px-1.5 py-0.5 rounded-sm text-[9px] font-semibold transition-all ${
-                  sortMode === 'nom' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
-                }`}
-              >
-                A–Z
-              </button>
+        {/* Fila de controles: tres grupos segmentados con exactamente el mismo
+            alto, tipografia y radios, para que se vean alineados y simetricos. */}
+        {(() => {
+          const seg = (activo: boolean) =>
+            `px-2 h-6 flex items-center rounded-md text-[10px] font-bold whitespace-nowrap transition-all ${
+              activo ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
+            }`
+          const grupo = 'inline-flex items-center shrink-0 bg-white/40 border border-border/60 rounded-lg p-0.5 gap-0.5'
+          return (
+            <div className="flex items-center justify-between gap-1.5 mb-2.5 overflow-x-auto no-scrollbar">
+              <div className={grupo}>
+                <button onClick={() => setAlmacen('all')} className={seg(almacen === 'all')}>All</button>
+                <button onClick={() => setAlmacen('palmhills')} className={seg(almacen === 'palmhills')}>🌴 Palm Hills</button>
+                <button onClick={() => setAlmacen('castillo')} className={seg(almacen === 'castillo')}>🏰 Castillo</button>
+              </div>
+              <div className={grupo}>
+                <button onClick={() => setSortMode('sku')} aria-label="Sort by SKU" className={seg(sortMode === 'sku')}>SKU</button>
+                <button onClick={() => setSortMode('nom')} aria-label="Sort by name" className={seg(sortMode === 'nom')}>A–Z</button>
+              </div>
+              <div className={grupo}>
+                <button onClick={() => cambiarColumnas(2)} aria-label="2 columns" className={seg(columnas === 2)}>▥2</button>
+                <button onClick={() => cambiarColumnas(3)} aria-label="3 columns" className={seg(columnas === 3)}>▦3</button>
+              </div>
             </div>
-            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
-              <button
-                onClick={() => cambiarColumnas(2)}
-                aria-label="2 columns"
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  columnas === 2 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                ▥ 2
-              </button>
-              <button
-                onClick={() => cambiarColumnas(3)}
-                aria-label="3 columns"
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  columnas === 3 ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
-                }`}
-              >
-                ▦ 3
-              </button>
-            </div>
-          </div>
-        </div>
+          )
+        })()}
         <div className={`grid gap-2.5 ${columnas === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {filtered.length ? (
             filtered.map((p) => {
