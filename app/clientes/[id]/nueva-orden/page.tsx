@@ -578,12 +578,12 @@ export default function NuevaOrdenPage() {
             </button>
           </div>
           <div className="flex items-center gap-1.5">
-            <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-md p-0.5 shadow-sm gap-0.5">
+            <div className="inline-flex bg-white/30 border border-border/60 rounded p-px gap-px">
               <button
                 onClick={() => setSortMode('sku')}
                 aria-label="Sort by SKU"
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                  sortMode === 'sku' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+                className={`px-1.5 py-0.5 rounded-sm text-[9px] font-semibold transition-all ${
+                  sortMode === 'sku' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
                 }`}
               >
                 SKU
@@ -591,8 +591,8 @@ export default function NuevaOrdenPage() {
               <button
                 onClick={() => setSortMode('nom')}
                 aria-label="Sort by name"
-                className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all ${
-                  sortMode === 'nom' ? 'bg-primary text-primary-foreground shadow-sm' : 'text-muted-foreground'
+                className={`px-1.5 py-0.5 rounded-sm text-[9px] font-semibold transition-all ${
+                  sortMode === 'nom' ? 'bg-primary text-primary-foreground' : 'text-muted-foreground'
                 }`}
               >
                 A–Z

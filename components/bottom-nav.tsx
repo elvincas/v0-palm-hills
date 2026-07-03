@@ -25,6 +25,37 @@ export const NAV_TABS = [
   { id: "usr", label: "Users" },
 ];
 
+// Memoria de navegacion por pestaña: al salir de una sub-pagina (ej. el perfil
+// de un cliente) hacia otra pestaña, se recuerda donde quedo el usuario para
+// regresarlo ahi mismo si vuelve pronto. Pasado el limite de tiempo, la
+// pestaña vuelve a abrir en su lista normal.
+const LASTLOC_TTL_MS = 10 * 60 * 1000; // 10 minutos
+
+const saveLastLoc = (tab: string, path: string) => {
+  try {
+    localStorage.setItem(`ph_lastloc_${tab}`, JSON.stringify({ path, ts: Date.now() }));
+  } catch { /* storage no disponible */ }
+};
+
+const clearLastLoc = (tab: string) => {
+  try { localStorage.removeItem(`ph_lastloc_${tab}`); } catch { /* ignore */ }
+};
+
+const readLastLoc = (tab: string): string | null => {
+  try {
+    const raw = localStorage.getItem(`ph_lastloc_${tab}`);
+    if (!raw) return null;
+    const { path, ts } = JSON.parse(raw) as { path?: string; ts?: number };
+    if (!path || Date.now() - (ts || 0) > LASTLOC_TTL_MS) {
+      clearLastLoc(tab);
+      return null;
+    }
+    return path;
+  } catch {
+    return null;
+  }
+};
+
 export function BottomNav({
   active,
   onSelect,
@@ -41,7 +72,25 @@ export function BottomNav({
     itemRefs.current[active]?.scrollIntoView({ behavior: "smooth", inline: "center", block: "nearest" });
   }, [active]);
 
+  // Registrar la ubicacion actual como "donde quedo" la pestaña activa.
+  // En la pagina principal (path "/") se limpia: estar en la lista significa
+  // que la pestaña ya no debe regresar a una sub-pagina vieja.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const path = window.location.pathname;
+    if (path !== "/") saveLastLoc(active, path);
+    else clearLastLoc(active);
+  }, [active]);
+
   const go = (id: string) => {
+    // Volver a la sub-pagina recordada (si sigue vigente). Tocar la pestaña
+    // estando YA en esa sub-pagina navega a la lista, como escape.
+    const saved = readLastLoc(id);
+    if (saved && saved !== window.location.pathname) {
+      router.push(saved);
+      return;
+    }
+    if (saved) clearLastLoc(id);
     if (onSelect) {
       onSelect(id);
     } else {
