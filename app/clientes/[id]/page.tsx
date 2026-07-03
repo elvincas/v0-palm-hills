@@ -322,7 +322,7 @@ export default function ClientePerfilPage() {
     setSavingNota(false);
   };
 
-  const ROLES_TELEFONO = ["Establecimiento", "Dueño", "Manager", "Pagos", "El que ordena"];
+  const ROLES_TELEFONO = ["Store", "Owner", "Manager", "Payments", "Places orders"];
 
   const handleAddTelefono = async () => {
     if (!newPhoneRol || !newPhoneNum.trim() || !cliente) return;

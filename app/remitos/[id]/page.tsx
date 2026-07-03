@@ -114,12 +114,12 @@ export default function RemitoPage() {
               <img src="/logo.png" alt="Palm Hills" className="w-12 h-12 object-contain shrink-0" />
               <div>
                 <div className="text-base font-black text-[#1a1a18] leading-tight">Palm Hills</div>
-                <div className="text-[10px] text-gray-400 mt-0.5">Constancia de Retiro — Castillo</div>
+                <div className="text-[10px] text-gray-400 mt-0.5">Pickup Confirmation — Castillo</div>
               </div>
             </div>
             <div className="text-right">
               <div className="text-lg font-black tracking-wide text-[#4a6741]">REMITO #{remito.num}</div>
-              <div className="text-xs text-gray-500 mt-0.5">Orden #{remito.orden_num}</div>
+              <div className="text-xs text-gray-500 mt-0.5">Order #{remito.orden_num}</div>
               <div className="text-xs text-gray-400 mt-0.5">{fdate(remito.fecha)}</div>
             </div>
           </div>
@@ -186,7 +186,7 @@ export default function RemitoPage() {
           {/* Footer */}
           <div className="px-8 pb-5 text-center">
             <p className="text-[9px] text-gray-300">
-              Remito #{remito.num} · Orden #{remito.orden_num} · {fdate(remito.fecha)} · Palm Hills
+              Remito #{remito.num} · Order #{remito.orden_num} · {fdate(remito.fecha)} · Palm Hills
             </p>
           </div>
 

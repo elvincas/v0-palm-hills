@@ -137,6 +137,8 @@ export default function NuevaOrdenPage() {
   const [saving, setSaving] = useState(false)
 
   const [fecha, setFecha] = useState('')
+  // Fecha tocada en el calendario, pendiente de confirmar con "Accept"
+  const [fechaTemp, setFechaTemp] = useState('')
   const [fechasEntrega, setFechasEntrega] = useState<string[]>([])
   const [search, setSearch] = useState('')
   const [tagFilter, setTagFilter] = useState<string>('')
@@ -437,7 +439,8 @@ export default function NuevaOrdenPage() {
 
   const fechaLabel = fecha ? fdate(fecha) : ''
 
-  // Sin fecha seleccionada: pantalla de selección de fecha (sin productos)
+  // Sin fecha confirmada: pantalla de seleccion de fecha (sin productos).
+  // La fecha tocada queda en fechaTemp y solo se confirma con el boton Accept.
   if (!fecha) {
     return (
       <div className="min-h-screen bg-background">
@@ -450,12 +453,21 @@ export default function NuevaOrdenPage() {
           </button>
           <h1 className="text-xl font-bold text-card-foreground">New Order</h1>
           {cliente && <p className="text-sm text-muted-foreground mb-4">{cliente.nom}</p>}
-          <p className="text-sm font-semibold text-card-foreground mb-3">Select a delivery date</p>
+          <p className="text-sm font-semibold text-card-foreground mb-3">Select the delivery day</p>
           {fechasEntrega.length ? (
-            <DeliveryCalendar fechas={fechasEntrega} value={fecha} onChange={setFecha} />
+            <>
+              <DeliveryCalendar fechas={fechasEntrega} value={fechaTemp} onChange={setFechaTemp} />
+              <button
+                onClick={() => fechaTemp && setFecha(fechaTemp)}
+                disabled={!fechaTemp}
+                className="w-full mt-4 py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold text-base shadow-md disabled:opacity-40 active:scale-[0.98] transition-all"
+              >
+                {fechaTemp ? `Accept · ${fdate(fechaTemp)}` : 'Accept'}
+              </button>
+            </>
           ) : (
             <p className="text-xs text-muted-foreground">
-              No hay días de entrega disponibles. Agrega fechas de entrega en el Calendario.
+              No delivery days available. Add delivery dates in the Calendar.
             </p>
           )}
         </div>
@@ -480,7 +492,7 @@ export default function NuevaOrdenPage() {
               {cliente && <p className="text-sm text-muted-foreground truncate">{cliente.nom}</p>}
             </div>
             <button
-              onClick={() => setFecha('')}
+              onClick={() => { setFechaTemp(fecha); setFecha(''); }}
               className="shrink-0 flex items-center gap-1.5 bg-secondary border border-primary/20 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary-foreground"
             >
               🚚 {fechaLabel}
@@ -711,7 +723,7 @@ export default function NuevaOrdenPage() {
                       }`}
                     />
                     {excede && (
-                      <p className="text-[10px] text-destructive mt-1">Excede stock disponible ({disp})</p>
+                      <p className="text-[10px] text-destructive mt-1">Exceeds available stock ({disp})</p>
                     )}
                   </div>
                 </div>
@@ -764,7 +776,7 @@ export default function NuevaOrdenPage() {
               <p className="text-sm text-muted-foreground mb-1">
                 Client: <span className="font-medium text-card-foreground">{cliente?.nom}</span>
               </p>
-              <p className="text-sm text-muted-foreground mb-4">Fecha: {fdate(fecha)}</p>
+              <p className="text-sm text-muted-foreground mb-4">Date: {fdate(fecha)}</p>
 
               <div className="space-y-2 mb-4">
                 {seleccionados.map(({ p, qty }) => {
@@ -791,7 +803,7 @@ export default function NuevaOrdenPage() {
                             <span className="ml-1 line-through text-muted-foreground/70">{fmt(p.precio)}</span>
                           )}
                         </p>
-                        {excede && <p className="text-[10px] text-destructive">Excede disponible ({disp})</p>}
+                        {excede && <p className="text-[10px] text-destructive">Exceeds available ({disp})</p>}
                       </div>
                       <p className="text-sm font-bold text-card-foreground">{fmt(precioEfectivo(p) * qty)}</p>
                     </div>

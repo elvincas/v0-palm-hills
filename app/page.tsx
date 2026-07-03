@@ -302,7 +302,7 @@ const LoadMoreButton = ({
       onClick={onClick}
       className="w-full mt-3 py-2.5 rounded-xl border border-border text-sm font-bold text-secondary-foreground"
     >
-      Cargar más ({remaining} restantes)
+      Load more ({remaining} remaining)
     </button>
   );
 };
@@ -1161,7 +1161,7 @@ const Dashboard = () => {
           : "bg-gradient-to-r from-slate-400 to-slate-300";
 
   const statusLabel =
-    pct >= 100 ? "Meta alcanzada!" : pct >= 70 ? "Muy cerca!" : pct >= 40 ? "On track" : "Comenzando";
+    pct >= 100 ? "Goal reached!" : pct >= 70 ? "Almost there!" : pct >= 40 ? "On track" : "Getting started";
 
   const saveMeta = () => {
     const v = Number(metaInp);
@@ -1405,7 +1405,7 @@ const Dashboard = () => {
       <div className="bg-card rounded-2xl p-3.5 mt-3 border border-border">
         <div className="mb-2.5">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            📦 Remitos pendientes por enviar
+            📦 Remitos pending to send
           </div>
         </div>
         {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
@@ -1421,13 +1421,13 @@ const Dashboard = () => {
                   <div className="flex items-start justify-between gap-2.5">
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-semibold truncate text-card-foreground uppercase">{r.cli}</div>
-                      <div className="text-xs text-muted-foreground">Remito #{r.num} · Orden #{r.orden_num} · {fdate(r.fecha)}</div>
+                      <div className="text-xs text-muted-foreground">Remito #{r.num} · Order #{r.orden_num} · {fdate(r.fecha)}</div>
                       {lineas.length > 0 && (
                         <div className="mt-1 text-xs text-muted-foreground font-mono">
                           {lineas.slice(0, 4).map((l, i) => (
                             <span key={i} className="block">{l.sku || "—"} ×{l.qtyEnviada ?? l.qty}</span>
                           ))}
-                          {lineas.length > 4 && <span className="not-italic font-sans">+{lineas.length - 4} más</span>}
+                          {lineas.length > 4 && <span className="not-italic font-sans">+{lineas.length - 4} more</span>}
                         </div>
                       )}
                     </div>
@@ -1436,13 +1436,13 @@ const Dashboard = () => {
                         href={`/remitos/${r.id}`}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-center"
                       >
-                        📄 Ver Remito
+                        📄 View Remito
                       </a>
                       <button
-                        onClick={() => { if (confirm("¿Confirmar que este remito fue enviado?")) marcarRemitoEnviado(r.id); }}
+                        onClick={() => { if (confirm("Confirm this remito was sent?")) marcarRemitoEnviado(r.id); }}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
                       >
-                        ✓ Enviado
+                        ✓ Sent
                       </button>
                     </div>
                   </div>
@@ -1450,7 +1450,7 @@ const Dashboard = () => {
               );
             })
         ) : (
-          <Empty text="No hay remitos pendientes" />
+          <Empty text="No pending remitos" />
         )}
       </div>
 
@@ -1731,7 +1731,7 @@ const Calendario = () => {
             </div>
           )}
           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
-            Entregas del {fdate(diaSeleccionado)}
+            Deliveries for {fdate(diaSeleccionado)}
           </div>
           {ordenesDelDia.length ? (
             ordenesDelDia.map((o) => {
@@ -2293,7 +2293,7 @@ const Facturas = () => {
               onChange={(e) => setClienteSeleccionado(e.target.value)}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             >
-              <option value="">Selecciona...</option>
+              <option value="">Select...</option>
               {clientes.map((c) => (
                 <option key={c.id} value={c.nom}>
                   {c.nom}
@@ -2309,7 +2309,7 @@ const Facturas = () => {
                   onChange={(e) => setFecha(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
                 >
-                  <option value="">Selecciona...</option>
+                  <option value="">Select...</option>
                   {proximasFechasEntrega.map((f) => (
                     <option key={f} value={f}>
                       {fdate(f)}
@@ -2318,7 +2318,7 @@ const Facturas = () => {
                 </select>
               ) : (
                 <p className="text-xs text-muted-foreground">
-                  No hay días de entrega marcados — agrega uno desde Calendario.
+                  No delivery days marked — add one from the Calendar.
                 </p>
               )}
             </Field>
@@ -2377,7 +2377,7 @@ const Facturas = () => {
                         <div className="relative">
                           <input
                             type="text"
-                            placeholder="Buscar producto..."
+                            placeholder="Search product..."
                             value={srch}
                             onChange={(e) => setInvSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
                             onFocus={() => setInvFocus(i)}
@@ -2734,7 +2734,7 @@ const Clientes = () => {
                   onClick={() => { setShowAddMenu(false); setBulkRows([]); setBulkErr(""); setShowBulk(true); }}
                 >
                   <span className="text-base">↑</span>
-                  Subir a granel
+                  Bulk Upload
                 </button>
               </div>
             )}
@@ -2933,7 +2933,7 @@ const Clientes = () => {
                 value={form.codigo_cliente}
                 onChange={(e) => setForm({ ...form, codigo_cliente: e.target.value })}
                 readOnly={!editId}
-                placeholder="Ej. 01-0001"
+                placeholder="E.g. 01-0001"
                 autoComplete="off"
                 className={`w-full px-3 py-2.5 rounded-xl border border-input text-base font-mono outline-none focus:ring-2 focus:ring-ring ${
                   !editId ? "bg-muted text-muted-foreground cursor-not-allowed" : "bg-card text-card-foreground"
@@ -2962,11 +2962,11 @@ const Clientes = () => {
                   onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, rol: e.target.value } : x) })}
                   className="px-2 py-2 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring shrink-0"
                 >
-                  <option>Establecimiento</option>
+                  <option>Store</option>
                   <option>Manager</option>
-                  <option>Dueño</option>
-                  <option>Pagos</option>
-                  <option>El que ordena</option>
+                  <option>Owner</option>
+                  <option>Payments</option>
+                  <option>Places orders</option>
                 </select>
                 <input
                   value={t.num}
@@ -3017,7 +3017,7 @@ const Clientes = () => {
             />
           </Field>
           <Row2>
-            <Field label="Ciudad">
+            <Field label="City">
               <input
                 value={form.ciudad}
                 onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
@@ -3090,7 +3090,7 @@ const Clientes = () => {
       {showCropModal && cropImage && (
         <Modal onClose={() => setShowCropModal(false)}>
           <div className="p-4 bg-card rounded-xl max-w-md w-full">
-            <h2 className="text-xl font-bold mb-4">Ajusta tu foto</h2>
+            <h2 className="text-xl font-bold mb-4">Adjust your photo</h2>
             <div style={{ position: "relative", width: "100%", height: "300px" }} className="mb-4 rounded-lg overflow-hidden bg-black">
               <Cropper
                 image={cropImage}
@@ -3320,10 +3320,10 @@ type ClienteBulkRow = {
 };
 
 const SORT_OPTIONS: { key: SortKey; label: string }[] = [
-  { key: "nom", label: "A-Z Descripcion" },
+  { key: "nom", label: "A-Z Description" },
   { key: "precio", label: "Price" },
   { key: "stock", label: "Current Stock" },
-  { key: "fabricante", label: "Fabricante" },
+  { key: "fabricante", label: "Manufacturer" },
   { key: "barcode", label: "Barcode" },
   { key: "sku", label: "SKU" },
 ];
@@ -3912,8 +3912,8 @@ const Inventario = () => {
       if (typeof result === 'object') {
         const msg = updatePrices
           ? `${result.actualizados} prices updated. ${result.insertados} new products imported.`
-          : `Se importaron ${result.insertados} productos correctamente.${
-              result.duplicados > 0 ? ` (${result.duplicados} duplicados saltados)` : ''
+          : `${result.insertados} products imported successfully.${
+              result.duplicados > 0 ? ` (${result.duplicados} duplicates skipped)` : ''
             }`;
         alert(msg);
         setShowBulk(false);
@@ -4020,7 +4020,7 @@ const Inventario = () => {
               onClick={() => setTagFilter([])}
               className="shrink-0 text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground"
             >
-              Limpiar
+              Clear
             </button>
           )}
           {allTags.map((t) => {
@@ -4415,7 +4415,7 @@ const Inventario = () => {
               </button>
             </div>
           </Field>
-          <Field label="Foto">
+          <Field label="Photo">
             <div
               onClick={() => document.getElementById("fotoInput")?.click()}
               className="w-32 h-32 rounded-xl border-2 border-dashed border-border flex flex-col items-center justify-center cursor-pointer bg-white mb-1"
@@ -4430,7 +4430,7 @@ const Inventario = () => {
                 <>
                   <div className="text-2xl">📷</div>
                   <div className="text-xs text-muted-foreground mt-1 text-center px-1">
-                    Toca
+                    Tap
                   </div>
                 </>
               )}
@@ -4447,7 +4447,7 @@ const Inventario = () => {
                 onClick={() => setFoto(null)}
                 className="w-full px-2.5 py-1 rounded-lg backdrop-blur-md bg-red-50/80 border border-red-200/60 text-destructive text-xs mb-1"
               >
-                X Quitar foto
+                X Remove photo
               </button>
             )}
           </Field>
@@ -4481,7 +4481,7 @@ const Inventario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Fabricante">
+          <Field label="Manufacturer">
             <input
               value={form.fabricante}
               onChange={(e) => setForm({ ...form, fabricante: e.target.value })}
@@ -4489,7 +4489,7 @@ const Inventario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Etiquetas">
+          <Field label="Tags">
             <div className="w-full px-2 py-2 rounded-xl border border-input bg-card focus-within:ring-2 focus-within:ring-ring">
               {form.etiquetas.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-1.5">
@@ -4541,7 +4541,7 @@ const Inventario = () => {
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
-            <Field label="Costo ($)">
+            <Field label="Cost ($)">
               <input
                 type="text"
                 inputMode="decimal"
@@ -4627,7 +4627,7 @@ const Inventario = () => {
               onClick={handleSave}
               className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY}`}
             >
-              {editId ? "Actualizar" : "Save"} Producto
+              {editId ? "Update" : "Save"} Product
             </button>
           </div>
         </Modal>
@@ -4640,7 +4640,7 @@ const Inventario = () => {
         >
           <img
             src={fotoAmpliada}
-            alt="Foto ampliada"
+            alt="Enlarged photo"
             className="max-w-full max-h-full object-contain rounded-lg"
           />
           <button
@@ -5517,7 +5517,7 @@ const Ordenes = () => {
                   >
                     <button
                       onClick={() => togglePicked(i)}
-                      aria-label={item.picked ? "Marcar como pendiente" : "Marcar como pickeado"}
+                      aria-label={item.picked ? "Mark as pending" : "Mark as picked"}
                       className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center backdrop-blur-md border transition-all active:scale-90 ${
                         item.picked
                           ? "bg-primary/80 border-white/40 shadow-md"
@@ -5557,7 +5557,7 @@ const Ordenes = () => {
                       <div className="text-xs text-card-foreground leading-snug break-words mt-0.5">
                         {item.prodNom}
                       </div>
-                      <div className="text-xs text-muted-foreground mt-0.5">Pedido: {item.qty}</div>
+                      <div className="text-xs text-muted-foreground mt-0.5">Ordered: {item.qty}</div>
                       {esUltimoPickeado && (
                         <div className="text-[11px] text-amber-600 font-bold mt-0.5">⭐ Last picked</div>
                       )}
@@ -5621,7 +5621,7 @@ const Ordenes = () => {
                 }
                 className="flex-1 px-3 py-2.5 rounded-full bg-amber-100 text-amber-800 font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                Sacada parcialmente
+                Partially picked
               </button>
             </div>
             <button
@@ -5922,16 +5922,16 @@ const Mejoras = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Descripcion / notas">
+          <Field label="Description / notes">
             <textarea
               value={form.descripcion}
               onChange={(e) => setForm({ ...form, descripcion: e.target.value })}
               rows={3}
-              placeholder="Detalles, justificacion, proveedores, etc."
+              placeholder="Details, justification, suppliers, etc."
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring resize-none"
             />
           </Field>
-          <Field label="Costo estimado ($)">
+          <Field label="Estimated cost ($)">
             <input
               type="text"
               inputMode="decimal"
@@ -5943,7 +5943,7 @@ const Mejoras = () => {
             />
           </Field>
           <Row2>
-            <Field label="Prioridad">
+            <Field label="Priority">
               <select
                 value={form.prioridad}
                 onChange={(e) => setForm({ ...form, prioridad: e.target.value })}
@@ -5954,7 +5954,7 @@ const Mejoras = () => {
                 ))}
               </select>
             </Field>
-            <Field label="Estado">
+            <Field label="Status">
               <select
                 value={form.estado}
                 onChange={(e) => setForm({ ...form, estado: e.target.value })}
@@ -6224,7 +6224,7 @@ const GestionarUsuarios = () => {
               disabled={loading}
               className="flex-1 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground font-bold text-sm disabled:opacity-50"
             >
-              {loading ? "Creando..." : "Create User"}
+              {loading ? "Creating..." : "Create User"}
             </button>
           </div>
         </Modal>
@@ -6335,7 +6335,7 @@ function AppContent() {
           </div>
           <button
             onClick={signOut}
-            aria-label="Cerrar sesion"
+            aria-label="Sign out"
             className="shrink-0 w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground"
           >
             <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
