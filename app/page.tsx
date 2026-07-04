@@ -1128,12 +1128,42 @@ const mesActualNombre = () => {
 
 const Dashboard = () => {
   const { facturas, clientes, productos, logs, readOnly, remitos, marcarRemitoEnviado, todos, toggleTodo } = useData();
+  const supabase = useMemo(() => createClient(), []);
   const [meta, setMeta] = useState(() => {
     if (typeof window === "undefined") return 0;
     return Number(localStorage.getItem(`ph_meta_${mesActualKey()}`) || 0);
   });
   const [editMeta, setEditMeta] = useState(false);
   const [metaInp, setMetaInp] = useState("");
+
+  // Correo fijo al que se envian los remitos (tabla config, compartido entre
+  // dispositivos). Se ajusta desde la propia tarjeta de remitos pendientes.
+  const [remitoEmail, setRemitoEmail] = useState("");
+  const [editRemitoEmail, setEditRemitoEmail] = useState(false);
+  const [remitoEmailInp, setRemitoEmailInp] = useState("");
+  const [savingRemitoEmail, setSavingRemitoEmail] = useState(false);
+
+  useEffect(() => {
+    supabase
+      .from("config")
+      .select("value")
+      .eq("key", "remito_email")
+      .maybeSingle()
+      .then(({ data }) => setRemitoEmail(data?.value || ""), () => {});
+  }, [supabase]);
+
+  const saveRemitoEmail = async () => {
+    const v = remitoEmailInp.trim();
+    setSavingRemitoEmail(true);
+    const { error } = await supabase.from("config").upsert({ key: "remito_email", value: v });
+    setSavingRemitoEmail(false);
+    if (error) {
+      alert("Could not save the email: " + error.message);
+      return;
+    }
+    setRemitoEmail(v);
+    setEditRemitoEmail(false);
+  };
 
 
   const facturasDelMes = useMemo(
@@ -1404,9 +1434,48 @@ const Dashboard = () => {
       {/* Remitos pendientes por enviar */}
       <div className="bg-card rounded-2xl p-3.5 mt-3 border border-border">
         <div className="mb-2.5">
-          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-            📦 Remitos pending to send
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              📦 Remitos pending to send
+            </div>
+            {!readOnly && !editRemitoEmail && (
+              <button
+                onClick={() => { setRemitoEmailInp(remitoEmail); setEditRemitoEmail(true); }}
+                className="text-[11px] font-semibold text-primary shrink-0"
+              >
+                {remitoEmail ? "✏️ Edit email" : "＋ Set email"}
+              </button>
+            )}
           </div>
+          {editRemitoEmail ? (
+            <div className="flex items-center gap-1.5 mt-1.5">
+              <input
+                type="email"
+                value={remitoEmailInp}
+                onChange={(e) => setRemitoEmailInp(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && saveRemitoEmail()}
+                placeholder="remitos@example.com"
+                autoFocus
+                autoComplete="off"
+                className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={saveRemitoEmail}
+                disabled={savingRemitoEmail}
+                className="px-2.5 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold disabled:opacity-50"
+              >
+                {savingRemitoEmail ? "..." : "Save"}
+              </button>
+              <button
+                onClick={() => setEditRemitoEmail(false)}
+                className="text-muted-foreground text-base leading-none px-1"
+              >
+                ×
+              </button>
+            </div>
+          ) : remitoEmail ? (
+            <div className="text-[11px] text-muted-foreground mt-0.5">✉️ Send to: <span className="font-mono">{remitoEmail}</span></div>
+          ) : null}
         </div>
         {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
           remitos
@@ -1438,6 +1507,16 @@ const Dashboard = () => {
                       >
                         📄 View Remito
                       </a>
+                      {remitoEmail && (
+                        <a
+                          href={`mailto:${remitoEmail}?subject=${encodeURIComponent(`Remito #${r.num} — ${r.cli}`)}&body=${encodeURIComponent(
+                            `Remito #${r.num} · Order #${r.orden_num} · ${fdate(r.fecha)}\n\n${typeof window !== "undefined" ? window.location.origin : ""}/remitos/${r.id}`
+                          )}`}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90 text-center"
+                        >
+                          ✉️ Email
+                        </a>
+                      )}
                       <button
                         onClick={() => { if (confirm("Confirm this remito was sent?")) marcarRemitoEnviado(r.id); }}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
