@@ -227,6 +227,9 @@ export default function NuevaOrdenPage() {
             .from('productos')
             .select('id, nom, sku, barcode, fabricante, etiquetas, precio, stock, min, reservado, almacen')
             .order('nom')
+            // Desempate por id: con nombres repetidos el orden entre paginas
+            // no es estable y .range() puede duplicar o saltarse filas.
+            .order('id')
             .range(desde, desde + PAGE - 1)
           if (loteError) {
             console.log('[v0] Error cargando productos:', loteError.message)

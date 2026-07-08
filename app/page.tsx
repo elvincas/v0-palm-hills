@@ -550,6 +550,11 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         .from(table)
         .select(cols)
         .order(orderCol, { ascending })
+        // Desempate por id: si orderCol tiene valores repetidos (ej. una
+        // importacion masiva deja el mismo created_at en miles de productos),
+        // el orden entre paginas no es estable y .range() puede duplicar
+        // filas en una pagina y saltarse otras.
+        .order("id", { ascending: true })
         .range(from, from + PAGE_SIZE - 1);
       if (error || !data) break;
       rows.push(...(data as T[]));
@@ -4960,7 +4965,10 @@ const Ordenes = () => {
     setEditCliOpen(false);
     setEditForm({ fecha: ord.fecha, estado: ord.estado });
     setEditSearch("");
-    setEditAlmacen("palmhills");
+    // Arrancar en el almacen de la orden: si el toggle queda en un almacen
+    // que no es el de las lineas, la busqueda "no encuentra" los productos.
+    const almacenes = new Set((ord.lineas || []).map((l) => (l.almacen === "castillo" ? "castillo" : "palmhills") as const));
+    setEditAlmacen(almacenes.size === 1 ? [...almacenes][0] : almacenes.size > 1 ? "all" : "palmhills");
     setEditandoDescuentoId(null);
     const initialQtys: Record<string, number> = {};
     const initialPrecios: Record<string, number> = {};
