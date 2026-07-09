@@ -1963,6 +1963,12 @@ const Facturas = () => {
   const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly } =
     useData();
   const router = useRouter();
+  // Prefetch del codigo de la pagina de detalle: sin esto, el primer tap a una
+  // factura tiene que descargar el chunk JS de la ruta y se percibe lento.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (facturas[0]) router.prefetch(`/facturas/${facturas[0].id}`);
+  }, [facturas.length > 0]);
   const [subTab, setSubTab] = useState<"invoices" | "creditos" | "remitos">("invoices");
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
@@ -4758,6 +4764,11 @@ const Ordenes = () => {
     readOnly,
   } = useData();
   const router = useRouter();
+  // Prefetch del codigo de la pagina de estimate para que el primer tap abra rapido.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (ordenes[0]) router.prefetch(`/ordenes/${ordenes[0].id}/estimado`);
+  }, [ordenes.length > 0]);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);

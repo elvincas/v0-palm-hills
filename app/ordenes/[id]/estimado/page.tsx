@@ -44,8 +44,15 @@ const fdate = (s: string) => {
   return `${m}/${d}/${y}`;
 };
 
-// Filas de producto por hoja impresa (deja espacio para el encabezado completo en cada una)
-function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente | null }) {
+// Mismos límites que la factura (mismo layout de hoja): páginas intermedias
+// solo llevan header + filas; la última además totales + disclaimer.
+const ROWS_INTER = 22;
+const ROWS_LAST = 14;
+
+const GLASS_BTN = "backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]";
+const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
+
+function EncabezadoEstimado({ orden, cliente, page, totalPages }: { orden: Orden; cliente: Cliente | null; page: number; totalPages: number }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
@@ -61,6 +68,7 @@ function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente
         <div className="text-right shrink-0">
           <div className="text-base font-black tracking-wide text-[#b09060] leading-tight">ESTIMATE</div>
           <div className="text-xs font-mono text-gray-600">Order #{orden.num}</div>
+          <div className="text-[9px] text-gray-400 mt-0.5">Page {page} of {totalPages}</div>
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
@@ -94,6 +102,7 @@ export default function EstimadoPage() {
 
   const [orden, setOrden] = useState<Orden | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [clienteListo, setClienteListo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -111,6 +120,9 @@ export default function EstimadoPage() {
       }
       setOrden(o as Orden);
       document.title = `Estimate-Order${(o as Orden).num}`;
+      // Mostrar el documento de inmediato; los datos del cliente llegan
+      // despues sin bloquear el render.
+      setLoading(false);
 
       // El cliente de una orden puede estar guardado por id o, en ordenes mas
       // antiguas, por nombre — se intenta de las dos formas.
@@ -129,20 +141,21 @@ export default function EstimadoPage() {
           .maybeSingle();
         if (cPorNombre) setCliente(cPorNombre as Cliente);
       }
-      setLoading(false);
+      setClienteListo(true);
     };
     load();
   }, [ordenId, supabase]);
 
-  // Auto-print cuando se abre desde iOS PWA con ?print=1
+  // Auto-print cuando se abre desde iOS PWA con ?print=1. Espera a que los
+  // datos del cliente esten listos para no imprimir sin direccion.
   useEffect(() => {
-    if (!loading && orden) {
+    if (!loading && orden && clienteListo) {
       const params = new URLSearchParams(window.location.search);
       if (params.get("print") === "1") {
         setTimeout(() => window.print(), 400);
       }
     }
-  }, [loading, orden]);
+  }, [loading, orden, clienteListo]);
 
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground text-center">Loading estimate...</div>;
@@ -154,16 +167,13 @@ export default function EstimadoPage() {
         <p className="text-sm text-destructive mb-3">{error}</p>
         <button
           onClick={() => router.push("/?tab=ord")}
-          className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
+          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN}`}
         >
           ← Back
         </button>
       </div>
     );
   }
-
-  const ROWS_PER_PAGE = 17;
-  const ROWS_LAST_PAGE = 11;
 
   const lineas = [...(orden.lineas || [])].sort((a, b) => {
     const skuA = (a.sku || "").trim();
@@ -176,52 +186,69 @@ export default function EstimadoPage() {
   const total = lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0);
   const descuento = subtotal - total;
 
+  // Mismo chunking que la factura: intermedias uniformes, última con espacio
+  // para totales + disclaimer.
   const chunks: LineaOrden[][] = (() => {
-    if (lineas.length === 0) return [[]];
-    if (lineas.length <= ROWS_LAST_PAGE) return [lineas];
-    const result: LineaOrden[][] = [];
-    const pool = [...lineas];
-    while (pool.length > ROWS_LAST_PAGE) {
-      result.push(pool.splice(0, ROWS_PER_PAGE));
+    const n = lineas.length;
+    if (n === 0) return [[]];
+    if (n <= ROWS_LAST) return [lineas];
+
+    const numPages = 1 + Math.ceil((n - ROWS_LAST) / ROWS_INTER);
+
+    if (numPages === 2) {
+      const lastCount = Math.min(ROWS_LAST, Math.ceil(n / 2));
+      return [lineas.slice(0, n - lastCount), lineas.slice(n - lastCount)];
     }
-    if (pool.length > 0) result.push(pool);
+
+    const interRows = n - ROWS_LAST;
+    const numInter = numPages - 1;
+    const base = Math.floor(interRows / numInter);
+    const extra = interRows % numInter;
+    const result: LineaOrden[][] = [];
+    let idx = 0;
+    for (let p = 0; p < numInter; p++) {
+      result.push(lineas.slice(idx, idx + base + (p < extra ? 1 : 0)));
+      idx += base + (p < extra ? 1 : 0);
+    }
+    result.push(lineas.slice(idx));
     return result;
   })();
 
   return (
-    <div className="min-h-screen bg-[#f0efe9]">
+    <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9] print:bg-transparent">
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between"
-          style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-between"
+          style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
           <button
             onClick={() => router.push("/?tab=ord")}
-            className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN}`}
           >
             ← Back
           </button>
           <button
             onClick={printOrShare}
-            className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_PRIMARY}`}
           >
-            🖨️ Print / Save PDF
+            🖨️ Print / PDF
           </button>
         </div>
       </div>
 
-      <div className="max-w-3xl mx-auto p-4 sm:p-8 print:p-0 space-y-6 print:space-y-0">
+      {/* Estimate — mismo layout de hoja que la factura */}
+      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0 space-y-8 print:space-y-0">
         {chunks.map((pageLineas, pageIdx) => {
           const isLastPage = pageIdx === chunks.length - 1;
           return (
             <div
               key={pageIdx}
-              className="bg-white rounded-2xl print:rounded-none shadow-sm print:shadow-none border border-gray-200 print:border-0 overflow-hidden print:overflow-visible"
+              className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
               style={{ breakAfter: isLastPage ? "auto" : "page" }}
             >
-              <EncabezadoEstimado orden={orden} cliente={cliente} />
+              <EncabezadoEstimado orden={orden} cliente={cliente} page={pageIdx + 1} totalPages={chunks.length} />
 
-              <div className="px-6 sm:px-10 py-6">
+              <div className="px-6 sm:px-10 py-4">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b-2 border-[#1a1a18] text-left">
@@ -308,9 +335,24 @@ export default function EstimadoPage() {
       </div>
 
       <style jsx global>{`
+        @media screen {
+          .invoice-page {
+            min-height: 11in;
+            box-shadow: 0 8px 40px rgba(0, 0, 0, 0.28);
+            border-radius: 2px;
+          }
+          .factura-doc {
+            background: #5a6272;
+            max-width: none;
+            padding: 1.5rem 1rem;
+            min-height: calc(100vh - 60px);
+          }
+        }
         @media print {
-          @page { size: letter; margin: 0.5in; }
-          body { background: white !important; }
+          @page { size: letter portrait; margin: 0.5in; }
+          html, body { height: auto !important; min-height: 0 !important; background: white !important; }
+          .factura-doc { padding: 0 !important; }
+          .invoice-page { min-height: 0 !important; }
           tr { break-inside: avoid; }
           thead { display: table-header-group; }
         }

@@ -67,8 +67,8 @@ const fdate = (s: string) => {
 
 const today = () => new Date().toISOString().split("T")[0];
 
-const ROWS_INTER = 18; // páginas intermedias: solo header + filas
-const ROWS_LAST  = 11; // última página: header + filas + totales + firma + thank you
+const ROWS_INTER = 22; // páginas intermedias: solo header + filas
+const ROWS_LAST  = 14; // última página: header + filas + totales + firma + thank you
 
 const GLASS_BTN ="backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]";
 const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
@@ -121,6 +121,7 @@ export default function FacturaPage() {
 
   const [factura, setFactura] = useState<Factura | null>(null);
   const [cliente, setCliente] = useState<Cliente | null>(null);
+  const [clienteListo, setClienteListo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [readOnly, setReadOnly] = useState(false);
@@ -151,13 +152,16 @@ export default function FacturaPage() {
       }
       setFactura(f as Factura);
       document.title = `Invoice-${String((f as Factura).num).padStart(3, "0")}`;
+      // Mostrar la factura de inmediato; los datos del cliente llegan despues
+      // sin bloquear el render (antes la pantalla quedaba en "Loading...").
+      setLoading(false);
       const { data: c } = await supabase
         .from("clientes")
         .select("nom, codigo_cliente, dir, ciudad, estado_dir, tel, email")
         .eq("nom", (f as Factura).cli)
         .maybeSingle();
       if (c) setCliente(c as Cliente);
-      setLoading(false);
+      setClienteListo(true);
     };
     load();
   }, [facturaId, supabase]);
@@ -376,15 +380,16 @@ export default function FacturaPage() {
     setFactura(f => f ? { ...f, pagos: newPagos, estado: newEstado } : f);
   };
 
-  // Auto-print cuando se abre desde iOS PWA con ?print=1
+  // Auto-print cuando se abre desde iOS PWA con ?print=1. Espera a que los
+  // datos del cliente esten listos para no imprimir sin direccion.
   useEffect(() => {
-    if (!loading && factura) {
+    if (!loading && factura && clienteListo) {
       const params = new URLSearchParams(window.location.search);
       if (params.get("print") === "1") {
         setTimeout(() => window.print(), 400);
       }
     }
-  }, [loading, factura]);
+  }, [loading, factura, clienteListo]);
 
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground text-center">Loading invoice...</div>;
@@ -450,15 +455,15 @@ export default function FacturaPage() {
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-3.5 flex items-center justify-between gap-2"
-          style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-between gap-2"
+          style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button onClick={() => router.push("/?tab=fact")} className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}>← Back</button>
-          <div className="flex gap-2">
+          <button onClick={() => router.push("/?tab=fact")} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN}`}>← Back</button>
+          <div className="flex gap-1.5 flex-wrap justify-end">
             {!readOnly && !isPaid && (
               <button
                 onClick={() => setShowPagoForm(true)}
-                className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_PRIMARY}`}
               >
                 + Payment
               </button>
@@ -466,7 +471,7 @@ export default function FacturaPage() {
             {!readOnly && !isPaid && (
               <button
                 onClick={handleMarkPaid}
-                className="px-4 py-2 rounded-full text-sm font-bold backdrop-blur-md bg-green-600/85 border border-white/30 shadow-md hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
+                className="px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md bg-green-600/85 border border-white/30 shadow-sm hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
               >
                 ✓ Paid
               </button>
@@ -476,14 +481,14 @@ export default function FacturaPage() {
                 onClick={handleRevert}
                 disabled={reverting}
                 title="Revert this invoice back to an order to adjust products and re-invoice"
-                className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN} disabled:opacity-50`}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN} disabled:opacity-50`}
               >
                 {reverting ? "Reverting..." : "↩️ To Order"}
               </button>
             )}
             <button
               onClick={printOrShare}
-              className={`px-4 py-2 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY}`}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_PRIMARY}`}
             >
               🖨️ Print / PDF
             </button>
@@ -491,7 +496,7 @@ export default function FacturaPage() {
               <button
                 onClick={handleDelete}
                 disabled={deleting}
-                className={`px-3 py-2 rounded-full text-sm font-bold ${GLASS_BTN_DANGER}`}
+                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_DANGER}`}
               >
                 🗑
               </button>
