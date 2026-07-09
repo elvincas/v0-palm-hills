@@ -455,53 +455,51 @@ export default function FacturaPage() {
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-between gap-2"
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 grid grid-cols-3 gap-1.5 sm:flex sm:items-center"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button onClick={() => router.push("/?tab=fact")} className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN}`}>← Back</button>
-          <div className="flex gap-1.5 flex-wrap justify-end">
-            {!readOnly && !isPaid && (
-              <button
-                onClick={() => setShowPagoForm(true)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_PRIMARY}`}
-              >
-                + Payment
-              </button>
-            )}
-            {!readOnly && !isPaid && (
-              <button
-                onClick={handleMarkPaid}
-                className="px-3 py-1.5 rounded-lg text-xs font-semibold backdrop-blur-md bg-green-600/85 border border-white/30 shadow-sm hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
-              >
-                ✓ Paid
-              </button>
-            )}
-            {!readOnly && (
-              <button
-                onClick={handleRevert}
-                disabled={reverting}
-                title="Revert this invoice back to an order to adjust products and re-invoice"
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN} disabled:opacity-50`}
-              >
-                {reverting ? "Reverting..." : "↩️ To Order"}
-              </button>
-            )}
+          <button onClick={() => router.push("/?tab=fact")} className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN} sm:mr-auto`}>← Back</button>
+          {!readOnly && !isPaid && (
             <button
-              onClick={printOrShare}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_PRIMARY}`}
+              onClick={() => setShowPagoForm(true)}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN_PRIMARY}`}
             >
-              🖨️ Print / PDF
+              + Payment
             </button>
-            {!readOnly && (
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                className={`px-2.5 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_DANGER}`}
-              >
-                🗑
-              </button>
-            )}
-          </div>
+          )}
+          {!readOnly && !isPaid && (
+            <button
+              onClick={handleMarkPaid}
+              className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap backdrop-blur-md bg-green-600/85 border border-white/30 shadow-sm hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
+            >
+              ✓ Paid
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              onClick={handleRevert}
+              disabled={reverting}
+              title="Revert this invoice back to an order to adjust products and re-invoice"
+              className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN} disabled:opacity-50`}
+            >
+              {reverting ? "Reverting..." : "↩️ To Order"}
+            </button>
+          )}
+          <button
+            onClick={printOrShare}
+            className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN_PRIMARY}`}
+          >
+            🖨️ Print / PDF
+          </button>
+          {!readOnly && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`px-3 py-2 rounded-lg text-xs font-semibold ${GLASS_BTN_DANGER}`}
+            >
+              🗑 Delete
+            </button>
+          )}
         </div>
       </div>
 

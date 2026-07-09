@@ -1155,6 +1155,20 @@ const Dashboard = () => {
       .eq("key", "remito_email")
       .maybeSingle()
       .then(({ data }) => setRemitoEmail(data?.value || ""), () => {});
+    // El sales goal vive en la tabla config (compartido entre dispositivos y
+    // sobrevive reinstalar la PWA); localStorage queda solo como cache local.
+    supabase
+      .from("config")
+      .select("value")
+      .eq("key", `meta_${mesActualKey()}`)
+      .maybeSingle()
+      .then(({ data }) => {
+        const v = Number(data?.value || 0);
+        if (v > 0) {
+          setMeta(v);
+          localStorage.setItem(`ph_meta_${mesActualKey()}`, String(v));
+        }
+      }, () => {});
   }, [supabase]);
 
   const saveRemitoEmail = async () => {
@@ -1198,12 +1212,16 @@ const Dashboard = () => {
   const statusLabel =
     pct >= 100 ? "Goal reached!" : pct >= 70 ? "Almost there!" : pct >= 40 ? "On track" : "Getting started";
 
-  const saveMeta = () => {
+  const saveMeta = async () => {
     const v = Number(metaInp);
     if (!v) return;
     localStorage.setItem(`ph_meta_${mesActualKey()}`, String(v));
     setMeta(v);
     setEditMeta(false);
+    const { error } = await supabase
+      .from("config")
+      .upsert({ key: `meta_${mesActualKey()}`, value: String(v) });
+    if (error) console.error("[v0] Error guardando meta en config:", error.message);
   };
 
 
