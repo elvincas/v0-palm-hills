@@ -60,6 +60,8 @@ interface NotaCredito {
   fecha: string;
   monto: number;
   motivo: string;
+  aplicada?: boolean;
+  aplicada_en?: string;
 }
 
 interface Orden {
@@ -201,7 +203,7 @@ export default function ClientePerfilPage() {
   const cargarNotasCredito = async (nombreCliente: string) => {
     const { data } = await supabase
       .from("notas_credito")
-      .select("id, num, fecha, monto, motivo")
+      .select("id, num, fecha, monto, motivo, aplicada, aplicada_en")
       .eq("cli", nombreCliente)
       .order("num", { ascending: false });
     setNotasCredito((data as NotaCredito[]) || []);
@@ -638,7 +640,8 @@ export default function ClientePerfilPage() {
             const pagado = ((f as unknown as { pagos?: {monto:number}[] }).pagos || []).reduce((s, p) => s + p.monto, 0);
             return acc + Math.max(0, f.total - pagado);
           }, 0);
-          const credito = notasCredito.reduce((acc, n) => acc + n.monto, 0);
+          // Las NC aplicadas ya se usaron contra una factura: no restan del balance
+          const credito = notasCredito.filter(n => !n.aplicada).reduce((acc, n) => acc + n.monto, 0);
           const neto = deuda - credito;
           return (
             <div className="rounded-2xl shadow-sm overflow-hidden" style={{ background: `linear-gradient(135deg,#2e4029 0%,${PH} 60%,#6b9660 100%)` }}>
@@ -842,9 +845,14 @@ export default function ClientePerfilPage() {
                     <div className="min-w-0">
                       <p className="text-sm font-semibold" style={{ color: PH }}>CN #{String(n.num).padStart(3,"0")}</p>
                       <p className="text-[11px] text-gray-400">{fdate(n.fecha)}{n.motivo ? ` · ${n.motivo}` : ""}</p>
+                      {n.aplicada && (
+                        <span className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold text-[10px]">
+                          ✓ Applied{n.aplicada_en ? ` · ${n.aplicada_en}` : ""}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
-                      <p className="text-sm font-bold text-emerald-600">−{fmt(n.monto)}</p>
+                      <p className={`text-sm font-bold ${n.aplicada ? "text-gray-300 line-through" : "text-emerald-600"}`}>−{fmt(n.monto)}</p>
                       <span className="text-gray-300 text-lg">›</span>
                     </div>
                   </button>

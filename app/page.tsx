@@ -116,6 +116,10 @@ interface NotaCredito {
   motivo: string;
   tipo?: "amount" | "product";
   lineas?: LineaNC[];
+  // Una NC aplicada ya se uso (contra una factura) y deja de restar del balance
+  aplicada?: boolean;
+  aplicada_en?: string; // descripcion libre: a que factura se aplico
+  aplicada_fecha?: string;
 }
 
 interface Remito {
@@ -381,6 +385,7 @@ interface DataContextType {
   notasCredito: NotaCredito[];
   addNotaCredito: (n: Omit<NotaCredito, "id" | "num">) => Promise<void>;
   deleteNotaCredito: (id: string) => Promise<void>;
+  setNotaCreditoAplicada: (id: string, aplicada: boolean, aplicadaEn?: string) => Promise<void>;
   addOrden: (o: Omit<Orden, "id" | "num">) => Promise<void>;
   deleteOrden: (id: string) => Promise<void>;
   updateOrden: (id: string, o: Orden) => Promise<void>;
@@ -935,6 +940,29 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Credit note deleted`);
   };
 
+  // Marca/desmarca una NC como aplicada. Una NC aplicada ya se uso contra una
+  // factura (descrita en aplicada_en) y deja de restar del balance del cliente.
+  const setNotaCreditoAplicada = async (id: string, aplicada: boolean, aplicadaEn?: string) => {
+    const cambios = aplicada
+      ? { aplicada: true, aplicada_en: aplicadaEn || null, aplicada_fecha: today() }
+      : { aplicada: false, aplicada_en: null, aplicada_fecha: null };
+    const { error } = await supabase.from("notas_credito").update(cambios).eq("id", id);
+    if (error) throw new Error(error.message);
+    setNotasCredito((prev) =>
+      prev.map((n) =>
+        n.id === id
+          ? { ...n, aplicada, aplicada_en: aplicada ? aplicadaEn : undefined, aplicada_fecha: aplicada ? today() : undefined }
+          : n
+      )
+    );
+    const nc = notasCredito.find((n) => n.id === id);
+    await logAct(
+      aplicada
+        ? `Credit note #${nc?.num ?? "?"} marked as applied${aplicadaEn ? ` (${aplicadaEn})` : ""}`
+        : `Credit note #${nc?.num ?? "?"} unmarked as applied`
+    );
+  };
+
   // --- Ordenes ---
   const addOrden = async (orden: Omit<Orden, "id" | "num">) => {
     const num = await nextNumDb("ordenes", 1);
@@ -1092,6 +1120,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     notasCredito,
     addNotaCredito,
     deleteNotaCredito,
+    setNotaCreditoAplicada,
     addOrden,
     deleteOrden,
     updateOrden,
@@ -2145,8 +2174,13 @@ const Facturas = () => {
                     <div className="min-w-0">
                       <div className="font-bold uppercase truncate text-card-foreground">{n.cli}</div>
                       {n.motivo && <div className="text-muted-foreground truncate">{n.motivo}</div>}
+                      {n.aplicada && (
+                        <div className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold text-[10px]">
+                          ✓ Applied{n.aplicada_en ? ` · ${n.aplicada_en}` : ""}
+                        </div>
+                      )}
                     </div>
-                    <span className="font-bold text-green-700">{fmt(n.monto)}</span>
+                    <span className={n.aplicada ? "font-bold text-muted-foreground line-through" : "font-bold text-green-700"}>{fmt(n.monto)}</span>
                     <div className="flex items-center justify-between">
                       <span className="font-mono text-muted-foreground">#{String(n.num).padStart(3, "0")}</span>
                       {!readOnly && <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-xs px-1">×</button>}
@@ -2642,7 +2676,7 @@ const Clientes = () => {
         return acc + Math.max(0, f.total - pagado);
       }, 0);
     const credito = notasCredito
-      .filter(nc => nc.cli === nom)
+      .filter(nc => nc.cli === nom && !nc.aplicada)
       .reduce((acc, nc) => acc + nc.monto, 0);
     return deuda - credito;
   };

@@ -30,6 +30,7 @@ interface NotaCredito {
   fecha: string;
   monto: number;
   motivo: string;
+  aplicada?: boolean;
 }
 
 const fmt = (n: number) =>
@@ -81,12 +82,14 @@ export default function EstadoCuentaPage() {
           .order("num", { ascending: true }),
         supabase
           .from("notas_credito")
-          .select("id, num, fecha, monto, motivo")
+          // Las NC aplicadas ya se usaron contra una factura: no aparecen en
+          // el estado de cuenta ni restan del saldo.
+          .select("id, num, fecha, monto, motivo, aplicada")
           .eq("cli", (c as Cliente).nom)
           .order("num", { ascending: true }),
       ]);
       setFacturas((fData as Factura[]) || []);
-      setNotasCredito((ncData as NotaCredito[]) || []);
+      setNotasCredito(((ncData as NotaCredito[]) || []).filter((n) => !n.aplicada));
       setLoading(false);
     };
     load();

@@ -20,6 +20,9 @@ interface NotaCredito {
   motivo?: string
   tipo?: 'amount' | 'product'
   lineas?: LineaNC[]
+  aplicada?: boolean
+  aplicada_en?: string
+  aplicada_fecha?: string
 }
 
 const fmt = (n: number) =>
@@ -35,10 +38,15 @@ export default function NotaCreditoPage() {
   const router = useRouter()
   const [nota, setNota] = useState<NotaCredito | null>(null)
   const [loading, setLoading] = useState(true)
+  const [readOnly, setReadOnly] = useState(false)
+  const [savingAplicada, setSavingAplicada] = useState(false)
 
   useEffect(() => {
     const load = async () => {
       const supabase = createClient()
+      supabase.auth.getUser().then(({ data }) => {
+        setReadOnly(data.user?.user_metadata?.role === 'visitante')
+      })
       const { data } = await supabase.from('notas_credito').select('*').eq('id', id).single()
       if (data) setNota(data as NotaCredito)
       setLoading(false)
@@ -48,6 +56,44 @@ export default function NotaCreditoPage() {
 
   const handlePrint = () => {
     window.print()
+  }
+
+  const today = () => new Date().toISOString().split('T')[0]
+
+  // Marca la NC como aplicada (con descripcion opcional de a que factura) o
+  // la desmarca. Una NC aplicada deja de restar del balance del cliente.
+  const handleToggleAplicada = async () => {
+    if (!nota || savingAplicada) return
+    const supabase = createClient()
+    let cambios: Partial<NotaCredito> & { aplicada: boolean }
+    if (nota.aplicada) {
+      if (!confirm(`Unmark credit note #${nota.num} as applied? It will count towards the client's balance again.`)) return
+      cambios = { aplicada: false, aplicada_en: undefined, aplicada_fecha: undefined }
+    } else {
+      const dest = prompt('Which invoice was this credit applied to? (optional, e.g. "Invoice #1045")')
+      if (dest === null) return // cancelado
+      cambios = { aplicada: true, aplicada_en: dest.trim() || undefined, aplicada_fecha: today() }
+    }
+    setSavingAplicada(true)
+    const { error } = await supabase
+      .from('notas_credito')
+      .update({
+        aplicada: cambios.aplicada,
+        aplicada_en: cambios.aplicada_en ?? null,
+        aplicada_fecha: cambios.aplicada_fecha ?? null,
+      })
+      .eq('id', nota.id)
+    setSavingAplicada(false)
+    if (error) {
+      alert('Could not update: ' + error.message)
+      return
+    }
+    setNota({ ...nota, ...cambios })
+    await supabase.from('actividad').insert({
+      msg: cambios.aplicada
+        ? `Credit note #${nota.num} marked as applied${cambios.aplicada_en ? ` (${cambios.aplicada_en})` : ''}`
+        : `Credit note #${nota.num} unmarked as applied`,
+    })
   }
 
   if (loading) {
@@ -96,9 +142,22 @@ export default function NotaCreditoPage() {
           ← Back
         </button>
         <div className="flex-1" />
+        {!readOnly && (
+          <button
+            onClick={handleToggleAplicada}
+            disabled={savingAplicada}
+            className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl transition-colors disabled:opacity-50 ${
+              nota.aplicada
+                ? 'bg-white/10 hover:bg-white/20 text-white/80'
+                : 'bg-green-600 hover:bg-green-700 text-white'
+            }`}
+          >
+            {savingAplicada ? 'Saving...' : nota.aplicada ? '↺ Unmark Applied' : '✓ Mark Applied'}
+          </button>
+        )}
         <button
           onClick={handlePrint}
-          className="flex items-center gap-1.5 bg-[#4a6741] hover:bg-[#3d5636] text-white text-sm font-semibold px-4 py-2 rounded-xl transition-colors"
+          className="flex items-center gap-1.5 bg-[#4a6741] hover:bg-[#3d5636] text-white text-sm font-semibold px-3 py-2 rounded-xl transition-colors"
         >
           🖨️ Print / PDF
         </button>
@@ -129,6 +188,20 @@ export default function NotaCreditoPage() {
             <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Issued To</div>
             <div className="text-lg font-black text-[#1a1a18] uppercase">{nota.cli}</div>
           </div>
+
+          {/* Applied stamp */}
+          {nota.aplicada && (
+            <div className="mx-8 mt-5 flex items-center gap-3 border-2 border-green-600/40 bg-green-50 rounded-xl px-4 py-3">
+              <span className="text-xl">✅</span>
+              <div>
+                <div className="text-xs font-black uppercase tracking-widest text-green-700">Applied</div>
+                <div className="text-xs text-green-800">
+                  {nota.aplicada_en || 'This credit has been used'}
+                  {nota.aplicada_fecha ? ` · ${fdate(nota.aplicada_fecha)}` : ''}
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Body */}
           <div className="px-8 py-6">
