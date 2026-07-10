@@ -400,6 +400,7 @@ interface DataContextType {
   addEvento: (e: Omit<EventoCalendario, "id">) => Promise<void>;
   deleteEvento: (id: string) => Promise<void>;
   refreshLogs: () => void;
+  refreshAll: () => Promise<void>;
   todos: Todo[];
   addTodo: (t: Omit<Todo, "id" | "created_at" | "completado">) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
@@ -1133,6 +1134,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addEvento,
     deleteEvento,
     refreshLogs,
+    refreshAll: loadAll,
     todos,
     addTodo,
     toggleTodo,
@@ -6385,12 +6387,57 @@ const GestionarUsuarios = () => {
 
 function AppContent() {
   const [tab, setTab] = useState("dash");
-  const { loading, role } = useData();
+  const { loading, role, refreshAll } = useData();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
+
+  // --- Pull to refresh (jalar hacia abajo desde el tope recarga los datos) ---
+  const [pull, setPull] = useState(0); // px que se ha jalado
+  const [pulling, setPulling] = useState(false); // dedo abajo (sin animar altura)
+  const [refreshing, setRefreshing] = useState(false);
+  const pullStartY = useRef<number | null>(null);
+  const PULL_THRESHOLD = 60;
+
+  const onPullStart = (e: React.TouchEvent) => {
+    if (refreshing) return;
+    if (mainRef.current && mainRef.current.scrollTop <= 0) {
+      pullStartY.current = e.touches[0].clientY;
+      setPulling(true);
+    } else {
+      pullStartY.current = null;
+    }
+  };
+  const onPullMove = (e: React.TouchEvent) => {
+    if (pullStartY.current === null || refreshing) return;
+    if (mainRef.current && mainRef.current.scrollTop > 0) {
+      pullStartY.current = null;
+      setPull(0);
+      setPulling(false);
+      return;
+    }
+    const dy = e.touches[0].clientY - pullStartY.current;
+    // Resistencia: la pantalla baja menos que el dedo, como en iOS
+    setPull(dy > 0 ? Math.min(dy * 0.45, 100) : 0);
+  };
+  const onPullEnd = async () => {
+    setPulling(false);
+    pullStartY.current = null;
+    if (pull >= PULL_THRESHOLD && !refreshing) {
+      setRefreshing(true);
+      setPull(PULL_THRESHOLD);
+      try {
+        await refreshAll();
+      } finally {
+        setRefreshing(false);
+        setPull(0);
+      }
+    } else {
+      setPull(0);
+    }
+  };
 
   // Leer parámetro de URL para establecer el tab
   useEffect(() => {
@@ -6505,7 +6552,29 @@ function AppContent() {
         ref={mainRef}
         className="flex-1 p-3 pb-20 overflow-y-auto"
         onScroll={(e) => sessionStorage.setItem(`ph_scroll_${tab}`, String(e.currentTarget.scrollTop))}
+        onTouchStart={onPullStart}
+        onTouchMove={onPullMove}
+        onTouchEnd={onPullEnd}
+        onTouchCancel={onPullEnd}
       >
+        {/* Indicador de pull-to-refresh: empuja el contenido hacia abajo */}
+        <div
+          className="flex flex-col items-center justify-end overflow-hidden"
+          style={{
+            height: pull,
+            transition: pulling ? "none" : "height 0.25s ease",
+          }}
+        >
+          <div
+            className={`text-2xl leading-none text-primary ${refreshing ? "animate-spin" : ""}`}
+            style={refreshing ? undefined : { transform: `rotate(${pull * 3}deg)`, opacity: Math.min(1, pull / PULL_THRESHOLD) }}
+          >
+            ✳
+          </div>
+          <div className="text-[10px] text-muted-foreground mt-1 mb-1.5 font-medium">
+            {refreshing ? "Refreshing..." : pull >= PULL_THRESHOLD ? "Release to refresh" : "Pull to refresh"}
+          </div>
+        </div>
         {panels[tab]}
       </main>
       <BottomNav active={tab} onSelect={setTab} hiddenTabs={role === "visitante" ? ["usr"] : []} />
