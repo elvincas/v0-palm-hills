@@ -6559,21 +6559,39 @@ function AppContent() {
       >
         {/* Indicador de pull-to-refresh: empuja el contenido hacia abajo */}
         <div
-          className="flex flex-col items-center justify-end overflow-hidden"
+          className="flex flex-col items-center justify-center overflow-hidden"
           style={{
             height: pull,
             transition: pulling ? "none" : "height 0.25s ease",
           }}
         >
-          <div
-            className={`text-2xl leading-none text-primary ${refreshing ? "animate-spin" : ""}`}
-            style={refreshing ? undefined : { transform: `rotate(${pull * 3}deg)`, opacity: Math.min(1, pull / PULL_THRESHOLD) }}
+          {/* Spinner estilo iOS: 12 rayitas con opacidad degradada */}
+          <svg
+            width={26}
+            height={26}
+            viewBox="0 0 24 24"
+            className={refreshing ? "animate-spin" : ""}
+            style={
+              refreshing
+                ? { animationDuration: "0.9s" }
+                : { transform: `rotate(${pull * 2.5}deg)`, opacity: Math.min(1, pull / PULL_THRESHOLD) }
+            }
           >
-            ✳
-          </div>
-          <div className="text-[10px] text-muted-foreground mt-1 mb-1.5 font-medium">
-            {refreshing ? "Refreshing..." : pull >= PULL_THRESHOLD ? "Release to refresh" : "Pull to refresh"}
-          </div>
+            {Array.from({ length: 12 }).map((_, i) => (
+              <rect
+                key={i}
+                x={11.25}
+                y={1.5}
+                width={1.5}
+                height={6}
+                rx={0.75}
+                fill="currentColor"
+                className="text-muted-foreground"
+                opacity={(i + 1) / 12}
+                transform={`rotate(${i * 30} 12 12)`}
+              />
+            ))}
+          </svg>
         </div>
         {panels[tab]}
       </main>
