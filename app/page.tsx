@@ -1175,9 +1175,18 @@ const calcTopProductos = (facturas: Factura[], desde: string, limite = 15) => {
 
 // Score honesto de clientes (últimos N meses): 60% volumen + 40% pago.
 // - Volumen: total facturado relativo al mejor cliente.
-// - Pago: % pagado × rapidez (pagar al momento vale 1.0; decae linealmente
-//   hasta 0.2 a los 90 días, promedio ponderado por monto).
+// - Pago: % pagado × rapidez, con corte en TERMINOS DE 30 DIAS:
+//     COD (0-2 dias)  → 1.0 (premio maximo)
+//     3-30 dias       → 0.9 bajando suave a 0.7 en el dia 30
+//     mas de 30 dias  → cae de golpe a 0.4 y sigue hasta 0.1 a los 90
+//   (promedio de dias ponderado por monto pagado)
 // Así un cliente COD mediano puede superar a uno grande que tarda meses.
+const speedFactor30 = (dias: number) => {
+  if (dias <= 2) return 1.0;
+  if (dias <= 30) return 0.9 - 0.2 * ((dias - 2) / 28);
+  return Math.max(0.1, 0.4 - 0.3 * ((dias - 30) / 60));
+};
+
 const calcTopClientes = (facturas: Factura[], meses = 6, limite = 10) => {
   const d = new Date();
   d.setMonth(d.getMonth() - meses);
@@ -1198,7 +1207,7 @@ const calcTopClientes = (facturas: Factura[], meses = 6, limite = 10) => {
     .filter(([, e]) => e.comprado > 0)
     .map(([cli, e]) => {
       const diasProm = e.pagado > 0 ? e.diasPond / e.pagado : 0;
-      const speed = e.pagado > 0 ? Math.max(0.2, 1 - diasProm / 90) : 0.2;
+      const speed = e.pagado > 0 ? speedFactor30(diasProm) : 0.2;
       const pctPagado = Math.min(1, e.pagado / e.comprado);
       return { cli, comprado: e.comprado, pctPagado, diasProm, payScore: pctPagado * speed };
     });
@@ -1221,9 +1230,9 @@ const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
           <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
           <div className="flex-1 min-w-0">
             <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{c.cli}</div>
-            <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
-              {c.diasProm <= 3 && c.pctPagado >= 0.95
-                ? "Pays COD"
+            <div className={`text-[10px] leading-tight mt-0.5 ${c.pctPagado > 0 && c.diasProm > 30 ? "text-red-600 font-semibold" : c.diasProm <= 2 && c.pctPagado >= 0.95 ? "text-green-700 font-semibold" : "text-muted-foreground"}`}>
+              {c.diasProm <= 2 && c.pctPagado >= 0.95
+                ? "Pays COD ⚡"
                 : c.pctPagado === 0
                   ? "No payments yet"
                   : `Pays in ~${Math.round(c.diasProm)}d · ${Math.round(c.pctPagado * 100)}% paid`}
@@ -1544,7 +1553,7 @@ const Dashboard = () => {
         <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
           <div>
             <div className="text-sm font-bold text-card-foreground">Top Clients</div>
-            <div className="text-[10px] text-muted-foreground">Last 6 months · volume + payment behavior</div>
+            <div className="text-[10px] text-muted-foreground">Last 6 months · volume + payment (30-day terms)</div>
           </div>
           <div className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "var(--secondary)", color: "var(--primary)" }}>
             ⭐ Top 10
@@ -3132,7 +3141,7 @@ const Clientes = () => {
       {showTopClientes && (
         <Modal title="Top 10 Clients" onClose={() => setShowTopClientes(false)}>
           <div className="text-[11px] text-muted-foreground mb-2 -mt-1">
-            Last 6 months · 60% volume + 40% payment behavior (speed &amp; % paid)
+            Last 6 months · 60% volume + 40% payment — COD is best, under 30 days is good, over 30 days hurts the score
           </div>
           <div className="border border-border rounded-2xl overflow-hidden -mx-1">
             <TopClientesLista facturas={facturas} />

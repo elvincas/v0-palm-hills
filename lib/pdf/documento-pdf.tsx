@@ -27,6 +27,8 @@ export interface DatosDocumento {
   lineas: LineaDoc[];
   total: number;
   totalPagado?: number;
+  // Si la factura esta pagada: fecha del ultimo pago y metodos usados
+  pagoInfo?: { fecha: string; metodos: string[] };
   logo?: Buffer | Uint8Array;
 }
 
@@ -153,9 +155,19 @@ export async function renderDocumentoPdf(d: DatosDocumento): Promise<Buffer> {
               {esFactura && d.estado ? (
                 <>
                   <Text style={[s.lbl, { marginTop: 5 }]}>Status</Text>
-                  <Text style={[s.cliDet, { fontFamily: "Helvetica-Bold", color: d.estado === "Paid" ? "#15803d" : "#b45309" }]}>
-                    {d.estado}
-                  </Text>
+                  {d.estado === "Paid" ? (
+                    <>
+                      <Text style={{ fontSize: 14, fontFamily: "Helvetica-Bold", color: "#15803d", textAlign: "right" }}>PAID</Text>
+                      {d.pagoInfo ? (
+                        <Text style={{ fontSize: 7, fontFamily: "Helvetica-Bold", color: "#15803d", textAlign: "right", marginTop: 1 }}>
+                          {d.pagoInfo.fecha}
+                          {d.pagoInfo.metodos.length ? ` · ${d.pagoInfo.metodos.join(" + ")}` : ""}
+                        </Text>
+                      ) : null}
+                    </>
+                  ) : (
+                    <Text style={[s.cliDet, { fontFamily: "Helvetica-Bold", color: "#b45309" }]}>{d.estado}</Text>
+                  )}
                 </>
               ) : null}
             </View>

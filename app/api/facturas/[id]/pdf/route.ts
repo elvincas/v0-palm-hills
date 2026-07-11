@@ -47,11 +47,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     return sa.localeCompare(sb, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
   });
 
+  // Fecha del ultimo pago + metodos usados (para el sello PAID del PDF)
+  const pagos = (f.pagos || []) as { monto: number; fecha: string; metodo?: string }[];
+  const ultimoPago = pagos.length ? pagos.reduce((a, b) => (a.fecha >= b.fecha ? a : b)) : null;
+  const metodos = Array.from(new Set(pagos.map((p) => p.metodo).filter(Boolean))) as string[];
+
   const pdf = await renderDocumentoPdf({
     tipo: "invoice",
     num: f.num,
     fecha: fdate(f.fecha),
     estado: f.estado,
+    pagoInfo: f.estado === "Paid" && ultimoPago ? { fecha: fdate(ultimoPago.fecha), metodos } : undefined,
     cliente: {
       nom: c?.nom || f.cli,
       codigo: c?.codigo_cliente || undefined,

@@ -18,7 +18,10 @@ interface Pago {
   monto: number;
   fecha: string;
   nota?: string;
+  metodo?: string; // Card | Bank Transfer | Zelle | Cash | Check
 }
+
+const METODOS_PAGO = ["Cash", "Zelle", "Check", "Card", "Bank Transfer"] as const;
 
 interface Factura {
   id: string;
@@ -124,7 +127,26 @@ function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Fa
           <div className="text-xs font-medium text-[#1a1a18]">{fdate(factura.fecha)}</div>
           <div className="mt-2">
             <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Status</div>
-            <div className={`text-xs font-bold ${factura.estado === "Paid" ? "text-green-700" : factura.estado === "Partially Paid" ? "text-blue-700" : factura.estado === "Overdue" ? "text-red-600" : "text-amber-700"}`}>{factura.estado}</div>
+            {factura.estado === "Paid" ? (
+              (() => {
+                // Fecha y metodo del ultimo pago para mostrarlos en el documento
+                const pagos = factura.pagos || [];
+                const ultimo = pagos.length ? pagos.reduce((a, b) => (a.fecha >= b.fecha ? a : b)) : null;
+                const metodos = Array.from(new Set(pagos.map((p) => p.metodo).filter(Boolean)));
+                return (
+                  <div>
+                    <div className="text-xl font-black tracking-wide text-green-700 leading-tight">PAID</div>
+                    {ultimo && (
+                      <div className="text-[10px] font-semibold text-green-700">
+                        {fdate(ultimo.fecha)}{metodos.length ? ` · ${metodos.join(" + ")}` : ""}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()
+            ) : (
+              <div className={`text-xs font-bold ${factura.estado === "Partially Paid" ? "text-blue-700" : factura.estado === "Overdue" ? "text-red-600" : "text-amber-700"}`}>{factura.estado}</div>
+            )}
           </div>
         </div>
       </div>
@@ -268,6 +290,8 @@ export default function FacturaPage() {
   const [pagoMonto, setPagoMonto] = useState("");
   const [pagoFecha, setPagoFecha] = useState(today());
   const [pagoNota, setPagoNota] = useState("");
+  const [pagoMetodo, setPagoMetodo] = useState("");
+  const [pagoFull, setPagoFull] = useState(false); // abierto desde "Paid" (saldo completo)
   const [savingPago, setSavingPago] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reverting, setReverting] = useState(false);
@@ -471,20 +495,27 @@ export default function FacturaPage() {
     router.push("/?tab=fact");
   };
 
-  const handleMarkPaid = async () => {
+  // "Paid" abre el mismo menu de pago con el saldo completo precargado, para
+  // especificar metodo y fecha antes de marcar.
+  const abrirMarkPaid = () => {
     if (!factura) return;
-    const newEstado = "Paid";
-    // Registrar solo el saldo restante: si ya habia pagos parciales, agregar
-    // el total completo inflaria el historial de pagos.
     const pagado = (factura.pagos || []).reduce((acc, p) => acc + p.monto, 0);
     const restante = +(factura.total - pagado).toFixed(2);
-    const newPagos =
-      restante > 0
-        ? [...(factura.pagos || []), { monto: restante, fecha: today(), nota: "Marked as fully paid" }]
-        : [...(factura.pagos || [])];
-    const { error } = await supabase.from("facturas").update({ estado: newEstado, pagos: newPagos }).eq("id", facturaId);
-    if (error) { alert("Error: " + error.message); return; }
-    setFactura(f => f ? { ...f, estado: newEstado, pagos: newPagos } : f);
+    setPagoMonto(restante > 0 ? String(restante) : "");
+    setPagoFecha(today());
+    setPagoNota("");
+    setPagoMetodo("");
+    setPagoFull(true);
+    setShowPagoForm(true);
+  };
+
+  const abrirPayment = () => {
+    setPagoMonto("");
+    setPagoFecha(today());
+    setPagoNota("");
+    setPagoMetodo("");
+    setPagoFull(false);
+    setShowPagoForm(true);
   };
 
   const handleAddPago = async () => {
@@ -492,7 +523,12 @@ export default function FacturaPage() {
     const monto = parseFloat(pagoMonto);
     if (!monto || monto <= 0) { alert("Enter a valid amount"); return; }
     setSavingPago(true);
-    const newPago: Pago = { monto, fecha: pagoFecha, nota: pagoNota || undefined };
+    const newPago: Pago = {
+      monto,
+      fecha: pagoFecha,
+      nota: pagoNota || (pagoFull ? "Marked as fully paid" : undefined),
+      metodo: pagoMetodo || undefined,
+    };
     const newPagos = [...(factura.pagos || []), newPago];
     const totalPagado = newPagos.reduce((acc, p) => acc + p.monto, 0);
     const newEstado = totalPagado >= factura.total ? "Paid" : "Partially Paid";
@@ -502,6 +538,8 @@ export default function FacturaPage() {
     setPagoMonto("");
     setPagoFecha(today());
     setPagoNota("");
+    setPagoMetodo("");
+    setPagoFull(false);
     setShowPagoForm(false);
     setSavingPago(false);
   };
@@ -611,7 +649,7 @@ export default function FacturaPage() {
           </button>
           {!readOnly && !isPaid && (
             <button
-              onClick={() => setShowPagoForm(true)}
+              onClick={abrirPayment}
               className={`${TAB_BTN} bg-[#f5eee2] text-[#a3814e] border-[#e9dcc4]`}
             >
               <Icon d={IC.plus} />
@@ -620,7 +658,7 @@ export default function FacturaPage() {
           )}
           {!readOnly && !isPaid && (
             <button
-              onClick={handleMarkPaid}
+              onClick={abrirMarkPaid}
               className={`${TAB_BTN} bg-green-50 text-green-700 border-green-200/70`}
             >
               <Icon d={IC.check} />
@@ -664,13 +702,31 @@ export default function FacturaPage() {
         <div className="print:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-[#1a1a18]">Record Payment</h2>
+              <h2 className="text-base font-bold text-[#1a1a18]">{pagoFull ? "Mark as Paid" : "Record Payment"}</h2>
               <button onClick={() => setShowPagoForm(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="text-xs text-gray-500 mb-4">
               Invoice total: <strong>{fmt(factura.total)}</strong> · Paid: <strong className="text-green-700">{fmt(totalPagado)}</strong> · Balance: <strong className="text-amber-700">{fmt(saldo)}</strong>
             </div>
             <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Payment method</label>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {METODOS_PAGO.map((m) => (
+                    <button
+                      key={m}
+                      onClick={() => setPagoMetodo(pagoMetodo === m ? "" : m)}
+                      className={`py-2 px-1 rounded-xl text-xs font-bold border transition-all ${
+                        pagoMetodo === m
+                          ? "bg-[#4a6741] text-white border-[#4a6741]"
+                          : "bg-white text-gray-600 border-gray-200"
+                      }`}
+                    >
+                      {m}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Amount ($)</label>
                 <input
@@ -680,12 +736,11 @@ export default function FacturaPage() {
                   value={pagoMonto}
                   onChange={e => setPagoMonto(e.target.value)}
                   placeholder={fmt(saldo).replace("$", "")}
-                  autoFocus
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
                 />
               </div>
               <div>
-                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Date</label>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Date paid</label>
                 <input
                   type="date"
                   value={pagoFecha}
@@ -699,7 +754,7 @@ export default function FacturaPage() {
                   type="text"
                   value={pagoNota}
                   onChange={e => setPagoNota(e.target.value)}
-                  placeholder="Cash, transfer, check..."
+                  placeholder="Reference #, details..."
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
                 />
               </div>
@@ -711,7 +766,7 @@ export default function FacturaPage() {
                 disabled={savingPago || !pagoMonto}
                 className={`flex-1 ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
               >
-                {savingPago ? "Saving..." : "Save Payment"}
+                {savingPago ? "Saving..." : pagoFull ? "Mark as Paid" : "Save Payment"}
               </button>
             </div>
           </div>
@@ -731,7 +786,12 @@ export default function FacturaPage() {
             {pagos.map((p, i) => (
               <div key={i} className="flex items-center justify-between px-4 py-2.5 border-b border-gray-50 last:border-0">
                 <div>
-                  <div className="text-sm font-semibold text-gray-800">{fmt(p.monto)}</div>
+                  <div className="text-sm font-semibold text-gray-800 flex items-center gap-1.5">
+                    {fmt(p.monto)}
+                    {p.metodo && (
+                      <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-[#eaf0e6] text-[#4a6741]">{p.metodo}</span>
+                    )}
+                  </div>
                   <div className="text-xs text-gray-400">{fdate(p.fecha)}{p.nota ? ` · ${p.nota}` : ""}</div>
                 </div>
                 {!readOnly && (
