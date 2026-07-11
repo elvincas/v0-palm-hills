@@ -46,7 +46,9 @@ const fdate = (s: string) => {
 // Pildoras planas estilo iOS (mismo sistema que /facturas/[id])
 const PILL = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full bg-white text-[#4a6741] text-xs font-semibold border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
 const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full bg-[#4a6741] text-white text-xs font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
-const PILL_ICON = "inline-flex items-center justify-center h-9 w-9 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
+// Botones del toolbar: identicos (flex-1), icono arriba y etiqueta abajo
+const TAB_BTN = "flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 h-12 rounded-xl border shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all";
+const TAB_LBL = "text-[9px] font-bold leading-none truncate max-w-full px-0.5";
 const GLASS_BTN = PILL;
 const GLASS_BTN_PRIMARY = PILL_SOLID;
 
@@ -335,11 +337,17 @@ export default function EstimadoPage() {
           className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-center gap-2"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button onClick={() => router.push("/?tab=ord")} aria-label="Back" className={PILL_ICON}>
+          <button onClick={() => router.push("/?tab=ord")} className={`${TAB_BTN} bg-white text-[#4a6741] border-[#e3e7dd]`}>
             <Icon d={IC.back} />
+            <span className={TAB_LBL}>Back</span>
           </button>
-          <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} flex-1 disabled:opacity-60`}>
-            <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
+          <button
+            onClick={abrirPdf}
+            disabled={generandoPdf}
+            className={`${TAB_BTN} bg-[#4a6741] text-white border-[#4a6741] disabled:opacity-60`}
+          >
+            <Icon d={IC.print} />
+            <span className={TAB_LBL}>{generandoPdf ? "..." : "Print / PDF"}</span>
           </button>
         </div>
       </div>

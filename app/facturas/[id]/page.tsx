@@ -71,7 +71,9 @@ const today = () => new Date().toISOString().split("T")[0];
 const PILL_BASE = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold border shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
 const PILL = `${PILL_BASE} bg-white text-[#4a6741] border-[#e3e7dd]`;
 const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full bg-[#4a6741] text-white text-xs font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
-const PILL_ICON = "inline-flex items-center justify-center h-9 w-9 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
+// Botones del toolbar: todos identicos (flex-1), icono arriba y etiqueta abajo
+const TAB_BTN = "flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 h-12 rounded-xl border shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all";
+const TAB_LBL = "text-[9px] font-bold leading-none truncate max-w-full px-0.5";
 // Compat: usados por el modal de pago y estados de error
 const GLASS_BTN = PILL;
 const GLASS_BTN_PRIMARY = PILL_SOLID;
@@ -597,81 +599,62 @@ export default function FacturaPage() {
     <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9] print:bg-transparent">
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
-        {/* Dos filas que llenan todo el ancho: los botones se estiran (flex-1)
-            para no dejar espacio en blanco. */}
+        {/* Una sola fila simetrica: botones identicos flex-1 (icono arriba,
+            etiqueta abajo) que llenan todo el ancho, estilo tab bar de iOS. */}
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 space-y-2"
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-stretch gap-1.5"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <div className="flex items-center gap-2">
-            <button onClick={() => router.push("/?tab=fact")} aria-label="Back" className={PILL_ICON}>
-              <Icon d={IC.back} />
-            </button>
-            {!readOnly && !isPaid ? (
-              <>
-                <button
-                  onClick={() => setShowPagoForm(true)}
-                  className={`${PILL_BASE} flex-1 bg-[#f5eee2] text-[#a3814e] border-[#e9dcc4]`}
-                >
-                  <Icon d={IC.plus} />Payment
-                </button>
-                <button
-                  onClick={handleMarkPaid}
-                  className={`${PILL_BASE} flex-1 bg-green-50 text-green-700 border-green-200/70`}
-                >
-                  <Icon d={IC.check} />Paid
-                </button>
-              </>
-            ) : (
-              <>
-                {!readOnly && (
-                  <button
-                    onClick={handleRevert}
-                    disabled={reverting}
-                    title="Revert this invoice back to an order to adjust products and re-invoice"
-                    className={`${PILL_BASE} flex-1 bg-sky-50 text-sky-700 border-sky-200/70 disabled:opacity-50`}
-                  >
-                    <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
-                  </button>
-                )}
-                <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} flex-1 disabled:opacity-60`}>
-                  <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
-                </button>
-                {!readOnly && (
-                  <button
-                    onClick={handleDelete}
-                    disabled={deleting}
-                    aria-label="Delete invoice"
-                    className={`${PILL_BASE} !px-0 w-9 bg-red-50 text-red-600 border-red-200/70 disabled:opacity-50`}
-                  >
-                    <Icon d={IC.trash} />
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+          <button onClick={() => router.push("/?tab=fact")} className={`${TAB_BTN} bg-white text-[#4a6741] border-[#e3e7dd]`}>
+            <Icon d={IC.back} />
+            <span className={TAB_LBL}>Back</span>
+          </button>
           {!readOnly && !isPaid && (
-            <div className="flex items-center gap-2">
-              <button
-                onClick={handleRevert}
-                disabled={reverting}
-                title="Revert this invoice back to an order to adjust products and re-invoice"
-                className={`${PILL_BASE} flex-1 bg-sky-50 text-sky-700 border-sky-200/70 disabled:opacity-50`}
-              >
-                <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
-              </button>
-              <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} flex-1 disabled:opacity-60`}>
-                <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
-              </button>
-              <button
-                onClick={handleDelete}
-                disabled={deleting}
-                aria-label="Delete invoice"
-                className={`${PILL_BASE} !px-0 w-9 bg-red-50 text-red-600 border-red-200/70 disabled:opacity-50`}
-              >
-                <Icon d={IC.trash} />
-              </button>
-            </div>
+            <button
+              onClick={() => setShowPagoForm(true)}
+              className={`${TAB_BTN} bg-[#f5eee2] text-[#a3814e] border-[#e9dcc4]`}
+            >
+              <Icon d={IC.plus} />
+              <span className={TAB_LBL}>Payment</span>
+            </button>
+          )}
+          {!readOnly && !isPaid && (
+            <button
+              onClick={handleMarkPaid}
+              className={`${TAB_BTN} bg-green-50 text-green-700 border-green-200/70`}
+            >
+              <Icon d={IC.check} />
+              <span className={TAB_LBL}>Paid</span>
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              onClick={handleRevert}
+              disabled={reverting}
+              title="Revert this invoice back to an order to adjust products and re-invoice"
+              className={`${TAB_BTN} bg-sky-50 text-sky-700 border-sky-200/70 disabled:opacity-50`}
+            >
+              <Icon d={IC.revert} />
+              <span className={TAB_LBL}>{reverting ? "..." : "To Order"}</span>
+            </button>
+          )}
+          <button
+            onClick={abrirPdf}
+            disabled={generandoPdf}
+            className={`${TAB_BTN} bg-[#4a6741] text-white border-[#4a6741] disabled:opacity-60`}
+          >
+            <Icon d={IC.print} />
+            <span className={TAB_LBL}>{generandoPdf ? "..." : "Print"}</span>
+          </button>
+          {!readOnly && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`${TAB_BTN} bg-red-50 text-red-600 border-red-200/70 disabled:opacity-50`}
+            >
+              <Icon d={IC.trash} />
+              <span className={TAB_LBL}>Delete</span>
+            </button>
           )}
         </div>
       </div>
