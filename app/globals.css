@@ -4,8 +4,9 @@
 @custom-variant dark (&:is(.dark *));
 
 :root {
-  --background: #f5f5f3;
-  --foreground: #1a1a18;
+  /* Fondo neutro con sesgo verde (sale del logo, no gris generico) */
+  --background: #f2f4ee;
+  --foreground: #1c1f19;
   --card: #ffffff;
   --card-foreground: #1a1a18;
   --popover: #ffffff;
@@ -14,14 +15,14 @@
   --primary-foreground: #ffffff;
   --secondary: #eef5e6;
   --secondary-foreground: #4a6741;
-  --muted: #f0ede4;
-  --muted-foreground: #888888;
+  --muted: #eaece4;
+  --muted-foreground: #8a9183;
   --accent: #b09060;
   --accent-foreground: #ffffff;
   --destructive: #A32D2D;
   --destructive-foreground: #ffffff;
-  --border: #e0ddd4;
-  --input: #e0ddd4;
+  --border: #e3e7dd;
+  --input: #e3e7dd;
   --ring: #4a6741;
   --chart-1: #4a6741;
   --chart-2: #6aaa2a;

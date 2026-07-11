@@ -117,22 +117,29 @@ export function BottomNav({
             }}
             onClick={() => go(t.id)}
             style={{ scrollSnapAlign: "center" }}
-            className={`w-[68px] shrink-0 flex flex-col items-center py-2.5 px-0.5 cursor-pointer text-xs gap-1 border-none bg-transparent font-sans ${
+            className={`w-[68px] shrink-0 flex flex-col items-center py-2 px-0.5 cursor-pointer text-[11px] gap-0.5 border-none bg-transparent font-sans ${
               active === t.id ? "text-secondary-foreground font-bold" : "text-muted-foreground font-normal"
             }`}
           >
-            <svg
-              width={22}
-              height={22}
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
-              strokeWidth={1.8}
-              strokeLinecap="round"
-              strokeLinejoin="round"
+            {/* Pildora activa detras del icono, estilo tab bar de iOS */}
+            <span
+              className={`flex items-center justify-center rounded-full px-3.5 py-1 transition-colors ${
+                active === t.id ? "bg-secondary" : "bg-transparent"
+              }`}
             >
-              <path d={NAV_ICONS[t.id]} />
-            </svg>
+              <svg
+                width={21}
+                height={21}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
+                strokeWidth={active === t.id ? 2 : 1.8}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d={NAV_ICONS[t.id]} />
+              </svg>
+            </span>
             <span className="truncate w-full text-center">{t.label}</span>
           </button>
         ))}
