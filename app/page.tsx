@@ -3722,7 +3722,7 @@ const Inventario = () => {
   const [etqInput, setEtqInput] = useState("");
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("sku");
-  const [invColumnas, setInvColumnas] = useState<2 | 3>(2);
+  const [invColumnas, setInvColumnas] = useState<2 | 3>(3);
   const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
   const [form, setForm] = useState({
@@ -4380,16 +4380,16 @@ const Inventario = () => {
             </option>
           ))}
         </select>
+        <button
+          onClick={() => setShowTopProductos(true)}
+          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
+        >
+          🏆 Top
+        </button>
         <span className="text-xs text-muted-foreground shrink-0">
           {filtered.length} prod.
         </span>
       </div>
-      <button
-        onClick={() => setShowTopProductos(true)}
-        className="w-full mb-3 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
-      >
-        🏆 Top Products
-      </button>
       {showTopProductos && (
         <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
           <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
@@ -4429,37 +4429,6 @@ const Inventario = () => {
             <Empty text="No sales in this period." />
           )}
         </Modal>
-      )}
-      {allTags.length > 0 && (
-        <div
-          className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-2 -mx-1 px-1"
-          style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
-        >
-          {tagFilter.length > 0 && (
-            <button
-              onClick={() => setTagFilter([])}
-              className="shrink-0 text-xs px-2.5 py-1 rounded-full border border-border text-muted-foreground"
-            >
-              Clear
-            </button>
-          )}
-          {allTags.map((t) => {
-            const active = tagFilter.includes(t);
-            return (
-              <button
-                key={t}
-                onClick={() => toggleTagFilter(t)}
-                className={`shrink-0 text-xs px-2.5 py-1 rounded-full border transition-colors ${
-                  active
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card text-secondary-foreground border-border"
-                }`}
-              >
-                {t}
-              </button>
-            );
-          })}
-        </div>
       )}
       <div className={`grid gap-2.5 mb-3 ${invColumnas === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
         {visibleProductos.length ? (
