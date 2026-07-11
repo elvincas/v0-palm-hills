@@ -68,10 +68,10 @@ const today = () => new Date().toISOString().split("T")[0];
 
 // Pildoras planas estilo iOS: cada accion con su tinte suave (dorado, verde,
 // azul, rojo) y la principal en verde solido.
-const PILL_BASE = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full text-[13px] font-semibold border shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_BASE = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full text-xs font-semibold border shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
 const PILL = `${PILL_BASE} bg-white text-[#4a6741] border-[#e3e7dd]`;
-const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-[#4a6741] text-white text-[13px] font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
-const PILL_ICON = "inline-flex items-center justify-center h-10 w-10 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
+const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full bg-[#4a6741] text-white text-xs font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_ICON = "inline-flex items-center justify-center h-9 w-9 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
 // Compat: usados por el modal de pago y estados de error
 const GLASS_BTN = PILL;
 const GLASS_BTN_PRIMARY = PILL_SOLID;
@@ -597,51 +597,81 @@ export default function FacturaPage() {
     <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9] print:bg-transparent">
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
+        {/* Dos filas que llenan todo el ancho: los botones se estiran (flex-1)
+            para no dejar espacio en blanco. */}
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex flex-wrap items-center justify-center gap-2"
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 space-y-2"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button onClick={() => router.push("/?tab=fact")} aria-label="Back" className={PILL_ICON}>
-            <Icon d={IC.back} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={() => router.push("/?tab=fact")} aria-label="Back" className={PILL_ICON}>
+              <Icon d={IC.back} />
+            </button>
+            {!readOnly && !isPaid ? (
+              <>
+                <button
+                  onClick={() => setShowPagoForm(true)}
+                  className={`${PILL_BASE} flex-1 bg-[#f5eee2] text-[#a3814e] border-[#e9dcc4]`}
+                >
+                  <Icon d={IC.plus} />Payment
+                </button>
+                <button
+                  onClick={handleMarkPaid}
+                  className={`${PILL_BASE} flex-1 bg-green-50 text-green-700 border-green-200/70`}
+                >
+                  <Icon d={IC.check} />Paid
+                </button>
+              </>
+            ) : (
+              <>
+                {!readOnly && (
+                  <button
+                    onClick={handleRevert}
+                    disabled={reverting}
+                    title="Revert this invoice back to an order to adjust products and re-invoice"
+                    className={`${PILL_BASE} flex-1 bg-sky-50 text-sky-700 border-sky-200/70 disabled:opacity-50`}
+                  >
+                    <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
+                  </button>
+                )}
+                <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} flex-1 disabled:opacity-60`}>
+                  <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
+                </button>
+                {!readOnly && (
+                  <button
+                    onClick={handleDelete}
+                    disabled={deleting}
+                    aria-label="Delete invoice"
+                    className={`${PILL_BASE} !px-0 w-9 bg-red-50 text-red-600 border-red-200/70 disabled:opacity-50`}
+                  >
+                    <Icon d={IC.trash} />
+                  </button>
+                )}
+              </>
+            )}
+          </div>
           {!readOnly && !isPaid && (
-            <button
-              onClick={() => setShowPagoForm(true)}
-              className={`${PILL_BASE} bg-[#f5eee2] text-[#a3814e] border-[#e9dcc4]`}
-            >
-              <Icon d={IC.plus} />Payment
-            </button>
-          )}
-          {!readOnly && !isPaid && (
-            <button
-              onClick={handleMarkPaid}
-              className={`${PILL_BASE} bg-green-50 text-green-700 border-green-200/70`}
-            >
-              <Icon d={IC.check} />Paid
-            </button>
-          )}
-          {!readOnly && (
-            <button
-              onClick={handleRevert}
-              disabled={reverting}
-              title="Revert this invoice back to an order to adjust products and re-invoice"
-              className={`${PILL_BASE} bg-sky-50 text-sky-700 border-sky-200/70 disabled:opacity-50`}
-            >
-              <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
-            </button>
-          )}
-          <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} disabled:opacity-60`}>
-            <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
-          </button>
-          {!readOnly && (
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              aria-label="Delete invoice"
-              className={`${PILL_BASE} !px-0 w-10 bg-red-50 text-red-600 border-red-200/70 disabled:opacity-50`}
-            >
-              <Icon d={IC.trash} />
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRevert}
+                disabled={reverting}
+                title="Revert this invoice back to an order to adjust products and re-invoice"
+                className={`${PILL_BASE} flex-1 bg-sky-50 text-sky-700 border-sky-200/70 disabled:opacity-50`}
+              >
+                <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
+              </button>
+              <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} flex-1 disabled:opacity-60`}>
+                <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                aria-label="Delete invoice"
+                className={`${PILL_BASE} !px-0 w-9 bg-red-50 text-red-600 border-red-200/70 disabled:opacity-50`}
+              >
+                <Icon d={IC.trash} />
+              </button>
+            </div>
           )}
         </div>
       </div>

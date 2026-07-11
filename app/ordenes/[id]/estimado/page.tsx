@@ -44,9 +44,9 @@ const fdate = (s: string) => {
 };
 
 // Pildoras planas estilo iOS (mismo sistema que /facturas/[id])
-const PILL = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-white text-[#4a6741] text-[13px] font-semibold border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
-const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-[#4a6741] text-white text-[13px] font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
-const PILL_ICON = "inline-flex items-center justify-center h-10 w-10 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
+const PILL = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full bg-white text-[#4a6741] text-xs font-semibold border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-9 px-3 rounded-full bg-[#4a6741] text-white text-xs font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_ICON = "inline-flex items-center justify-center h-9 w-9 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
 const GLASS_BTN = PILL;
 const GLASS_BTN_PRIMARY = PILL_SOLID;
 
@@ -338,7 +338,7 @@ export default function EstimadoPage() {
           <button onClick={() => router.push("/?tab=ord")} aria-label="Back" className={PILL_ICON}>
             <Icon d={IC.back} />
           </button>
-          <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} disabled:opacity-60`}>
+          <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} flex-1 disabled:opacity-60`}>
             <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
           </button>
         </div>
