@@ -700,7 +700,7 @@ export default function ClientePerfilPage() {
                     const overdue = t.fecha_limite && t.fecha_limite < today;
                     return (
                       <div key={t.id} className="flex items-start gap-3 group">
-                        <button onClick={() => handleToggleTodo(t)} className="mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 transition-colors flex-none" style={{ borderColor: overdue ? "#f87171" : PH }} />
+                        <button onClick={() => { if (!readOnly) handleToggleTodo(t); }} disabled={readOnly} className="mt-0.5 w-5 h-5 rounded-full border-2 shrink-0 transition-colors flex-none disabled:opacity-40" style={{ borderColor: overdue ? "#f87171" : PH }} />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm text-gray-800 leading-snug">{t.texto}</p>
                           {t.fecha_limite && (

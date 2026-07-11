@@ -1361,9 +1361,10 @@ const Dashboard = () => {
           {todos.map((t) => (
             <div key={t.id} className="flex items-start gap-3 py-2.5 border-b border-border last:border-b-0">
               <button
-                onClick={() => toggleTodo(t.id)}
-                className="w-5 h-5 rounded border-2 border-muted-foreground mt-0.5 shrink-0 hover:border-primary transition-colors flex items-center justify-center"
-                title="Mark done"
+                onClick={() => { if (!readOnly) toggleTodo(t.id); }}
+                disabled={readOnly}
+                className="w-5 h-5 rounded border-2 border-muted-foreground mt-0.5 shrink-0 hover:border-primary transition-colors flex items-center justify-center disabled:opacity-40 disabled:hover:border-muted-foreground"
+                title={readOnly ? "View only" : "Mark done"}
               />
               <div className="flex-1 min-w-0">
                 <div className="text-sm text-card-foreground">{t.texto}</div>
@@ -1573,12 +1574,14 @@ const Dashboard = () => {
                           ✉️ Email
                         </a>
                       )}
-                      <button
-                        onClick={() => { if (confirm("Confirm this remito was sent?")) marcarRemitoEnviado(r.id); }}
-                        className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
-                      >
-                        ✓ Sent
-                      </button>
+                      {!readOnly && (
+                        <button
+                          onClick={() => { if (confirm("Confirm this remito was sent?")) marcarRemitoEnviado(r.id); }}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
+                        >
+                          ✓ Sent
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
