@@ -647,10 +647,10 @@ export default function NuevaOrdenPage() {
                   )}
                   <span
                     className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex mb-1 self-start ${
-                      esCastillo ? 'bg-secondary text-secondary-foreground' : estadoColor
+                      esCastillo ? 'bg-[#f5eee2] text-[#a3814e]' : estadoColor
                     }`}
                   >
-                    {esCastillo ? '🏰 Castillo' : stockEstado}
+                    {esCastillo ? '🏰 CASTILLO' : stockEstado}
                   </span>
                   <div className="flex items-center gap-1.5 mt-1">
                     {descuentos[p.id] !== undefined && descuentos[p.id] !== p.precio ? (

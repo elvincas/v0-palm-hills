@@ -49,8 +49,22 @@ const fdate = (s: string) => {
 const ROWS_INTER = 22;
 const ROWS_LAST = 14;
 
-const GLASS_BTN = "backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]";
-const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
+// Pildoras planas estilo iOS (mismo sistema que /facturas/[id])
+const PILL = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-white text-[#4a6741] text-[13px] font-semibold border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-[#4a6741] text-white text-[13px] font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_ICON = "inline-flex items-center justify-center h-10 w-10 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
+const GLASS_BTN = PILL;
+const GLASS_BTN_PRIMARY = PILL_SOLID;
+
+const Icon = ({ d }: { d: string }) => (
+  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d.split("|").map((p, i) => <path key={i} d={p} />)}
+  </svg>
+);
+const IC = {
+  back: "M15 18l-6-6 6-6",
+  print: "M6 9V4h12v5|M6 13h12v8H6z|M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2",
+};
 
 function EncabezadoEstimado({ orden, cliente, page, totalPages }: { orden: Orden; cliente: Cliente | null; page: number; totalPages: number }) {
   return (
@@ -167,7 +181,7 @@ export default function EstimadoPage() {
         <p className="text-sm text-destructive mb-3">{error}</p>
         <button
           onClick={() => router.push("/?tab=ord")}
-          className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN}`}
+          className={GLASS_BTN}
         >
           ← Back
         </button>
@@ -221,17 +235,11 @@ export default function EstimadoPage() {
           className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-between"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button
-            onClick={() => router.push("/?tab=ord")}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN}`}
-          >
-            ← Back
+          <button onClick={() => router.push("/?tab=ord")} aria-label="Back" className={PILL_ICON}>
+            <Icon d={IC.back} />
           </button>
-          <button
-            onClick={printOrShare}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold ${GLASS_BTN_PRIMARY}`}
-          >
-            🖨️ Print / PDF
+          <button onClick={printOrShare} className={PILL_SOLID}>
+            <Icon d={IC.print} />Print / PDF
           </button>
         </div>
       </div>

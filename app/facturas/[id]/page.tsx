@@ -70,9 +70,28 @@ const today = () => new Date().toISOString().split("T")[0];
 const ROWS_INTER = 22; // páginas intermedias: solo header + filas
 const ROWS_LAST  = 14; // última página: header + filas + totales + firma + thank you
 
-const GLASS_BTN ="backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]";
-const GLASS_BTN_PRIMARY = "backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white";
-const GLASS_BTN_DANGER = "backdrop-blur-md bg-red-50/80 border border-red-200/60 shadow-sm hover:bg-red-100/80 active:scale-[0.97] transition-all text-red-700";
+// Pildoras planas estilo iOS: blancas para acciones secundarias, una sola
+// verde solida para la principal, rojo solo en el icono de borrar.
+const PILL = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-white text-[#4a6741] text-[13px] font-semibold border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_SOLID = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-[#4a6741] text-white text-[13px] font-semibold border border-[#4a6741] shadow-sm active:scale-[0.97] transition-all whitespace-nowrap";
+const PILL_ICON = "inline-flex items-center justify-center h-10 w-10 rounded-full bg-white text-[#4a6741] border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all shrink-0";
+// Compat: usados por el modal de pago y estados de error
+const GLASS_BTN = PILL;
+const GLASS_BTN_PRIMARY = PILL_SOLID;
+
+const Icon = ({ d, className }: { d: string; className?: string }) => (
+  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={className} aria-hidden="true">
+    {d.split("|").map((p, i) => <path key={i} d={p} />)}
+  </svg>
+);
+const IC = {
+  back: "M15 18l-6-6 6-6",
+  plus: "M12 5v14|M5 12h14",
+  check: "M20 6L9 17l-5-5",
+  revert: "M9 14l-5-5 5-5|M4 9h10a6 6 0 0 1 0 12h-3",
+  print: "M6 9V4h12v5|M6 13h12v8H6z|M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2",
+  trash: "M3 6h18|M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
+};
 
 function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Factura; cliente: Cliente | null; page: number; totalPages: number }) {
   return (
@@ -399,7 +418,7 @@ export default function FacturaPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button onClick={() => router.push("/?tab=fact")} className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}>← Back</button>
+        <button onClick={() => router.push("/?tab=fact")} className={GLASS_BTN}>← Back</button>
       </div>
     );
   }
@@ -455,24 +474,20 @@ export default function FacturaPage() {
       {/* Toolbar */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 grid grid-cols-3 gap-1.5 sm:flex sm:items-center"
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex flex-wrap items-center gap-2"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button onClick={() => router.push("/?tab=fact")} className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN} sm:mr-auto`}>← Back</button>
+          <button onClick={() => router.push("/?tab=fact")} aria-label="Back" className={PILL_ICON}>
+            <Icon d={IC.back} />
+          </button>
           {!readOnly && !isPaid && (
-            <button
-              onClick={() => setShowPagoForm(true)}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN_PRIMARY}`}
-            >
-              + Payment
+            <button onClick={() => setShowPagoForm(true)} className={PILL}>
+              <Icon d={IC.plus} />Payment
             </button>
           )}
           {!readOnly && !isPaid && (
-            <button
-              onClick={handleMarkPaid}
-              className="px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap backdrop-blur-md bg-green-600/85 border border-white/30 shadow-sm hover:bg-green-600/95 active:scale-[0.97] transition-all text-white"
-            >
-              ✓ Paid
+            <button onClick={handleMarkPaid} className={PILL}>
+              <Icon d={IC.check} />Paid
             </button>
           )}
           {!readOnly && (
@@ -480,24 +495,22 @@ export default function FacturaPage() {
               onClick={handleRevert}
               disabled={reverting}
               title="Revert this invoice back to an order to adjust products and re-invoice"
-              className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN} disabled:opacity-50`}
+              className={`${PILL} disabled:opacity-50`}
             >
-              {reverting ? "Reverting..." : "↩️ To Order"}
+              <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
             </button>
           )}
-          <button
-            onClick={printOrShare}
-            className={`px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap ${GLASS_BTN_PRIMARY}`}
-          >
-            🖨️ Print / PDF
+          <button onClick={printOrShare} className={PILL_SOLID}>
+            <Icon d={IC.print} />Print / PDF
           </button>
           {!readOnly && (
             <button
               onClick={handleDelete}
               disabled={deleting}
-              className={`px-3 py-2 rounded-lg text-xs font-semibold ${GLASS_BTN_DANGER}`}
+              aria-label="Delete invoice"
+              className={`${PILL_ICON} !text-red-600 disabled:opacity-50`}
             >
-              🗑 Delete
+              <Icon d={IC.trash} />
             </button>
           )}
         </div>
@@ -549,11 +562,11 @@ export default function FacturaPage() {
               </div>
             </div>
             <div className="flex gap-2.5 mt-5">
-              <button onClick={() => setShowPagoForm(false)} className={`flex-1 px-4 py-2.5 rounded-full text-sm font-medium ${GLASS_BTN}`}>Cancel</button>
+              <button onClick={() => setShowPagoForm(false)} className={`flex-1 ${GLASS_BTN}`}>Cancel</button>
               <button
                 onClick={handleAddPago}
                 disabled={savingPago || !pagoMonto}
-                className={`flex-1 px-4 py-2.5 rounded-full text-sm font-bold ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+                className={`flex-1 ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
               >
                 {savingPago ? "Saving..." : "Save Payment"}
               </button>

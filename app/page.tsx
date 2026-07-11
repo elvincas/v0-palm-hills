@@ -217,30 +217,31 @@ const GLASS_BTN_DESTRUCTIVE =
 // Badge component
 // ------------------------------
 const BM: Record<string, string> = {
-  Paid: "bg-green-100 text-green-800",
-  Pending: "bg-amber-100 text-amber-800",
-  "In Review": "bg-blue-100 text-blue-800",
-  "In Progress": "bg-blue-100 text-blue-800",
-  Delivered: "bg-green-100 text-green-800",
-  Cancelled: "bg-red-100 text-red-800",
-  Current: "bg-green-100 text-green-800",
-  Issue: "bg-amber-100 text-amber-800",
-  Active: "bg-green-100 text-green-800",
-  Inactive: "bg-red-100 text-red-800",
-  Waiting: "bg-amber-100 text-amber-800",
-  "Out of stock": "bg-red-100 text-red-800",
-  "Low stock": "bg-amber-100 text-amber-800",
-  "In Stock": "bg-green-100 text-green-800",
-  High: "bg-red-100 text-red-800",
-  Medium: "bg-amber-100 text-amber-800",
-  Low: "bg-blue-100 text-blue-800",
-  Completed: "bg-green-100 text-green-800",
+  Paid: "bg-green-50 text-green-800",
+  Pending: "bg-amber-50 text-amber-800",
+  "In Review": "bg-sky-50 text-sky-800",
+  "In Progress": "bg-sky-50 text-sky-800",
+  Delivered: "bg-green-50 text-green-800",
+  Cancelled: "bg-red-50 text-red-700",
+  Current: "bg-green-50 text-green-800",
+  Issue: "bg-amber-50 text-amber-800",
+  Active: "bg-green-50 text-green-800",
+  Inactive: "bg-red-50 text-red-700",
+  Waiting: "bg-amber-50 text-amber-800",
+  "Out of stock": "bg-red-50 text-red-700",
+  "Low stock": "bg-amber-50 text-amber-800",
+  "In Stock": "bg-green-50 text-green-800",
+  High: "bg-red-50 text-red-700",
+  Medium: "bg-amber-50 text-amber-800",
+  Low: "bg-sky-50 text-sky-800",
+  Completed: "bg-green-50 text-green-800",
 };
 
 const Badge = ({ e }: { e: string }) => (
   <span
-    className={`px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex ${BM[e] || "bg-blue-100 text-blue-800"}`}
+    className={`pl-2 pr-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 ${BM[e] || "bg-sky-50 text-sky-800"}`}
   >
+    <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 shrink-0" aria-hidden="true" />
     {e}
   </span>
 );
@@ -1226,7 +1227,8 @@ const Dashboard = () => {
     [facturasDelMes]
   );
   const lowStock = useMemo(
-    () => productos.filter((p) => Number(p.stock) <= Number(p.min || 5)).length,
+    // Castillo no lleva inventario vivo: solo cuenta el stock de Palm Hills
+    () => productos.filter((p) => (p.almacen || "palmhills") === "palmhills" && Number(p.stock) <= Number(p.min || 5)).length,
     [productos]
   );
   const pct = meta > 0 ? Math.min(100, Math.round((totalVentas / meta) * 100)) : 0;
@@ -1651,7 +1653,7 @@ const EVENTO_INFO: Record<TipoEvento, { icon: string; label: string }> = {
 };
 
 const Calendario = () => {
-  const { ordenes, clientes, eventosCalendario, addEvento, deleteEvento, readOnly } = useData();
+  const { ordenes, clientes, facturas, eventosCalendario, addEvento, deleteEvento, updateOrden, readOnly } = useData();
   const [mesActual, setMesActual] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -1665,6 +1667,37 @@ const Calendario = () => {
   const [formClienteOpen, setFormClienteOpen] = useState(false);
   const [formNota, setFormNota] = useState("");
   const [saving, setSaving] = useState(false);
+  // Mover un delivery (orden) a otra fecha desde el calendario
+  const [movingOrden, setMovingOrden] = useState<Orden | null>(null);
+  const [nuevaFechaOrden, setNuevaFechaOrden] = useState("");
+  const [movingSaving, setMovingSaving] = useState(false);
+
+  // Factura generada por cada orden (via completePick): en el calendario se
+  // muestra el total facturado final, no el estimado de la orden.
+  const facturaPorOrden = useMemo(() => {
+    const map = new Map<string, Factura>();
+    facturas.forEach((f) => { if (f.orden_id) map.set(f.orden_id, f); });
+    return map;
+  }, [facturas]);
+
+  const handleMoverOrden = async () => {
+    if (!movingOrden || !nuevaFechaOrden || movingSaving) return;
+    setMovingSaving(true);
+    try {
+      await updateOrden(movingOrden.id, { ...movingOrden, fecha: nuevaFechaOrden });
+      // Si el dia destino no esta marcado como delivery en el calendario, se
+      // marca para que se pinte y aparezca en los selectores de fecha.
+      const yaMarcado = eventosCalendario.some((e) => e.fecha === nuevaFechaOrden && e.tipo === "delivery");
+      if (!yaMarcado) {
+        await addEvento({ fecha: nuevaFechaOrden, tipo: "delivery", cliente_id: null });
+      }
+      setMovingOrden(null);
+    } catch (err) {
+      alert(`Could not move the delivery: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setMovingSaving(false);
+    }
+  };
 
   const ordenesPorFecha = useMemo(() => {
     const map: Record<string, Orden[]> = {};
@@ -1869,17 +1902,31 @@ const Calendario = () => {
           {ordenesDelDia.length ? (
             ordenesDelDia.map((o) => {
               const cInfo = clienteFor(o.cli);
+              const fact = facturaPorOrden.get(o.id);
               return (
-                <div key={o.id} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+                <div key={o.id} className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-b-0">
                   <div className="min-w-0">
                     <div className="text-sm font-semibold uppercase text-card-foreground truncate">
                       {cInfo ? cInfo.nom : o.cli}
                     </div>
-                    <div className="text-xs text-muted-foreground">Order #{o.num}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Order #{o.num}{fact ? ` · Invoice #${fact.num}` : ""}
+                    </div>
                   </div>
-                  <div className="text-right shrink-0">
-                    <div className="text-sm font-bold text-card-foreground">{fmt(o.total)}</div>
-                    <Badge e={o.estado} />
+                  <div className="flex items-center gap-2 shrink-0">
+                    <div className="text-right">
+                      <div className="text-sm font-bold text-card-foreground">{fmt(fact ? fact.total : o.total)}</div>
+                      <Badge e={o.estado} />
+                    </div>
+                    {!readOnly && (
+                      <button
+                        onClick={() => { setMovingOrden(o); setNuevaFechaOrden(o.fecha); }}
+                        aria-label="Move delivery to another date"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-card-foreground text-sm"
+                      >
+                        📅
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -1888,6 +1935,55 @@ const Calendario = () => {
             <Empty text="No deliveries scheduled for this day." />
           )}
         </div>
+      )}
+
+      {movingOrden && !readOnly && (
+        <Modal title={`Move delivery — Order #${movingOrden.num}`} onClose={() => setMovingOrden(null)}>
+          <div className="text-xs text-muted-foreground mb-2 uppercase font-semibold">
+            {clienteFor(movingOrden.cli)?.nom || movingOrden.cli}
+          </div>
+          {(() => {
+            const proximas = Array.from(
+              new Set(
+                eventosCalendario
+                  .filter((e) => e.tipo === "delivery" && e.fecha >= today() && e.fecha !== movingOrden.fecha)
+                  .map((e) => e.fecha)
+              )
+            ).sort().slice(0, 8);
+            return proximas.length > 0 ? (
+              <div className="mb-3">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Upcoming delivery days</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {proximas.map((f) => (
+                    <button
+                      key={f}
+                      onClick={() => setNuevaFechaOrden(f)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-bold border ${
+                        nuevaFechaOrden === f ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"
+                      }`}
+                    >
+                      🚚 {fdate(f)}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null;
+          })()}
+          <div className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1.5">Or pick any date</div>
+          <input
+            type="date"
+            value={nuevaFechaOrden}
+            onChange={(e) => setNuevaFechaOrden(e.target.value)}
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-3"
+          />
+          <button
+            onClick={handleMoverOrden}
+            disabled={movingSaving || !nuevaFechaOrden || nuevaFechaOrden === movingOrden.fecha}
+            className={`w-full py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+          >
+            {movingSaving ? "Moving..." : `Move to ${nuevaFechaOrden ? fdate(nuevaFechaOrden) : "..."}`}
+          </button>
+        </Modal>
       )}
 
       {menuOpen && (
@@ -4238,8 +4334,8 @@ const Inventario = () => {
                 )}
                 <div className="mt-auto pt-1.5">
                   {almacen === "castillo" ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex bg-secondary text-secondary-foreground">
-                      🏰 Castillo
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex bg-[#f5eee2] text-[#a3814e]">
+                      🏰 CASTILLO
                     </span>
                   ) : (
                     <Badge e={estado} />
@@ -6399,7 +6495,7 @@ function AppContent() {
   const [pulling, setPulling] = useState(false); // dedo abajo (sin animar altura)
   const [refreshing, setRefreshing] = useState(false);
   const pullStartY = useRef<number | null>(null);
-  const PULL_THRESHOLD = 60;
+  const PULL_THRESHOLD = 80; // menos sensible: hay que jalar mas para disparar
 
   const onPullStart = (e: React.TouchEvent) => {
     if (refreshing) return;
@@ -6420,7 +6516,7 @@ function AppContent() {
     }
     const dy = e.touches[0].clientY - pullStartY.current;
     // Resistencia: la pantalla baja menos que el dedo, como en iOS
-    setPull(dy > 0 ? Math.min(dy * 0.45, 100) : 0);
+    setPull(dy > 0 ? Math.min(dy * 0.35, 110) : 0);
   };
   const onPullEnd = async () => {
     setPulling(false);
@@ -6565,33 +6661,57 @@ function AppContent() {
             transition: pulling ? "none" : "height 0.25s ease",
           }}
         >
-          {/* Spinner estilo iOS: 12 rayitas con opacidad degradada */}
-          <svg
-            width={26}
-            height={26}
-            viewBox="0 0 24 24"
-            className={refreshing ? "animate-spin" : ""}
-            style={
-              refreshing
-                ? { animationDuration: "0.9s" }
-                : { transform: `rotate(${pull * 2.5}deg)`, opacity: Math.min(1, pull / PULL_THRESHOLD) }
-            }
-          >
-            {Array.from({ length: 12 }).map((_, i) => (
-              <rect
-                key={i}
-                x={11.25}
-                y={1.5}
-                width={1.5}
-                height={6}
-                rx={0.75}
-                fill="currentColor"
-                className="text-muted-foreground"
-                opacity={(i + 1) / 12}
-                transform={`rotate(${i * 30} 12 12)`}
-              />
-            ))}
-          </svg>
+          {/* Spinner estilo iOS con anillo de progreso: el anillo se completa
+              exactamente al llegar al umbral — ahi ya puede soltar. */}
+          {(() => {
+            const progress = Math.min(1, pull / PULL_THRESHOLD);
+            const ready = progress >= 1;
+            const R = 15;
+            const CIRC = 2 * Math.PI * R;
+            return (
+              <div className="relative flex items-center justify-center" style={{ width: 38, height: 38 }}>
+                {!refreshing && (
+                  <svg width={38} height={38} viewBox="0 0 38 38" className="absolute inset-0" style={{ opacity: Math.min(1, pull / 20) }}>
+                    <circle cx={19} cy={19} r={R} fill="none" stroke="currentColor" strokeWidth={2} className="text-border" />
+                    <circle
+                      cx={19} cy={19} r={R} fill="none"
+                      stroke="currentColor" strokeWidth={2} strokeLinecap="round"
+                      className={ready ? "text-primary" : "text-muted-foreground"}
+                      strokeDasharray={CIRC}
+                      strokeDashoffset={CIRC * (1 - progress)}
+                      transform="rotate(-90 19 19)"
+                    />
+                  </svg>
+                )}
+                <svg
+                  width={22}
+                  height={22}
+                  viewBox="0 0 24 24"
+                  className={refreshing ? "animate-spin" : ""}
+                  style={
+                    refreshing
+                      ? { animationDuration: "0.9s" }
+                      : { transform: `rotate(${pull * 2.5}deg) scale(${ready ? 1.15 : 1})`, opacity: Math.min(1, pull / PULL_THRESHOLD), transition: "scale 0.15s" }
+                  }
+                >
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <rect
+                      key={i}
+                      x={11.25}
+                      y={1.5}
+                      width={1.5}
+                      height={6}
+                      rx={0.75}
+                      fill="currentColor"
+                      className={!refreshing && pull >= PULL_THRESHOLD ? "text-primary" : "text-muted-foreground"}
+                      opacity={(i + 1) / 12}
+                      transform={`rotate(${i * 30} 12 12)`}
+                    />
+                  ))}
+                </svg>
+              </div>
+            );
+          })()}
         </div>
         {panels[tab]}
       </main>
