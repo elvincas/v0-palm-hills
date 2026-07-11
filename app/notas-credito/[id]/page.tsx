@@ -23,6 +23,17 @@ interface NotaCredito {
   aplicada?: boolean
   aplicada_en?: string
   aplicada_fecha?: string
+  aplicada_factura_id?: string | null
+}
+
+interface FacturaMin {
+  id: string
+  num: number
+  fecha: string
+  total: number
+  pagos?: { monto: number; fecha: string; nota?: string; metodo?: string }[]
+  estado: string
+  saldo: number
 }
 
 const fmt = (n: number) =>
@@ -60,40 +71,109 @@ export default function NotaCreditoPage() {
 
   const today = () => new Date().toISOString().split('T')[0]
 
-  // Marca la NC como aplicada (con descripcion opcional de a que factura) o
-  // la desmarca. Una NC aplicada deja de restar del balance del cliente.
-  const handleToggleAplicada = async () => {
+  // ── Aplicar credito a una factura ──
+  // El credito se registra como PAGO en la factura elegida (metodo "Credit"),
+  // asi la rebaja queda marcada en la factura y el balance del cliente no
+  // cambia: antes restaba como credito pendiente, ahora vive dentro de la
+  // factura como pago.
+  const [showAplicar, setShowAplicar] = useState(false)
+  const [facturasCli, setFacturasCli] = useState<FacturaMin[]>([])
+  const [selFacturaId, setSelFacturaId] = useState<string>('')
+  const [notaLibre, setNotaLibre] = useState('')
+
+  const saldoDe = (f: { total: number; pagos?: { monto: number }[] }) =>
+    +(f.total - (f.pagos || []).reduce((a, p) => a + p.monto, 0)).toFixed(2)
+
+  const abrirAplicar = async () => {
+    if (!nota) return
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('facturas')
+      .select('id, num, fecha, total, pagos, estado')
+      .eq('cli', nota.cli)
+      .order('num', { ascending: false })
+    const pendientes = ((data || []) as Omit<FacturaMin, 'saldo'>[])
+      .map((f) => ({ ...f, saldo: saldoDe(f) }))
+      .filter((f) => f.saldo > 0.009)
+    setFacturasCli(pendientes)
+    setSelFacturaId('')
+    setNotaLibre('')
+    setShowAplicar(true)
+  }
+
+  const confirmarAplicar = async () => {
     if (!nota || savingAplicada) return
     const supabase = createClient()
-    let cambios: Partial<NotaCredito> & { aplicada: boolean }
-    if (nota.aplicada) {
-      if (!confirm(`Unmark credit note #${nota.num} as applied? It will count towards the client's balance again.`)) return
-      cambios = { aplicada: false, aplicada_en: undefined, aplicada_fecha: undefined }
-    } else {
-      const dest = prompt('Which invoice was this credit applied to? (optional, e.g. "Invoice #1045")')
-      if (dest === null) return // cancelado
-      cambios = { aplicada: true, aplicada_en: dest.trim() || undefined, aplicada_fecha: today() }
-    }
     setSavingAplicada(true)
-    const { error } = await supabase
-      .from('notas_credito')
-      .update({
-        aplicada: cambios.aplicada,
-        aplicada_en: cambios.aplicada_en ?? null,
-        aplicada_fecha: cambios.aplicada_fecha ?? null,
-      })
-      .eq('id', nota.id)
-    setSavingAplicada(false)
-    if (error) {
-      alert('Could not update: ' + error.message)
-      return
+    try {
+      let aplicadaEn = notaLibre.trim() || 'No specific invoice'
+      let facturaId: string | null = null
+
+      if (selFacturaId) {
+        const f = facturasCli.find((x) => x.id === selFacturaId)
+        if (!f) throw new Error('Invoice not found')
+        if (nota.monto > f.saldo + 0.009) {
+          alert(`This credit (${fmt(nota.monto)}) is larger than the invoice balance (${fmt(f.saldo)}). Pick an invoice with a bigger balance.`)
+          setSavingAplicada(false)
+          return
+        }
+        // Registrar el credito como pago en la factura
+        const nuevoPago = { monto: nota.monto, fecha: today(), metodo: 'Credit', nota: `Credit Note #${nota.num}` }
+        const newPagos = [...(f.pagos || []), nuevoPago]
+        const totalPagado = newPagos.reduce((a, p) => a + p.monto, 0)
+        const newEstado = totalPagado >= f.total - 0.009 ? 'Paid' : 'Partially Paid'
+        const { error: fErr } = await supabase.from('facturas').update({ pagos: newPagos, estado: newEstado }).eq('id', f.id)
+        if (fErr) throw new Error(fErr.message)
+        aplicadaEn = `Invoice #${String(f.num).padStart(4, '0')}`
+        facturaId = f.id
+      }
+
+      const cambios = { aplicada: true, aplicada_en: aplicadaEn, aplicada_fecha: today(), aplicada_factura_id: facturaId }
+      const { error } = await supabase.from('notas_credito').update(cambios).eq('id', nota.id)
+      if (error) throw new Error(error.message)
+      setNota({ ...nota, ...cambios })
+      setShowAplicar(false)
+      await supabase.from('actividad').insert({ msg: `Credit note #${nota.num} applied (${aplicadaEn})` })
+    } catch (err) {
+      alert('Could not apply: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setSavingAplicada(false)
     }
-    setNota({ ...nota, ...cambios })
-    await supabase.from('actividad').insert({
-      msg: cambios.aplicada
-        ? `Credit note #${nota.num} marked as applied${cambios.aplicada_en ? ` (${cambios.aplicada_en})` : ''}`
-        : `Credit note #${nota.num} unmarked as applied`,
-    })
+  }
+
+  // Desaplicar: quita el pago-credito de la factura ligada (si existe) y
+  // devuelve la NC al balance pendiente del cliente.
+  const handleDesaplicar = async () => {
+    if (!nota || savingAplicada) return
+    if (!confirm(`Unmark credit note #${nota.num} as applied? ${nota.aplicada_factura_id ? 'The credit payment will be removed from its invoice and ' : ''}it will count towards the client's balance again.`)) return
+    const supabase = createClient()
+    setSavingAplicada(true)
+    try {
+      if (nota.aplicada_factura_id) {
+        const { data: f } = await supabase
+          .from('facturas')
+          .select('id, total, pagos')
+          .eq('id', nota.aplicada_factura_id)
+          .maybeSingle()
+        if (f) {
+          const marca = `Credit Note #${nota.num}`
+          const newPagos = ((f.pagos || []) as { monto: number; nota?: string }[]).filter((p) => p.nota !== marca)
+          const totalPagado = newPagos.reduce((a, p) => a + p.monto, 0)
+          const newEstado = totalPagado >= Number(f.total) - 0.009 ? 'Paid' : totalPagado > 0 ? 'Partially Paid' : 'Pending'
+          const { error: fErr } = await supabase.from('facturas').update({ pagos: newPagos, estado: newEstado }).eq('id', f.id)
+          if (fErr) throw new Error(fErr.message)
+        }
+      }
+      const cambios = { aplicada: false, aplicada_en: null, aplicada_fecha: null, aplicada_factura_id: null }
+      const { error } = await supabase.from('notas_credito').update(cambios).eq('id', nota.id)
+      if (error) throw new Error(error.message)
+      setNota({ ...nota, aplicada: false, aplicada_en: undefined, aplicada_fecha: undefined, aplicada_factura_id: null })
+      await supabase.from('actividad').insert({ msg: `Credit note #${nota.num} unmarked as applied` })
+    } catch (err) {
+      alert('Could not unmark: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setSavingAplicada(false)
+    }
   }
 
   if (loading) {
@@ -144,7 +224,7 @@ export default function NotaCreditoPage() {
         <div className="flex-1" />
         {!readOnly && (
           <button
-            onClick={handleToggleAplicada}
+            onClick={nota.aplicada ? handleDesaplicar : abrirAplicar}
             disabled={savingAplicada}
             className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl transition-colors disabled:opacity-50 ${
               nota.aplicada
@@ -162,6 +242,75 @@ export default function NotaCreditoPage() {
           🖨️ Print / PDF
         </button>
       </div>
+
+      {/* Modal: aplicar credito a una factura */}
+      {showAplicar && !readOnly && (
+        <div className="no-print fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-1.5">
+              <h2 className="text-base font-bold text-[#1a1a18]">Apply Credit — {fmt(nota.monto)}</h2>
+              <button onClick={() => setShowAplicar(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+            <p className="text-xs text-gray-500 mb-3">
+              Pick an invoice: the credit will be recorded as a payment on it, so the discount shows on that invoice.
+            </p>
+            {facturasCli.length > 0 ? (
+              <div className="border border-gray-200 rounded-xl overflow-hidden mb-3">
+                {facturasCli.map((f) => {
+                  const cabe = nota.monto <= f.saldo + 0.009
+                  const sel = selFacturaId === f.id
+                  return (
+                    <button
+                      key={f.id}
+                      onClick={() => cabe && setSelFacturaId(sel ? '' : f.id)}
+                      disabled={!cabe}
+                      className={`w-full flex items-center justify-between gap-2 px-3.5 py-2.5 border-b border-gray-100 last:border-0 text-left transition-colors ${
+                        sel ? 'bg-[#eaf0e6]' : cabe ? 'hover:bg-gray-50' : 'opacity-45'
+                      }`}
+                    >
+                      <div>
+                        <div className="text-xs font-mono font-semibold text-[#a3814e]">#{String(f.num).padStart(4, '0')}</div>
+                        <div className="text-[11px] text-gray-400">{fdate(f.fecha)}</div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm font-bold text-gray-800">{fmt(f.saldo)}</div>
+                        <div className="text-[10px] text-gray-400">{cabe ? 'balance due' : 'balance too small'}</div>
+                      </div>
+                      <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${sel ? 'bg-[#4a6741] border-[#4a6741] text-white text-xs' : 'border-gray-300'}`}>
+                        {sel ? '✓' : ''}
+                      </div>
+                    </button>
+                  )
+                })}
+              </div>
+            ) : (
+              <div className="text-sm text-gray-400 text-center py-3 mb-2">No pending invoices for this client.</div>
+            )}
+            {!selFacturaId && (
+              <div className="mb-3">
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Or just mark it (note, optional)</label>
+                <input
+                  type="text"
+                  value={notaLibre}
+                  onChange={(e) => setNotaLibre(e.target.value)}
+                  placeholder="e.g. settled in person"
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                />
+              </div>
+            )}
+            <div className="flex gap-2.5">
+              <button onClick={() => setShowAplicar(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-500 bg-gray-100">Cancel</button>
+              <button
+                onClick={confirmarAplicar}
+                disabled={savingAplicada}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#4a6741] disabled:opacity-50"
+              >
+                {savingAplicada ? 'Applying...' : selFacturaId ? 'Apply to Invoice' : 'Mark Applied'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Page */}
       <div className="max-w-[8.5in] mx-auto py-6 px-4 print:p-0">
