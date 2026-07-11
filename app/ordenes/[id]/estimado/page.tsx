@@ -3,7 +3,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { printOrShare } from "@/lib/print";
 
 interface LineaOrden {
   prodNom: string;
@@ -315,7 +314,10 @@ export default function EstimadoPage() {
           <button onClick={() => router.push("/?tab=ord")} aria-label="Back" className={PILL_ICON}>
             <Icon d={IC.back} />
           </button>
-          <button onClick={printOrShare} className={PILL_SOLID}>
+          <button
+            onClick={() => window.open(`/api/ordenes/${ordenId}/pdf`, "_blank")}
+            className={PILL_SOLID}
+          >
             <Icon d={IC.print} />Print / PDF
           </button>
         </div>
