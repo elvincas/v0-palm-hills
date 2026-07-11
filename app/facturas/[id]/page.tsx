@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { printOrShare } from "@/lib/print";
@@ -90,7 +90,7 @@ const IC = {
   trash: "M3 6h18|M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
 };
 
-function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
+function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Factura; cliente: Cliente | null; page?: number; totalPages?: number }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
@@ -104,6 +104,9 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
         <div className="text-right shrink-0">
           <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">INVOICE</div>
           <div className="text-xs font-mono text-gray-600">#{String(factura.num).padStart(3, "0")}</div>
+          {page !== undefined && totalPages !== undefined && (
+            <div className="text-[9px] text-gray-400 mt-0.5">Page {page} of {totalPages}</div>
+          )}
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
@@ -127,6 +130,96 @@ function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cl
   );
 }
 
+
+// Fila de encabezados de columnas (data-m para el medidor de paginacion)
+const FilaCols = () => (
+  <tr className="text-left" data-m="cols">
+    <th className="pt-4 pb-2 pl-6 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Qty.</th>
+    <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">SKU</th>
+    <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Description</th>
+    <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Price</th>
+    <th className="pt-4 pb-2 pr-6 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Amount</th>
+  </tr>
+);
+
+const FilaProducto = ({ l, i }: { l: LineaFactura; i: number }) => {
+  const tieneDescuento = l.precioOriginal !== undefined && l.precioOriginal !== l.precio;
+  return (
+    <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
+      <td className="py-2 pl-6 text-gray-700 text-xs">{l.qty}</td>
+      <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
+      <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
+      <td className="py-2 text-right text-xs">
+        {tieneDescuento ? (
+          <div className="flex flex-col items-end leading-tight">
+            <span className="text-gray-400 line-through text-[11px]">{fmt(l.precioOriginal!)}</span>
+            <span className="text-[#4a6741] font-bold">{fmt(l.precio)}</span>
+          </div>
+        ) : (
+          <span className="text-gray-700">{fmt(l.precio)}</span>
+        )}
+      </td>
+      <td className="py-2 pr-6 text-right text-xs">
+        {tieneDescuento ? (
+          <div className="flex flex-col items-end leading-tight">
+            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precioOriginal!)}</span>
+            <span className="text-[#4a6741] font-bold">{fmt(l.qty * l.precio)}</span>
+          </div>
+        ) : (
+          <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
+        )}
+      </td>
+    </tr>
+  );
+};
+
+const BloqueTotales = ({ subtotal, descuento, total, totalPagado, saldo }: { subtotal: number; descuento: number; total: number; totalPagado: number; saldo: number }) => (
+  <div className="px-6 pb-4" data-m="totals">
+    <div className="flex justify-end mt-4">
+      <div className="w-full sm:w-64">
+        <div className="flex justify-between py-1.5 text-sm text-gray-600">
+          <span>Subtotal</span><span>{fmt(subtotal)}</span>
+        </div>
+        {descuento > 0.01 && (
+          <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
+            <span>Discount</span><span>-{fmt(descuento)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
+          <span className="text-base font-bold text-[#1a1a18]">Total</span>
+          <span className="text-xl font-black text-[#4a6741]">{fmt(total)}</span>
+        </div>
+        {totalPagado > 0 && (
+          <>
+            <div className="flex justify-between py-1.5 text-sm text-green-700">
+              <span>Paid</span><span>-{fmt(totalPagado)}</span>
+            </div>
+            <div className="flex justify-between items-center py-2 border-t border-gray-200 mt-1">
+              <span className="text-sm font-bold text-[#1a1a18]">Balance Due</span>
+              <span className={`text-base font-black ${saldo <= 0 ? "text-green-700" : "text-amber-700"}`}>{fmt(Math.max(0, saldo))}</span>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  </div>
+);
+
+const BloqueFirma = () => (
+  <div data-m="firma">
+    <div className="px-6 py-3 border-t border-gray-200">
+      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
+      <div className="flex flex-wrap gap-x-6 gap-y-2">
+        <div><div className="border-b border-gray-400 h-4 w-28" /><div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div></div>
+        <div><div className="border-b border-gray-400 h-4 w-20" /><div className="text-[9px] text-gray-500 mt-0.5">Date</div></div>
+        <div><div className="border-b border-gray-400 h-4 w-40" /><div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div></div>
+      </div>
+    </div>
+    <div className="px-6 py-6 border-t border-gray-200 text-center">
+      <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
+    </div>
+  </div>
+);
 
 export default function FacturaPage() {
   const params = useParams();
@@ -395,16 +488,61 @@ export default function FacturaPage() {
     setFactura(f => f ? { ...f, pagos: newPagos, estado: newEstado } : f);
   };
 
+  const lineasOrdenadas = useMemo(() => {
+    const arr = [...(factura?.lineas || [])];
+    arr.sort((a, b) => {
+      const skuA = (a.sku || "").trim();
+      const skuB = (b.sku || "").trim();
+      if (!skuA && skuB) return 1;
+      if (skuA && !skuB) return -1;
+      return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
+    });
+    return arr;
+  }, [factura]);
+
+  // Paginacion por MEDICION real: WebKit (iOS) no repite <thead> al imprimir,
+  // asi que se corta a mano — pero midiendo la altura renderizada de cada fila
+  // en un contenedor oculto al ancho de impresion, no contando filas fijas.
+  // Presupuesto: hoja Letter usable (10in) — A4 es mas alta, asi que cabe igual.
+  const [chunks, setChunks] = useState<LineaFactura[][] | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!factura || !clienteListo) return;
+    const el = measureRef.current;
+    if (!el) return;
+    const h = (sel: string) => (el.querySelector(sel) as HTMLElement | null)?.offsetHeight || 0;
+    const headerH = h('[data-m="header"]') + h('[data-m="cols"]');
+    const totalsH = h('[data-m="totals"]');
+    const firmaH = h('[data-m="firma"]');
+    const rowHs = Array.from(el.querySelectorAll('[data-m="row"]')).map((r) => (r as HTMLElement).offsetHeight);
+    const PAGE_H = 10 * 96 - 30; // 10in usable en Letter, menos colchon
+    const budget = Math.max(200, PAGE_H - headerH);
+    const out: LineaFactura[][] = [];
+    let cur: LineaFactura[] = [];
+    let acc = 0;
+    (factura.lineas ? lineasOrdenadas : []).forEach((l, i) => {
+      const rh = rowHs[i] || 36;
+      if (acc + rh > budget && cur.length) { out.push(cur); cur = []; acc = 0; }
+      cur.push(l);
+      acc += rh;
+    });
+    // La ultima pagina ademas lleva totales + firma; si no caben, van solos
+    // en una hoja final (con su header).
+    if (acc + totalsH + firmaH > budget && cur.length) { out.push(cur); cur = []; }
+    out.push(cur);
+    setChunks(out);
+  }, [factura, clienteListo, lineasOrdenadas]);
+
   // Auto-print cuando se abre desde iOS PWA con ?print=1. Espera a que los
-  // datos del cliente esten listos para no imprimir sin direccion.
+  // datos del cliente y la paginacion esten listos.
   useEffect(() => {
-    if (!loading && factura && clienteListo) {
+    if (!loading && factura && clienteListo && chunks) {
       const params = new URLSearchParams(window.location.search);
       if (params.get("print") === "1") {
         setTimeout(() => window.print(), 400);
       }
     }
-  }, [loading, factura, clienteListo]);
+  }, [loading, factura, clienteListo, chunks]);
 
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground text-center">Loading invoice...</div>;
@@ -423,13 +561,7 @@ export default function FacturaPage() {
   const totalPagado = pagos.reduce((acc, p) => acc + p.monto, 0);
   const saldo = factura.total - totalPagado;
 
-  const lineas = [...(factura.lineas || [])].sort((a, b) => {
-    const skuA = (a.sku || "").trim();
-    const skuB = (b.sku || "").trim();
-    if (!skuA && skuB) return 1;
-    if (skuA && !skuB) return -1;
-    return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
-  });
+  const lineas = lineasOrdenadas;
   const subtotal = lineas.reduce((acc, l) => acc + l.qty * (l.precioOriginal ?? l.precio), 0);
   const descuento = subtotal - factura.total;
   const isPaid = factura.estado === "Paid";
@@ -569,109 +701,59 @@ export default function FacturaPage() {
         </div>
       )}
 
-      {/* Invoice — una sola tabla: el navegador pagina solo (sin contar filas
-          a mano) y el <thead>, que incluye el encabezado completo, se repite
-          automaticamente en cada hoja impresa sin importar el tamaño de papel.
-          Totales + firma van despues de la tabla: solo salen en la ultima hoja. */}
-      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0">
-        <div className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                <td colSpan={5} className="p-0">
-                  <EncabezadoFactura factura={factura} cliente={cliente} />
-                </td>
-              </tr>
-              <tr className="text-left">
-                <th className="pt-4 pb-2 pl-6 sm:pl-10 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Qty.</th>
-                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">SKU</th>
-                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Description</th>
-                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Price</th>
-                <th className="pt-4 pb-2 pr-6 sm:pr-10 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineas.length ? lineas.map((l, i) => {
-                const tieneDescuento = l.precioOriginal !== undefined && l.precioOriginal !== l.precio;
-                return (
-                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"}>
-                    <td className="py-2 pl-6 sm:pl-10 text-gray-700 text-xs">{l.qty}</td>
-                    <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
-                    <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
-                    <td className="py-2 text-right text-xs">
-                      {tieneDescuento ? (
-                        <div className="flex flex-col items-end leading-tight">
-                          <span className="text-gray-400 line-through text-[11px]">{fmt(l.precioOriginal!)}</span>
-                          <span className="text-[#4a6741] font-bold">{fmt(l.precio)}</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-700">{fmt(l.precio)}</span>
-                      )}
-                    </td>
-                    <td className="py-2 pr-6 sm:pr-10 text-right text-xs">
-                      {tieneDescuento ? (
-                        <div className="flex flex-col items-end leading-tight">
-                          <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precioOriginal!)}</span>
-                          <span className="text-[#4a6741] font-bold">{fmt(l.qty * l.precio)}</span>
-                        </div>
-                      ) : (
-                        <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              }) : (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
-                </tr>
+      {/* Medidor oculto: mismo contenido al ancho de impresion mas angosto
+          (A4 usable ~7.2in) para calcular cuantas filas caben por hoja. */}
+      <div
+        ref={measureRef}
+        aria-hidden="true"
+        className="absolute top-0 bg-white text-sm"
+        style={{ left: "-9999px", width: "7.2in", visibility: "hidden" }}
+      >
+        <div data-m="header"><EncabezadoFactura factura={factura} cliente={cliente} /></div>
+        <table className="w-full text-sm">
+          <thead><FilaCols /></thead>
+          <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} />)}</tbody>
+        </table>
+        <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
+        <BloqueFirma />
+      </div>
+
+      {/* Invoice — hojas cortadas por altura medida: header en cada hoja,
+          totales + firma solo en la ultima. (iOS/WebKit no repite <thead>
+          al imprimir, por eso el corte manual.) */}
+      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0 space-y-8 print:space-y-0">
+        {(chunks ?? [lineas]).map((pageLineas, pageIdx, arr) => {
+          const isLastPage = pageIdx === arr.length - 1;
+          return (
+            <div
+              key={pageIdx}
+              className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
+              style={{ breakAfter: isLastPage ? "auto" : "page" }}
+            >
+              <EncabezadoFactura factura={factura} cliente={cliente} page={pageIdx + 1} totalPages={arr.length} />
+              {(pageLineas.length > 0 || lineas.length === 0) && (
+                <table className="w-full text-sm">
+                  <thead><FilaCols /></thead>
+                  <tbody>
+                    {pageLineas.length ? (
+                      pageLineas.map((l, i) => <FilaProducto key={i} l={l} i={i} />)
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               )}
-            </tbody>
-          </table>
-
-          <div className="px-6 sm:px-10 pb-4">
-            <div className="flex justify-end mt-4" style={{ breakInside: "avoid" }}>
-              <div className="w-full sm:w-64">
-                <div className="flex justify-between py-1.5 text-sm text-gray-600">
-                  <span>Subtotal</span><span>{fmt(subtotal)}</span>
-                </div>
-                {descuento > 0.01 && (
-                  <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
-                    <span>Discount</span><span>-{fmt(descuento)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
-                  <span className="text-base font-bold text-[#1a1a18]">Total</span>
-                  <span className="text-xl font-black text-[#4a6741]">{fmt(factura.total)}</span>
-                </div>
-                {totalPagado > 0 && (
-                  <>
-                    <div className="flex justify-between py-1.5 text-sm text-green-700">
-                      <span>Paid</span><span>-{fmt(totalPagado)}</span>
-                    </div>
-                    <div className="flex justify-between items-center py-2 border-t border-gray-200 mt-1">
-                      <span className="text-sm font-bold text-[#1a1a18]">Balance Due</span>
-                      <span className={`text-base font-black ${saldo <= 0 ? "text-green-700" : "text-amber-700"}`}>{fmt(Math.max(0, saldo))}</span>
-                    </div>
-                  </>
-                )}
-              </div>
+              {isLastPage && (
+                <>
+                  <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
+                  <BloqueFirma />
+                </>
+              )}
             </div>
-          </div>
-
-          <div style={{ breakInside: "avoid" }}>
-            <div className="px-6 sm:px-10 py-3 border-t border-gray-200">
-              <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
-              <div className="flex flex-wrap gap-x-6 gap-y-2">
-                <div><div className="border-b border-gray-400 h-4 w-28" /><div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div></div>
-                <div><div className="border-b border-gray-400 h-4 w-20" /><div className="text-[9px] text-gray-500 mt-0.5">Date</div></div>
-                <div><div className="border-b border-gray-400 h-4 w-40" /><div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div></div>
-              </div>
-            </div>
-            <div className="px-6 sm:px-10 py-6 border-t border-gray-200 text-center">
-              <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
       <style jsx global>{`
@@ -693,7 +775,6 @@ export default function FacturaPage() {
           html, body { height: auto !important; min-height: 0 !important; background: white !important; }
           .factura-doc { padding: 0 !important; }
           .invoice-page { min-height: 0 !important; }
-          thead { display: table-header-group; }
           tr { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>

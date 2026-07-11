@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { printOrShare } from "@/lib/print";
@@ -61,7 +61,7 @@ const IC = {
   print: "M6 9V4h12v5|M6 13h12v8H6z|M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2",
 };
 
-function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente | null }) {
+function EncabezadoEstimado({ orden, cliente, page, totalPages }: { orden: Orden; cliente: Cliente | null; page?: number; totalPages?: number }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
@@ -77,6 +77,9 @@ function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente
         <div className="text-right shrink-0">
           <div className="text-base font-black tracking-wide text-[#b09060] leading-tight">ESTIMATE</div>
           <div className="text-xs font-mono text-gray-600">Order #{orden.num}</div>
+          {page !== undefined && totalPages !== undefined && (
+            <div className="text-[9px] text-gray-400 mt-0.5">Page {page} of {totalPages}</div>
+          )}
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
@@ -101,6 +104,80 @@ function EncabezadoEstimado({ orden, cliente }: { orden: Orden; cliente: Cliente
     </>
   );
 }
+
+// Bloques compartidos entre el medidor oculto de paginacion y las hojas reales
+const FilaColsE = () => (
+  <tr className="text-left" data-m="cols">
+    <th className="pt-4 pb-2 pl-6 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Qty.</th>
+    <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">SKU</th>
+    <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Description</th>
+    <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Price</th>
+    <th className="pt-4 pb-2 pr-6 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Amount</th>
+  </tr>
+);
+
+const FilaProductoE = ({ l, i }: { l: LineaOrden; i: number }) => {
+  const precioFinal = l.precioFinal ?? l.precio;
+  const tieneDescuento = precioFinal !== l.precio;
+  return (
+    <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
+      <td className="py-2 pl-6 text-gray-700 text-xs">{l.qty}</td>
+      <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
+      <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
+      <td className="py-2 text-right text-xs">
+        {tieneDescuento ? (
+          <div className="flex flex-col items-end leading-tight">
+            <span className="text-gray-400 line-through text-[11px]">{fmt(l.precio)}</span>
+            <span className="text-[#4a6741] font-bold">{fmt(precioFinal)}</span>
+          </div>
+        ) : (
+          <span className="text-gray-700">{fmt(l.precio)}</span>
+        )}
+      </td>
+      <td className="py-2 pr-6 text-right text-xs">
+        {tieneDescuento ? (
+          <div className="flex flex-col items-end leading-tight">
+            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precio)}</span>
+            <span className="text-[#4a6741] font-bold">{fmt(l.qty * precioFinal)}</span>
+          </div>
+        ) : (
+          <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
+        )}
+      </td>
+    </tr>
+  );
+};
+
+const BloqueTotalesE = ({ subtotal, descuento, total }: { subtotal: number; descuento: number; total: number }) => (
+  <div className="px-6 pb-4" data-m="totals">
+    <div className="flex justify-end mt-4">
+      <div className="w-full sm:w-64">
+        <div className="flex justify-between py-1.5 text-sm text-gray-600">
+          <span>Subtotal</span>
+          <span>{fmt(subtotal)}</span>
+        </div>
+        {descuento > 0.01 && (
+          <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
+            <span>Discount</span>
+            <span>-{fmt(descuento)}</span>
+          </div>
+        )}
+        <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
+          <span className="text-base font-bold text-[#1a1a18]">Estimated total</span>
+          <span className="text-xl font-black text-[#4a6741]">{fmt(total)}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
+const BloqueDisclaimerE = () => (
+  <div className="px-6 py-4 border-t border-gray-200 text-center" data-m="firma">
+    <p className="text-[11px] text-gray-500">
+      This is an estimate and may vary based on availability at the time of dispatch.
+    </p>
+  </div>
+);
 
 export default function EstimadoPage() {
   const params = useParams();
@@ -154,16 +231,56 @@ export default function EstimadoPage() {
     load();
   }, [ordenId, supabase]);
 
-  // Auto-print cuando se abre desde iOS PWA con ?print=1. Espera a que los
-  // datos del cliente esten listos para no imprimir sin direccion.
+  const lineasOrdenadas = useMemo(() => {
+    const arr = [...(orden?.lineas || [])];
+    arr.sort((a, b) => {
+      const skuA = (a.sku || "").trim();
+      const skuB = (b.sku || "").trim();
+      if (!skuA && skuB) return 1;
+      if (skuA && !skuB) return -1;
+      return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
+    });
+    return arr;
+  }, [orden]);
+
+  // Paginacion por medicion real (iOS/WebKit no repite <thead> al imprimir).
+  // Ver el mismo mecanismo en /facturas/[id].
+  const [chunks, setChunks] = useState<LineaOrden[][] | null>(null);
+  const measureRef = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (!orden || !clienteListo) return;
+    const el = measureRef.current;
+    if (!el) return;
+    const h = (sel: string) => (el.querySelector(sel) as HTMLElement | null)?.offsetHeight || 0;
+    const headerH = h('[data-m="header"]') + h('[data-m="cols"]');
+    const totalsH = h('[data-m="totals"]');
+    const firmaH = h('[data-m="firma"]');
+    const rowHs = Array.from(el.querySelectorAll('[data-m="row"]')).map((r) => (r as HTMLElement).offsetHeight);
+    const PAGE_H = 10 * 96 - 30;
+    const budget = Math.max(200, PAGE_H - headerH);
+    const out: LineaOrden[][] = [];
+    let cur: LineaOrden[] = [];
+    let acc = 0;
+    lineasOrdenadas.forEach((l, i) => {
+      const rh = rowHs[i] || 36;
+      if (acc + rh > budget && cur.length) { out.push(cur); cur = []; acc = 0; }
+      cur.push(l);
+      acc += rh;
+    });
+    if (acc + totalsH + firmaH > budget && cur.length) { out.push(cur); cur = []; }
+    out.push(cur);
+    setChunks(out);
+  }, [orden, clienteListo, lineasOrdenadas]);
+
+  // Auto-print cuando se abre desde iOS PWA con ?print=1. Espera cliente y paginacion.
   useEffect(() => {
-    if (!loading && orden && clienteListo) {
+    if (!loading && orden && clienteListo && chunks) {
       const params = new URLSearchParams(window.location.search);
       if (params.get("print") === "1") {
         setTimeout(() => window.print(), 400);
       }
     }
-  }, [loading, orden, clienteListo]);
+  }, [loading, orden, clienteListo, chunks]);
 
   if (loading) {
     return <div className="p-6 text-sm text-muted-foreground text-center">Loading estimate...</div>;
@@ -183,13 +300,7 @@ export default function EstimadoPage() {
     );
   }
 
-  const lineas = [...(orden.lineas || [])].sort((a, b) => {
-    const skuA = (a.sku || "").trim();
-    const skuB = (b.sku || "").trim();
-    if (!skuA && skuB) return 1;
-    if (skuA && !skuB) return -1;
-    return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
-  });
+  const lineas = lineasOrdenadas;
   const subtotal = lineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
   const total = lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0);
   const descuento = subtotal - total;
@@ -210,93 +321,57 @@ export default function EstimadoPage() {
         </div>
       </div>
 
-      {/* Estimate — una sola tabla: el navegador pagina solo y el <thead>
-          (con el encabezado completo) se repite en cada hoja impresa. */}
-      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0">
-        <div className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                <td colSpan={5} className="p-0">
-                  <EncabezadoEstimado orden={orden} cliente={cliente} />
-                </td>
-              </tr>
-              <tr className="text-left">
-                <th className="pt-4 pb-2 pl-6 sm:pl-10 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Qty.</th>
-                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">SKU</th>
-                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Description</th>
-                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Price</th>
-                <th className="pt-4 pb-2 pr-6 sm:pr-10 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lineas.length ? (
-                lineas.map((l, i) => {
-                  const precioFinal = l.precioFinal ?? l.precio;
-                  const tieneDescuento = precioFinal !== l.precio;
-                  return (
-                    <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"}>
-                      <td className="py-2 pl-6 sm:pl-10 text-gray-700 text-xs">{l.qty}</td>
-                      <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
-                      <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
-                      <td className="py-2 text-right text-xs">
-                        {tieneDescuento ? (
-                          <div className="flex flex-col items-end leading-tight">
-                            <span className="text-gray-400 line-through text-[11px]">{fmt(l.precio)}</span>
-                            <span className="text-[#4a6741] font-bold">{fmt(precioFinal)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-gray-700">{fmt(l.precio)}</span>
-                        )}
-                      </td>
-                      <td className="py-2 pr-6 sm:pr-10 text-right text-xs">
-                        {tieneDescuento ? (
-                          <div className="flex flex-col items-end leading-tight">
-                            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precio)}</span>
-                            <span className="text-[#4a6741] font-bold">{fmt(l.qty * precioFinal)}</span>
-                          </div>
-                        ) : (
-                          <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
-                </tr>
+      {/* Medidor oculto al ancho de impresion (ver /facturas/[id]) */}
+      <div
+        ref={measureRef}
+        aria-hidden="true"
+        className="absolute top-0 bg-white text-sm"
+        style={{ left: "-9999px", width: "7.2in", visibility: "hidden" }}
+      >
+        <div data-m="header"><EncabezadoEstimado orden={orden} cliente={cliente} /></div>
+        <table className="w-full text-sm">
+          <thead><FilaColsE /></thead>
+          <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} />)}</tbody>
+        </table>
+        <BloqueTotalesE subtotal={subtotal} descuento={descuento} total={total} />
+        <BloqueDisclaimerE />
+      </div>
+
+      {/* Estimate — hojas cortadas por altura medida: header en cada hoja,
+          totales + disclaimer solo en la ultima. */}
+      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0 space-y-8 print:space-y-0">
+        {(chunks ?? [lineas]).map((pageLineas, pageIdx, arr) => {
+          const isLastPage = pageIdx === arr.length - 1;
+          return (
+            <div
+              key={pageIdx}
+              className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
+              style={{ breakAfter: isLastPage ? "auto" : "page" }}
+            >
+              <EncabezadoEstimado orden={orden} cliente={cliente} page={pageIdx + 1} totalPages={arr.length} />
+              {(pageLineas.length > 0 || lineas.length === 0) && (
+                <table className="w-full text-sm">
+                  <thead><FilaColsE /></thead>
+                  <tbody>
+                    {pageLineas.length ? (
+                      pageLineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} />)
+                    ) : (
+                      <tr>
+                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
               )}
-            </tbody>
-          </table>
-
-          <div className="px-6 sm:px-10 pb-4">
-            <div className="flex justify-end mt-4" style={{ breakInside: "avoid" }}>
-              <div className="w-full sm:w-64">
-                <div className="flex justify-between py-1.5 text-sm text-gray-600">
-                  <span>Subtotal</span>
-                  <span>{fmt(subtotal)}</span>
-                </div>
-                {descuento > 0.01 && (
-                  <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
-                    <span>Discount</span>
-                    <span>-{fmt(descuento)}</span>
-                  </div>
-                )}
-                <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
-                  <span className="text-base font-bold text-[#1a1a18]">Estimated total</span>
-                  <span className="text-xl font-black text-[#4a6741]">{fmt(total)}</span>
-                </div>
-              </div>
+              {isLastPage && (
+                <>
+                  <BloqueTotalesE subtotal={subtotal} descuento={descuento} total={total} />
+                  <BloqueDisclaimerE />
+                </>
+              )}
             </div>
-          </div>
-
-          <div className="px-6 sm:px-10 py-4 border-t border-gray-200 text-center" style={{ breakInside: "avoid" }}>
-            <p className="text-[11px] text-gray-500">
-              This is an estimate and may vary based on availability at the time of dispatch.
-            </p>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
       <style jsx global>{`
