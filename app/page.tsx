@@ -2493,23 +2493,20 @@ const Facturas = () => {
             <div
               key={f.id}
               onClick={() => router.push(`/facturas/${f.id}`)}
-              className={`flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/30 ${i > 0 ? "border-t border-border" : ""}`}
+              className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 ${i > 0 ? "border-t border-border" : ""}`}
             >
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{f.cli}</div>
-                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-                  <span className="font-mono font-semibold text-[#a3814e]">INV #{String(f.num).padStart(3, "0")}</span>
-                  <span>·</span>
-                  <span>{fdate(f.fecha)}</span>
-                  {clienteCodigo(f.cli) !== "—" && (
-                    <>
-                      <span>·</span>
-                      <span className="font-mono">{clienteCodigo(f.cli)}</span>
-                    </>
-                  )}
-                </div>
+              {/* Columna 1: numero de factura sobre la fecha */}
+              <div className="shrink-0">
+                <div className="text-xs font-mono font-semibold text-[#a3814e] whitespace-nowrap">#{String(f.num).padStart(4, "0")}</div>
+                <div className="text-[11px] text-muted-foreground whitespace-nowrap">{fdate(f.fecha)}</div>
               </div>
-              <div className="flex items-center gap-2.5 shrink-0">
+              {/* Columna 2: codigo de cliente sobre el nombre */}
+              <div className="min-w-0">
+                <div className="text-[11px] font-mono text-muted-foreground">{clienteCodigo(f.cli) !== "—" ? clienteCodigo(f.cli) : ""}</div>
+                <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{f.cli}</div>
+              </div>
+              {/* Columna 3: monto sobre el estado */}
+              <div className="flex flex-col items-end gap-0.5 shrink-0">
                 <span className="text-sm font-bold text-card-foreground tabular-nums">{fmt(f.total)}</span>
                 <Badge e={f.estado} />
               </div>
@@ -4325,7 +4322,7 @@ const Inventario = () => {
                 <div className="text-[13px] font-semibold mb-1 text-card-foreground leading-snug break-words text-pretty min-h-[2.25rem] tracking-tight">
                   {p.nom}
                 </div>
-                <div className="text-xs text-primary font-mono font-semibold mb-0.5 break-all">
+                <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
                   {p.sku}
                 </div>
                 {p.fabricante && (
