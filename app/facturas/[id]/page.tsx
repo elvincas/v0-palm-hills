@@ -67,9 +67,6 @@ const fdate = (s: string) => {
 
 const today = () => new Date().toISOString().split("T")[0];
 
-const ROWS_INTER = 22; // páginas intermedias: solo header + filas
-const ROWS_LAST  = 14; // última página: header + filas + totales + firma + thank you
-
 // Pildoras planas estilo iOS: blancas para acciones secundarias, una sola
 // verde solida para la principal, rojo solo en el icono de borrar.
 const PILL = "inline-flex items-center justify-center gap-1.5 h-10 px-4 rounded-full bg-white text-[#4a6741] text-[13px] font-semibold border border-[#e3e7dd] shadow-[0_1px_2px_rgba(28,31,25,0.04)] active:scale-[0.97] transition-all whitespace-nowrap";
@@ -93,7 +90,7 @@ const IC = {
   trash: "M3 6h18|M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
 };
 
-function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Factura; cliente: Cliente | null; page: number; totalPages: number }) {
+function EncabezadoFactura({ factura, cliente }: { factura: Factura; cliente: Cliente | null }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
@@ -107,7 +104,6 @@ function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Fa
         <div className="text-right shrink-0">
           <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">INVOICE</div>
           <div className="text-xs font-mono text-gray-600">#{String(factura.num).padStart(3, "0")}</div>
-          <div className="text-[9px] text-gray-400 mt-0.5">Page {page} of {totalPages}</div>
         </div>
       </div>
       <div className="px-6 sm:px-10 py-3 grid grid-cols-2 gap-6 bg-[#fafaf7]">
@@ -438,37 +434,6 @@ export default function FacturaPage() {
   const descuento = subtotal - factura.total;
   const isPaid = factura.estado === "Paid";
 
-  // Chunking con dos límites distintos:
-  // - Páginas intermedias: ROWS_INTER filas (sin footer)
-  // - Última página:       ROWS_LAST filas  (con totales + firma + thank you)
-  const chunks: LineaFactura[][] = (() => {
-    const n = lineas.length;
-    if (n === 0) return [[]];
-    if (n <= ROWS_LAST) return [lineas]; // cabe todo en una página
-
-    const numPages = 1 + Math.ceil((n - ROWS_LAST) / ROWS_INTER);
-
-    if (numPages === 2) {
-      // 2 páginas: balancear respetando el límite de la última
-      const lastCount = Math.min(ROWS_LAST, Math.ceil(n / 2));
-      return [lineas.slice(0, n - lastCount), lineas.slice(n - lastCount)];
-    }
-
-    // 3+ páginas: última = ROWS_LAST, intermedias se reparten uniformemente
-    const interRows = n - ROWS_LAST;
-    const numInter  = numPages - 1;
-    const base  = Math.floor(interRows / numInter);
-    const extra = interRows % numInter;
-    const result: LineaFactura[][] = [];
-    let idx = 0;
-    for (let p = 0; p < numInter; p++) {
-      result.push(lineas.slice(idx, idx + base + (p < extra ? 1 : 0)));
-      idx += base + (p < extra ? 1 : 0);
-    }
-    result.push(lineas.slice(idx)); // última página
-    return result;
-  })();
-
   return (
     <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9] print:bg-transparent">
       {/* Toolbar */}
@@ -604,116 +569,109 @@ export default function FacturaPage() {
         </div>
       )}
 
-      {/* Invoice — un div por hoja, header repetido manualmente en cada chunk */}
-      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0 space-y-8 print:space-y-0">
-        {chunks.map((pageLineas, pageIdx) => {
-          const isLastPage = pageIdx === chunks.length - 1;
-          return (
-            <div
-              key={pageIdx}
-              className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
-              style={{ breakAfter: isLastPage ? "auto" : "page" }}
-            >
-              <EncabezadoFactura factura={factura} cliente={cliente} page={pageIdx + 1} totalPages={chunks.length} />
-
-              <div className="px-6 sm:px-10 py-4">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b-2 border-[#1a1a18] text-left">
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Qty.</th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">SKU</th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide">Description</th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">Price</th>
-                      <th className="pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide text-right">Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {pageLineas.length ? pageLineas.map((l, i) => {
-                      const tieneDescuento = l.precioOriginal !== undefined && l.precioOriginal !== l.precio;
-                      return (
-                        <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"}>
-                          <td className="py-2 text-gray-700 text-xs">{l.qty}</td>
-                          <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
-                          <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
-                          <td className="py-2 text-right text-xs">
-                            {tieneDescuento ? (
-                              <div className="flex flex-col items-end leading-tight">
-                                <span className="text-gray-400 line-through text-[11px]">{fmt(l.precioOriginal!)}</span>
-                                <span className="text-[#4a6741] font-bold">{fmt(l.precio)}</span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-700">{fmt(l.precio)}</span>
-                            )}
-                          </td>
-                          <td className="py-2 text-right text-xs">
-                            {tieneDescuento ? (
-                              <div className="flex flex-col items-end leading-tight">
-                                <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precioOriginal!)}</span>
-                                <span className="text-[#4a6741] font-bold">{fmt(l.qty * l.precio)}</span>
-                              </div>
-                            ) : (
-                              <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    }) : (
-                      <tr>
-                        <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
-
-                {isLastPage && (
-                  <div className="flex justify-end mt-4">
-                    <div className="w-full sm:w-64">
-                      <div className="flex justify-between py-1.5 text-sm text-gray-600">
-                        <span>Subtotal</span><span>{fmt(subtotal)}</span>
-                      </div>
-                      {descuento > 0.01 && (
-                        <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
-                          <span>Discount</span><span>-{fmt(descuento)}</span>
+      {/* Invoice — una sola tabla: el navegador pagina solo (sin contar filas
+          a mano) y el <thead>, que incluye el encabezado completo, se repite
+          automaticamente en cada hoja impresa sin importar el tamaño de papel.
+          Totales + firma van despues de la tabla: solo salen en la ultima hoja. */}
+      <div className="factura-doc max-w-[8.5in] mx-auto py-6 px-4 print:p-0">
+        <div className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                <td colSpan={5} className="p-0">
+                  <EncabezadoFactura factura={factura} cliente={cliente} />
+                </td>
+              </tr>
+              <tr className="text-left">
+                <th className="pt-4 pb-2 pl-6 sm:pl-10 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Qty.</th>
+                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">SKU</th>
+                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18]">Description</th>
+                <th className="pt-4 pb-2 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Price</th>
+                <th className="pt-4 pb-2 pr-6 sm:pr-10 font-bold text-[#1a1a18] text-[11px] uppercase tracking-wide border-b-2 border-[#1a1a18] text-right">Amount</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lineas.length ? lineas.map((l, i) => {
+                const tieneDescuento = l.precioOriginal !== undefined && l.precioOriginal !== l.precio;
+                return (
+                  <tr key={i} className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"}>
+                    <td className="py-2 pl-6 sm:pl-10 text-gray-700 text-xs">{l.qty}</td>
+                    <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
+                    <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
+                    <td className="py-2 text-right text-xs">
+                      {tieneDescuento ? (
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-gray-400 line-through text-[11px]">{fmt(l.precioOriginal!)}</span>
+                          <span className="text-[#4a6741] font-bold">{fmt(l.precio)}</span>
                         </div>
+                      ) : (
+                        <span className="text-gray-700">{fmt(l.precio)}</span>
                       )}
-                      <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
-                        <span className="text-base font-bold text-[#1a1a18]">Total</span>
-                        <span className="text-xl font-black text-[#4a6741]">{fmt(factura.total)}</span>
-                      </div>
-                      {totalPagado > 0 && (
-                        <>
-                          <div className="flex justify-between py-1.5 text-sm text-green-700">
-                            <span>Paid</span><span>-{fmt(totalPagado)}</span>
-                          </div>
-                          <div className="flex justify-between items-center py-2 border-t border-gray-200 mt-1">
-                            <span className="text-sm font-bold text-[#1a1a18]">Balance Due</span>
-                            <span className={`text-base font-black ${saldo <= 0 ? "text-green-700" : "text-amber-700"}`}>{fmt(Math.max(0, saldo))}</span>
-                          </div>
-                        </>
+                    </td>
+                    <td className="py-2 pr-6 sm:pr-10 text-right text-xs">
+                      {tieneDescuento ? (
+                        <div className="flex flex-col items-end leading-tight">
+                          <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precioOriginal!)}</span>
+                          <span className="text-[#4a6741] font-bold">{fmt(l.qty * l.precio)}</span>
+                        </div>
+                      ) : (
+                        <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
                       )}
-                    </div>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+
+          <div className="px-6 sm:px-10 pb-4">
+            <div className="flex justify-end mt-4" style={{ breakInside: "avoid" }}>
+              <div className="w-full sm:w-64">
+                <div className="flex justify-between py-1.5 text-sm text-gray-600">
+                  <span>Subtotal</span><span>{fmt(subtotal)}</span>
+                </div>
+                {descuento > 0.01 && (
+                  <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
+                    <span>Discount</span><span>-{fmt(descuento)}</span>
                   </div>
                 )}
-              </div>
-
-              {isLastPage && (
-                <>
-                  <div className="px-6 sm:px-10 py-3 border-t border-gray-200">
-                    <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
-                    <div className="flex flex-wrap gap-x-6 gap-y-2">
-                      <div><div className="border-b border-gray-400 h-4 w-28" /><div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div></div>
-                      <div><div className="border-b border-gray-400 h-4 w-20" /><div className="text-[9px] text-gray-500 mt-0.5">Date</div></div>
-                      <div><div className="border-b border-gray-400 h-4 w-40" /><div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div></div>
+                <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
+                  <span className="text-base font-bold text-[#1a1a18]">Total</span>
+                  <span className="text-xl font-black text-[#4a6741]">{fmt(factura.total)}</span>
+                </div>
+                {totalPagado > 0 && (
+                  <>
+                    <div className="flex justify-between py-1.5 text-sm text-green-700">
+                      <span>Paid</span><span>-{fmt(totalPagado)}</span>
                     </div>
-                  </div>
-                  <div className="px-6 sm:px-10 py-6 border-t border-gray-200 text-center">
-                    <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
-                  </div>
-                </>
-              )}
+                    <div className="flex justify-between items-center py-2 border-t border-gray-200 mt-1">
+                      <span className="text-sm font-bold text-[#1a1a18]">Balance Due</span>
+                      <span className={`text-base font-black ${saldo <= 0 ? "text-green-700" : "text-amber-700"}`}>{fmt(Math.max(0, saldo))}</span>
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
-          );
-        })}
+          </div>
+
+          <div style={{ breakInside: "avoid" }}>
+            <div className="px-6 sm:px-10 py-3 border-t border-gray-200">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
+              <div className="flex flex-wrap gap-x-6 gap-y-2">
+                <div><div className="border-b border-gray-400 h-4 w-28" /><div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div></div>
+                <div><div className="border-b border-gray-400 h-4 w-20" /><div className="text-[9px] text-gray-500 mt-0.5">Date</div></div>
+                <div><div className="border-b border-gray-400 h-4 w-40" /><div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div></div>
+              </div>
+            </div>
+            <div className="px-6 sm:px-10 py-6 border-t border-gray-200 text-center">
+              <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <style jsx global>{`
@@ -731,11 +689,12 @@ export default function FacturaPage() {
           }
         }
         @media print {
-          @page { size: letter portrait; margin: 0.5in; }
+          @page { margin: 0.5in; }
           html, body { height: auto !important; min-height: 0 !important; background: white !important; }
           .factura-doc { padding: 0 !important; }
           .invoice-page { min-height: 0 !important; }
-          tr { break-inside: avoid; }
+          thead { display: table-header-group; }
+          tr { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
     </div>
