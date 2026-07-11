@@ -2489,24 +2489,30 @@ const Facturas = () => {
       </div>
       {filtered.length ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
-          <div className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
-            <span>Date</span>
-            <span>Client #</span>
-            <span>Client Name</span>
-            <span>Amount</span>
-            <span>Invoice #</span>
-          </div>
-          {visibleFacturas.map((f) => (
+          {visibleFacturas.map((f, i) => (
             <div
               key={f.id}
               onClick={() => router.push(`/facturas/${f.id}`)}
-              className="grid grid-cols-[1fr_1fr_1.6fr_1fr_0.8fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border cursor-pointer hover:bg-secondary/30"
+              className={`flex items-center justify-between gap-3 px-4 py-3 cursor-pointer hover:bg-secondary/30 ${i > 0 ? "border-t border-border" : ""}`}
             >
-              <span className="text-muted-foreground">{fdate(f.fecha)}</span>
-              <span className="font-mono text-muted-foreground">{clienteCodigo(f.cli)}</span>
-              <span className="font-bold uppercase truncate">{f.cli}</span>
-              <span className="font-bold text-primary">{fmt(f.total)}</span>
-              <span className="font-mono text-muted-foreground">#{String(f.num).padStart(3, "0")}</span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{f.cli}</div>
+                <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                  <span className="font-mono font-semibold text-[#a3814e]">INV #{String(f.num).padStart(3, "0")}</span>
+                  <span>·</span>
+                  <span>{fdate(f.fecha)}</span>
+                  {clienteCodigo(f.cli) !== "—" && (
+                    <>
+                      <span>·</span>
+                      <span className="font-mono">{clienteCodigo(f.cli)}</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2.5 shrink-0">
+                <span className="text-sm font-bold text-card-foreground tabular-nums">{fmt(f.total)}</span>
+                <Badge e={f.estado} />
+              </div>
             </div>
           ))}
         </div>
@@ -4291,19 +4297,19 @@ const Inventario = () => {
             return (
               <div
                 key={p.id}
-                className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full uppercase"
+                className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full shadow-[0_1px_2px_rgba(28,31,25,0.04)]"
               >
                 {!readOnly && (
                   <button
                     onClick={() => openEdit(p)}
-                    className="absolute top-2 right-2 bg-card border border-border rounded-lg px-2 py-1 text-xs font-bold cursor-pointer text-secondary-foreground z-[1]"
+                    className="absolute top-2 right-2 bg-card/90 border border-border rounded-full px-2.5 py-1 text-xs font-semibold cursor-pointer text-secondary-foreground z-[1]"
                   >
                     Edit
                   </button>
                 )}
                 <div
                   onClick={() => p.foto && setFotoAmpliada(p.foto)}
-                  className={`w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
+                  className={`w-full aspect-square rounded-xl bg-white border border-border/60 flex items-center justify-center text-2xl mb-2.5 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
                 >
                   {p.foto ? (
                     <img
@@ -4316,35 +4322,32 @@ const Inventario = () => {
                     p.icon || "📦"
                   )}
                 </div>
-                <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words text-pretty pr-12 min-h-[2.25rem]">
+                <div className="text-[13px] font-semibold mb-1 text-card-foreground leading-snug break-words text-pretty min-h-[2.25rem] tracking-tight">
                   {p.nom}
                 </div>
-                <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
+                <div className="text-xs text-primary font-mono font-semibold mb-0.5 break-all">
                   {p.sku}
                 </div>
                 {p.fabricante && (
-                  <div className="text-xs text-muted-foreground mb-0.5 break-words">
+                  <div className="text-[11px] text-muted-foreground mb-0.5 break-words">
                     {p.fabricante}
                   </div>
                 )}
-                {p.barcode && (
-                  <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
-                    CB: {p.barcode}
-                  </div>
-                )}
-                <div className="mt-auto pt-1.5">
-                  {almacen === "castillo" ? (
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold inline-flex bg-[#f5eee2] text-[#a3814e]">
-                      🏰 CASTILLO
-                    </span>
-                  ) : (
-                    <Badge e={estado} />
-                  )}
-                  <div className="text-sm font-bold text-secondary-foreground mt-1">
-                    {fmt(p.precio)}
+                <div className="mt-auto pt-2">
+                  <div className="flex items-end justify-between gap-1.5 flex-wrap">
+                    <div className="text-base font-extrabold text-card-foreground tabular-nums tracking-tight">
+                      {fmt(p.precio)}
+                    </div>
+                    {almacen === "castillo" ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex bg-[#f5eee2] text-[#a3814e]">
+                        🏰 CASTILLO
+                      </span>
+                    ) : (
+                      <Badge e={estado} />
+                    )}
                   </div>
                   {almacen !== "castillo" && (
-                    <div className="text-xs text-muted-foreground mt-0.5">
+                    <div className="text-xs text-muted-foreground mt-1">
                       Stock: {stock} units
                     </div>
                   )}
