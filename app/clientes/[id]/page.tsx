@@ -52,6 +52,7 @@ interface Factura {
   fecha: string;
   estado: string;
   total: number;
+  lineas?: { prodNom: string; sku?: string; qty: number; precio: number }[];
 }
 
 interface NotaCredito {
@@ -861,6 +862,53 @@ export default function ClientePerfilPage() {
             </div>
           </div>
         )}
+
+        {/* ── TOP PRODUCTS DEL CLIENTE (top 25% por monto, scroll horizontal) ── */}
+        {(() => {
+          const totals: Record<string, { nom: string; sku: string; qty: number; monto: number }> = {};
+          for (const f of facturas) {
+            for (const l of f.lineas || []) {
+              const key = l.sku || l.prodNom;
+              if (!totals[key]) totals[key] = { nom: l.prodNom, sku: l.sku || "", qty: 0, monto: 0 };
+              totals[key].qty += Number(l.qty) || 0;
+              totals[key].monto += (Number(l.qty) || 0) * (Number(l.precio) || 0);
+            }
+          }
+          const arr = Object.values(totals).sort((a, b) => b.monto - a.monto);
+          if (!arr.length) return null;
+          // Top 25% de los productos que compra (minimo 3 para que se vea)
+          const top = arr.slice(0, Math.max(Math.min(arr.length, 3), Math.ceil(arr.length * 0.25)));
+          return (
+            <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-5 pt-4 pb-1 flex items-baseline justify-between">
+                <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>Top Products · This Client</p>
+                <p className="text-[9px] text-gray-400">top 25% by amount</p>
+              </div>
+              <div
+                className="flex gap-2.5 overflow-x-auto px-5 py-3"
+                style={{ WebkitOverflowScrolling: "touch", scrollSnapType: "x proximity" }}
+              >
+                {top.map((p, i) => (
+                  <div
+                    key={p.sku || p.nom}
+                    className="shrink-0 w-32 bg-white border border-black/5 rounded-xl p-2.5 flex flex-col"
+                    style={{ scrollSnapAlign: "start" }}
+                  >
+                    <div className="text-[9px] font-black mb-1" style={{ color: PH }}>#{i + 1}</div>
+                    <div className="text-[11px] font-semibold text-gray-800 leading-snug mb-1" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: "2.1rem" }}>
+                      {p.nom}
+                    </div>
+                    {p.sku && <div className="text-[9px] font-mono text-gray-400 truncate">{p.sku}</div>}
+                    <div className="mt-auto pt-1.5 flex items-baseline justify-between gap-1">
+                      <span className="text-xs font-bold text-gray-800">{fmt(p.monto)}</span>
+                      <span className="text-[9px] text-gray-400">{p.qty}u</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          );
+        })()}
 
       </div>
 

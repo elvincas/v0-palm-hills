@@ -1158,6 +1158,90 @@ const mesActualKey = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
+// Top de productos por monto facturado desde una fecha (YYYY-MM-DD)
+const calcTopProductos = (facturas: Factura[], desde: string, limite = 15) => {
+  const totals: Record<string, { nom: string; sku: string; qty: number; monto: number }> = {};
+  for (const f of facturas) {
+    if ((f.fecha || "") < desde) continue;
+    for (const l of f.lineas || []) {
+      const key = l.sku || l.prodNom;
+      if (!totals[key]) totals[key] = { nom: l.prodNom, sku: l.sku || "", qty: 0, monto: 0 };
+      totals[key].qty += Number(l.qty) || 0;
+      totals[key].monto += (Number(l.qty) || 0) * (Number(l.precio) || 0);
+    }
+  }
+  return Object.values(totals).sort((a, b) => b.monto - a.monto).slice(0, limite);
+};
+
+// Score honesto de clientes (últimos N meses): 60% volumen + 40% pago.
+// - Volumen: total facturado relativo al mejor cliente.
+// - Pago: % pagado × rapidez (pagar al momento vale 1.0; decae linealmente
+//   hasta 0.2 a los 90 días, promedio ponderado por monto).
+// Así un cliente COD mediano puede superar a uno grande que tarda meses.
+const calcTopClientes = (facturas: Factura[], meses = 6, limite = 10) => {
+  const d = new Date();
+  d.setMonth(d.getMonth() - meses);
+  const desde = d.toISOString().slice(0, 10);
+  const porCli: Record<string, { comprado: number; pagado: number; diasPond: number }> = {};
+  for (const f of facturas) {
+    if ((f.fecha || "") < desde) continue;
+    const e = (porCli[f.cli] ??= { comprado: 0, pagado: 0, diasPond: 0 });
+    e.comprado += Number(f.total) || 0;
+    const t0 = new Date(f.fecha + "T00:00:00").getTime();
+    for (const p of f.pagos || []) {
+      const dias = Math.max(0, (new Date(p.fecha + "T00:00:00").getTime() - t0) / 86400000);
+      e.pagado += Number(p.monto) || 0;
+      e.diasPond += dias * (Number(p.monto) || 0);
+    }
+  }
+  const arr = Object.entries(porCli)
+    .filter(([, e]) => e.comprado > 0)
+    .map(([cli, e]) => {
+      const diasProm = e.pagado > 0 ? e.diasPond / e.pagado : 0;
+      const speed = e.pagado > 0 ? Math.max(0.2, 1 - diasProm / 90) : 0.2;
+      const pctPagado = Math.min(1, e.pagado / e.comprado);
+      return { cli, comprado: e.comprado, pctPagado, diasProm, payScore: pctPagado * speed };
+    });
+  const maxComprado = Math.max(...arr.map((a) => a.comprado), 1);
+  return arr
+    .map((a) => ({ ...a, score: 0.6 * (a.comprado / maxComprado) + 0.4 * a.payScore }))
+    .sort((x, y) => y.score - x.score)
+    .slice(0, limite);
+};
+
+// Lista compacta de top clientes (usada en Home y en el modal de Clientes)
+const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
+  const top = useMemo(() => calcTopClientes(facturas), [facturas]);
+  if (!top.length) return <Empty text="Not enough invoice data yet." />;
+  const maxScore = top[0].score || 1;
+  return (
+    <div>
+      {top.map((c, i) => (
+        <div key={c.cli} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
+          <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{c.cli}</div>
+            <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
+              {c.diasProm <= 3 && c.pctPagado >= 0.95
+                ? "Pays COD"
+                : c.pctPagado === 0
+                  ? "No payments yet"
+                  : `Pays in ~${Math.round(c.diasProm)}d · ${Math.round(c.pctPagado * 100)}% paid`}
+            </div>
+            <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
+              <div className="h-full rounded-full" style={{ width: `${Math.round((c.score / maxScore) * 100)}%`, background: "var(--primary)" }} />
+            </div>
+          </div>
+          <div className="text-right shrink-0">
+            <div className="text-xs font-bold text-card-foreground tabular-nums">{fmt(c.comprado)}</div>
+            <div className="text-[9px] text-muted-foreground">score {(c.score * 100).toFixed(0)}</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
 const mesActualNombre = () => {
   const nombre = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
@@ -1261,18 +1345,7 @@ const Dashboard = () => {
   const top15 = useMemo(() => {
     const hace3meses = new Date();
     hace3meses.setMonth(hace3meses.getMonth() - 3);
-    const desde = hace3meses.toISOString().slice(0, 10);
-    const totals: Record<string, { nom: string; sku: string; qty: number; monto: number }> = {};
-    for (const f of facturas) {
-      if ((f.fecha || "") < desde) continue;
-      for (const l of f.lineas || []) {
-        const key = l.sku || l.prodNom;
-        if (!totals[key]) totals[key] = { nom: l.prodNom, sku: l.sku || "", qty: 0, monto: 0 };
-        totals[key].qty += Number(l.qty) || 0;
-        totals[key].monto += (Number(l.qty) || 0) * (Number(l.precio) || 0);
-      }
-    }
-    return Object.values(totals).sort((a, b) => b.monto - a.monto).slice(0, 15);
+    return calcTopProductos(facturas, hace3meses.toISOString().slice(0, 10));
   }, [facturas]);
 
   return (
@@ -1464,6 +1537,20 @@ const Dashboard = () => {
             </div>
           </>
         )}
+      </div>
+
+      {/* Top clientes: volumen + comportamiento de pago (ver calcTopClientes) */}
+      <div className="bg-card rounded-2xl overflow-hidden mb-3 border border-border">
+        <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
+          <div>
+            <div className="text-sm font-bold text-card-foreground">Top Clients</div>
+            <div className="text-[10px] text-muted-foreground">Last 6 months · volume + payment behavior</div>
+          </div>
+          <div className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "var(--secondary)", color: "var(--primary)" }}>
+            ⭐ Top 10
+          </div>
+        </div>
+        <TopClientesLista facturas={facturas} />
       </div>
 
       <div className="bg-card rounded-2xl p-3.5 border border-border">
@@ -2741,6 +2828,7 @@ const Clientes = () => {
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("codigo_cliente");
   const [cliColumnas, setCliColumnas] = useState<1 | 3>(1);
+  const [showTopClientes, setShowTopClientes] = useState(false);
   const [show, setShow] = useState(false);
   const [showBulk, setShowBulk] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
@@ -3035,6 +3123,22 @@ const Clientes = () => {
         </div>
         <span className="text-xs text-muted-foreground shrink-0">{filtered.length} cli.</span>
       </div>
+      <button
+        onClick={() => setShowTopClientes(true)}
+        className="w-full mb-3 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
+      >
+        ⭐ Top 10 Clients
+      </button>
+      {showTopClientes && (
+        <Modal title="Top 10 Clients" onClose={() => setShowTopClientes(false)}>
+          <div className="text-[11px] text-muted-foreground mb-2 -mt-1">
+            Last 6 months · 60% volume + 40% payment behavior (speed &amp; % paid)
+          </div>
+          <div className="border border-border rounded-2xl overflow-hidden -mx-1">
+            <TopClientesLista facturas={facturas} />
+          </div>
+        </Modal>
+      )}
       {filtered.length ? (
         cliColumnas === 3 ? (
           <div className="grid grid-cols-3 gap-2 mb-3">
@@ -3592,7 +3696,14 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 ];
 
 const Inventario = () => {
-  const { productos, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, readOnly } = useData();
+  const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, readOnly } = useData();
+  const [showTopProductos, setShowTopProductos] = useState(false);
+  const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
+  const topProductosModal = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - topPeriodoMeses);
+    return calcTopProductos(facturas, d.toISOString().slice(0, 10));
+  }, [facturas, topPeriodoMeses]);
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -4273,6 +4384,52 @@ const Inventario = () => {
           {filtered.length} prod.
         </span>
       </div>
+      <button
+        onClick={() => setShowTopProductos(true)}
+        className="w-full mb-3 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
+      >
+        🏆 Top Products
+      </button>
+      {showTopProductos && (
+        <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
+          <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
+            {([1, 3] as const).map((m) => (
+              <button
+                key={m}
+                onClick={() => setTopPeriodoMeses(m)}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${topPeriodoMeses === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+              >
+                {m === 1 ? "This month" : "3 months"}
+              </button>
+            ))}
+          </div>
+          {topProductosModal.length ? (
+            <div className="border border-border rounded-2xl overflow-hidden">
+              {topProductosModal.map((p, i) => {
+                const maxMonto = topProductosModal[0]?.monto || 1;
+                return (
+                  <div key={p.sku || p.nom} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
+                    <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{p.nom}</div>
+                      {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
+                      <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
+                        <div className="h-full rounded-full" style={{ width: `${Math.round((p.monto / maxMonto) * 100)}%`, background: "var(--primary)" }} />
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-xs font-bold text-card-foreground tabular-nums">{fmt(p.monto)}</div>
+                      <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <Empty text="No sales in this period." />
+          )}
+        </Modal>
+      )}
       {allTags.length > 0 && (
         <div
           className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-2 mb-2 -mx-1 px-1"
