@@ -2266,25 +2266,34 @@ const Facturas = () => {
             const ncs = notasCredito.filter(n => !ncQ || n.cli.toLowerCase().includes(ncQ.toLowerCase())).sort((a,b) => b.num - a.num);
             return ncs.length ? (
               <div className="bg-card border border-border rounded-2xl overflow-hidden mb-3">
-                <div className="grid grid-cols-[1fr_1.5fr_1fr_1fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
-                  <span>Date</span><span>Client</span><span>Amount</span><span>CN #</span>
-                </div>
-                {ncs.map(n => (
-                  <div key={n.id} className="grid grid-cols-[1fr_1.5fr_1fr_1fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border hover:bg-secondary/30 group cursor-pointer" onClick={() => router.push(`/notas-credito/${n.id}`)}>
-                    <span className="text-muted-foreground">{fdate(n.fecha)}</span>
-                    <div className="min-w-0">
-                      <div className="font-bold uppercase truncate text-card-foreground">{n.cli}</div>
-                      {n.motivo && <div className="text-muted-foreground truncate">{n.motivo}</div>}
-                      {n.aplicada && (
-                        <div className="inline-flex items-center gap-1 mt-0.5 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-bold text-[10px]">
-                          ✓ Applied{n.aplicada_en ? ` · ${n.aplicada_en}` : ""}
-                        </div>
-                      )}
+                {ncs.map((n, i) => (
+                  <div
+                    key={n.id}
+                    onClick={() => router.push(`/notas-credito/${n.id}`)}
+                    className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 group ${i > 0 ? "border-t border-border" : ""}`}
+                  >
+                    <div className="shrink-0">
+                      <div className="text-xs font-mono font-semibold text-[#a3814e] whitespace-nowrap">CN #{String(n.num).padStart(3, "0")}</div>
+                      <div className="text-[11px] text-muted-foreground whitespace-nowrap">{fdate(n.fecha)}</div>
                     </div>
-                    <span className={n.aplicada ? "font-bold text-muted-foreground line-through" : "font-bold text-green-700"}>{fmt(n.monto)}</span>
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-muted-foreground">#{String(n.num).padStart(3, "0")}</span>
-                      {!readOnly && <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-xs px-1">×</button>}
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{n.cli}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        {n.aplicada ? `Applied${n.aplicada_en ? ` · ${n.aplicada_en}` : ""}` : n.motivo || ""}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className={`text-sm font-bold tabular-nums ${n.aplicada ? "text-muted-foreground line-through" : "text-card-foreground"}`}>{fmt(n.monto)}</span>
+                        {n.aplicada ? (
+                          <span className="pl-2 pr-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 bg-secondary text-secondary-foreground">
+                            <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" aria-hidden="true" />Applied
+                          </span>
+                        ) : (
+                          <Badge e="Active" />
+                        )}
+                      </div>
+                      {!readOnly && <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-sm px-1">×</button>}
                     </div>
                   </div>
                 ))}
@@ -2459,15 +2468,23 @@ const Facturas = () => {
             const sent = [...remitos].filter(r => r.enviado).sort((a, b) => b.num - a.num);
             return sent.length ? (
               <div className="bg-card border border-border rounded-2xl overflow-hidden mb-3">
-                <div className="grid grid-cols-[1fr_1.5fr_0.8fr_0.8fr] gap-2 px-3.5 py-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground bg-secondary/40">
-                  <span>Date</span><span>Client</span><span>Order #</span><span>Remito #</span>
-                </div>
-                {sent.map(r => (
-                  <button key={r.id} onClick={() => router.push(`/remitos/${r.id}`)} className="w-full grid grid-cols-[1fr_1.5fr_0.8fr_0.8fr] gap-2 px-3.5 py-2.5 text-xs border-t border-border hover:bg-secondary/30 text-left">
-                    <span className="text-muted-foreground">{fdate(r.fecha)}</span>
-                    <span className="font-bold uppercase truncate text-card-foreground">{r.cli}</span>
-                    <span className="text-muted-foreground">#{r.orden_num}</span>
-                    <span className="font-mono text-muted-foreground">#{r.num}</span>
+                {sent.map((r, i) => (
+                  <button
+                    key={r.id}
+                    onClick={() => router.push(`/remitos/${r.id}`)}
+                    className={`w-full grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2.5 hover:bg-secondary/30 text-left ${i > 0 ? "border-t border-border" : ""}`}
+                  >
+                    <div className="shrink-0">
+                      <div className="text-xs font-mono font-semibold text-[#a3814e] whitespace-nowrap">R #{String(r.num).padStart(4, "0")}</div>
+                      <div className="text-[11px] text-muted-foreground whitespace-nowrap">{fdate(r.fecha)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{r.cli}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">Order #{r.orden_num}</div>
+                    </div>
+                    <div className="flex flex-col items-end gap-0.5 shrink-0">
+                      <Badge e="Delivered" />
+                    </div>
                   </button>
                 ))}
               </div>
