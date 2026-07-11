@@ -332,7 +332,7 @@ export default function EstimadoPage() {
     <div className="min-h-screen print:min-h-0 print:h-auto bg-[#f0efe9] print:bg-transparent">
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div
-          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-between"
+          className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-center justify-center gap-2"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
           <button onClick={() => router.push("/?tab=ord")} aria-label="Back" className={PILL_ICON}>
