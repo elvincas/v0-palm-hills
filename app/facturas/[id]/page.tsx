@@ -233,6 +233,33 @@ export default function FacturaPage() {
   const [error, setError] = useState("");
   const [readOnly, setReadOnly] = useState(false);
 
+  const [generandoPdf, setGenerandoPdf] = useState(false);
+
+  // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
+  // En la PWA instalada, window.open muestra el PDF sin barra de opciones.
+  const abrirPdf = async () => {
+    if (generandoPdf || !factura) return;
+    setGenerandoPdf(true);
+    try {
+      const res = await fetch(`/api/facturas/${facturaId}/pdf`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], `Invoice-${String(factura.num).padStart(4, "0")}.pdf`, { type: "application/pdf" });
+      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+      } else {
+        window.open(URL.createObjectURL(blob), "_blank");
+      }
+    } catch (err) {
+      // Cancelar el share sheet lanza AbortError: no es un error real
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        alert("Could not generate the PDF: " + (err instanceof Error ? err.message : String(err)));
+      }
+    } finally {
+      setGenerandoPdf(false);
+    }
+  };
+
   // Payment form
   const [showPagoForm, setShowPagoForm] = useState(false);
   const [pagoMonto, setPagoMonto] = useState("");
@@ -596,11 +623,8 @@ export default function FacturaPage() {
               <Icon d={IC.revert} />{reverting ? "Reverting..." : "To Order"}
             </button>
           )}
-          <button
-            onClick={() => window.open(`/api/facturas/${facturaId}/pdf`, "_blank")}
-            className={PILL_SOLID}
-          >
-            <Icon d={IC.print} />Print / PDF
+          <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} disabled:opacity-60`}>
+            <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
           </button>
           {!readOnly && (
             <button

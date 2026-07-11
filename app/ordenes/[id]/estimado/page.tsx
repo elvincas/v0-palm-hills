@@ -185,6 +185,30 @@ export default function EstimadoPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [orden, setOrden] = useState<Orden | null>(null);
+  const [generandoPdf, setGenerandoPdf] = useState(false);
+
+  // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
+  const abrirPdf = async () => {
+    if (generandoPdf || !orden) return;
+    setGenerandoPdf(true);
+    try {
+      const res = await fetch(`/api/ordenes/${ordenId}/pdf`);
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], `Estimate-Order${orden.num}.pdf`, { type: "application/pdf" });
+      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+      } else {
+        window.open(URL.createObjectURL(blob), "_blank");
+      }
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        alert("Could not generate the PDF: " + (err instanceof Error ? err.message : String(err)));
+      }
+    } finally {
+      setGenerandoPdf(false);
+    }
+  };
   const [cliente, setCliente] = useState<Cliente | null>(null);
   const [clienteListo, setClienteListo] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -314,11 +338,8 @@ export default function EstimadoPage() {
           <button onClick={() => router.push("/?tab=ord")} aria-label="Back" className={PILL_ICON}>
             <Icon d={IC.back} />
           </button>
-          <button
-            onClick={() => window.open(`/api/ordenes/${ordenId}/pdf`, "_blank")}
-            className={PILL_SOLID}
-          >
-            <Icon d={IC.print} />Print / PDF
+          <button onClick={abrirPdf} disabled={generandoPdf} className={`${PILL_SOLID} disabled:opacity-60`}>
+            <Icon d={IC.print} />{generandoPdf ? "Generating..." : "Print / PDF"}
           </button>
         </div>
       </div>
