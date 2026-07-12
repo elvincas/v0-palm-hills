@@ -9,10 +9,12 @@ Sistema de gestión para negocios de salud/belleza. Desarrollado con Next.js 16 
 - **Framework**: Next.js 16.2.4 (App Router, client components)
 - **UI**: React 19, Tailwind CSS 4, Radix UI (30+ componentes)
 - **DB/Auth**: Supabase (PostgreSQL + Auth SSR)
+- **PDF**: @react-pdf/renderer (server-side, rutas API) para facturas/estimates
 - **Forms**: react-hook-form + zod
 - **Search**: fuse.js + motor propio (lib/search.ts) con soporte fonético español
 - **Excel/ZIP**: xlsx + jszip para importaciones masivas
 - **Deploy**: Vercel + Supabase Cloud
+- **Package manager**: SOLO npm (package-lock.json). El pnpm-lock.yaml se eliminó — si reaparece, Vercel falla con ERR_PNPM_OUTDATED_LOCKFILE
 
 ---
 
@@ -20,23 +22,30 @@ Sistema de gestión para negocios de salud/belleza. Desarrollado con Next.js 16 
 
 ```
 app/
-  page.tsx                  # Componente monolítico principal (~5800 líneas) — todos los tabs
-  layout.tsx                # Root layout con Vercel Analytics
+  page.tsx                  # Componente monolítico principal (~6900 líneas) — todos los tabs
+  layout.tsx                # Root layout con Vercel Analytics + apple-touch-icon
   auth/                     # Login, sign-up, callback OAuth
   api/admin/users/          # API admin-only para gestión de usuarios
-  clientes/[id]/            # Perfil de cliente, nueva-orden, estado-cuenta (PDF)
-  ordenes/[id]/             # estimado (el pick se hace dentro del tab Ordenes)
-  facturas/[id]/            # Detalle de factura
+  api/facturas/[id]/pdf/    # PDF de factura generado server-side (auth requerida)
+  api/ordenes/[id]/pdf/     # PDF de estimate generado server-side
+  clientes/[id]/            # Perfil de cliente, nueva-orden, estado-cuenta
+  ordenes/[id]/estimado/    # Vista de estimate (el pick se hace en el tab Ordenes)
+  facturas/[id]/            # Detalle de factura (pagos, revertir, PDF)
+  notas-credito/[id]/       # Documento de nota de crédito + aplicar a factura
+  remitos/[id]/             # Documento de remito imprimible (Castillo)
 components/
-  bottom-nav.tsx            # Navegación inferior mobile (8 tabs)
+  bottom-nav.tsx            # Navegación inferior mobile (píldora activa)
   ui/                       # Componentes Radix UI estilizados (50+)
 lib/
   supabase/client.ts        # Cliente browser
-  supabase/server.ts        # Cliente SSR
+  supabase/server.ts        # Cliente SSR (usado por las rutas de PDF)
+  pdf/documento-pdf.tsx     # Generador PDF compartido factura/estimate (@react-pdf)
   search.ts                 # Motor de búsqueda avanzado con Levenshtein + fonética
   delivery.ts               # Helpers de fechas de entrega
-  print.ts                  # Utilidades de impresión/PDF
+  print.ts                  # (legacy) utilidades de impresión
   utils.ts                  # cn() para merge de clases CSS
+scripts/
+  test-pdf.ts               # Test del PDF: npx tsx scripts/test-pdf.ts (paginación, headers)
 hooks/
   use-mobile.ts             # Detección de pantalla mobile
   use-toast.ts              # Notificaciones toast
@@ -70,13 +79,22 @@ supabase/
 `id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `almacen` (palmhills | castillo | null)
 
 ### `facturas`
-`id`, `num` (empieza en 1001), `cli` (nombre string), `fecha`, `estado` (Pending/Paid/In Review/Completed), `total`, `lineas` (LineaFactura[]), `pagos` ([{monto, fecha, nota?}])
+`id`, `num` (empieza en 1001), `cli` (nombre string), `fecha`, `estado` (Pending/Partially Paid/Paid), `total`, `lineas` (LineaFactura[]), `pagos` ([{monto, fecha, nota?, metodo?}] — metodo: Cash/Zelle/Check/Card/Bank Transfer/Credit), `orden_id` (orden que la generó, para revertir)
 
 ### `ordenes`
 `id`, `num` (empieza en 1), `cli`, `fecha`, `estado` (Pending/In Progress/Completed), `total`, `lineas` (LineaOrden[])
 
 ### `notas_credito`
-`id`, `num`, `cli`, `fecha`, `monto`, `motivo`
+`id`, `num`, `cli`, `fecha`, `monto`, `motivo`, `tipo` (amount|product), `lineas` (LineaNC[]), `aplicada` (bool), `aplicada_en` (texto), `aplicada_fecha`, `aplicada_factura_id`. Al aplicar a una factura se registra como pago (metodo "Credit") en ella; aplicada NO resta del balance global del cliente.
+
+### `remitos`
+`id`, `num` (empieza en 5001), `orden_id`, `orden_num`, `cli`, `fecha`, `lineas`, `enviado` (bool), `fecha_envio`. Se generan al completar pick de órdenes Castillo.
+
+### `todos`
+`id`, `texto`, `cliente_id`, `cliente_nom`, `fecha_limite`, `completado`, `created_at` — to-dos del dashboard y perfil de cliente.
+
+### `config`
+Tabla key/value (RLS authenticated). Keys: `remito_email` (correo fijo de remitos), `meta_YYYY-MM` (sales goal mensual — sobrevive reinstalar la PWA).
 
 ### `mejoras`
 `id`, `titulo`, `descripcion`, `costo`, `prioridad` (High/Medium/Low), `estado` (Pending/In Progress/Completed)
@@ -138,14 +156,25 @@ Dos almacenes: `palmhills` (default) y `castillo`. El campo `almacen` en `produc
 - Variantes fonéticas español: z/c→s, qu→k, v→b, h→"", y/ll→i
 - Boost a coincidencias exactas y prefix
 
-### Estilo UI
-- **Glassmorphism**: `backdrop-blur-md bg-white/50 border border-white/60 shadow-sm`
-- Colores: oklch() en CSS variables, soporte dark mode
-- Mobile-first, max-width 480px, safe-area insets para notch
-- Bottom sheet modals con backdrop blur
+### Estilo UI (rediseño 2026-07-10, aprobado por mockup)
+- Minimalista tipo Routific/Apple: un solo acento verde `#4a6741`; dorado `#b09060` solo como firma (números de documento, chips almacén)
+- Superficies planas: tarjetas blancas, borde `--border #e3e7dd`, sombra sutil — el glassmorphism quedó solo en piezas viejas
+- Iconos SVG de línea en botones de acción (NO emoji); los emoji 🏰/🌴 de almacén SÍ se quedan (identidad, pedido explícito)
+- Toolbars de documentos: una fila de botones idénticos flex-1 estilo tab bar (icono arriba + etiqueta), tintes por acción (dorado/verde/azul/rojo)
+- Chips de estado: tint suave + punto (`Badge` en page.tsx); listas de facturas/NC/remitos en formato 3 columnas apiladas uniforme
+- Fondo `--background #f2f4ee` (verde-neutro); bottom nav con píldora activa
+- SKUs SIEMPRE en mono gris (el usuario rechazó cambiarles color/fuente)
+- **El usuario exige simetría y alineación perfecta en toda la UI** — mismos altos, filas llenas sin huecos, revisar en móvil ~390px
+- Mobile-first, max-width 480px, safe-area insets; pull-to-refresh propio en todos los tabs (spinner iOS + anillo de progreso, threshold 80px)
 
-### Impresión / PDF en iOS PWA
-Usa `navigator.share` (Web Share API) en lugar de `window.print()` cuando está disponible (fix para iOS).
+### Impresión / PDF (definitivo 2026-07-11)
+NO usar `window.print()`: iOS/WebKit no repite `<thead>` ni respeta cortes de página. Los botones Print/PDF hacen fetch a `/api/facturas/[id]/pdf` o `/api/ordenes/[id]/pdf` (generación con @react-pdf/renderer, size LETTER, header `<View fixed>` repetido por página) y abren el **share sheet nativo** con el archivo (`navigator.share({files})`) → opción Print/Save/AirDrop. Test: `npx tsx scripts/test-pdf.ts`.
+
+### Top Clients (score honesto)
+`calcTopClientes` en page.tsx: score = 60% volumen + 40% pago (pago = %pagado × speedFactor30: COD≤2d=1.0, 3-30d 0.9→0.7, >30d cae a 0.4→0.1). Se muestra en Home, modal en Clientes; `calcTopProductos` alimenta Home + modal en Inventario (1m/3m) + top 25% en perfil de cliente.
+
+### Cargas paginadas
+Toda carga con `.range()` DEBE ordenar con `.order(col).order("id")` — miles de productos comparten `created_at` y sin desempate PostgREST duplica/salta filas.
 
 ---
 
@@ -172,11 +201,13 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
 
 ## Deuda Técnica Conocida
 
-- `app/page.tsx` es un componente monolítico de ~5800 líneas (todos los tabs en uno)
-- No hay tests (sin Jest/Vitest)
+- `app/page.tsx` es un componente monolítico de ~6900 líneas (todos los tabs en uno)
+- Sin framework de tests (solo `scripts/test-pdf.ts` para el PDF, correr con tsx)
 - Error handling básico con `alert()` (sin error boundaries)
-- Todas las queries son client-side directas a Supabase (sin capa de API)
+- Casi todas las queries son client-side directas a Supabase (solo los PDFs tienen ruta API)
 - TypeScript con `ignoreBuildErrors: true`
+- Rol visitante se valida solo en UI — RLS permite escribir a cualquier usuario autenticado
+- Pendiente: envío de remitos por Gmail con PDF adjunto (esperando App Password de admin@palmhillsco.net)
 
 ---
 
