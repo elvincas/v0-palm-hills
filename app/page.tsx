@@ -53,6 +53,7 @@ interface Cliente {
   estado: string;
   abierto_sabados?: boolean;
   foto_local?: string;
+  foto_local_v?: number;
   telefonos?: TelefonoContacto[];
   fax?: string;
   notas_visita?: NotaVisita[];
@@ -73,6 +74,7 @@ interface Producto {
   reservado?: number;
   icon?: string;
   foto?: string | null;
+  foto_v?: number;
   almacen?: "palmhills" | "castillo";
 }
 
@@ -424,18 +426,28 @@ const idbOpen = (): Promise<IDBDatabase | null> => {
     req.onerror = () => resolve(null);
   });
 };
-const idbGetAll = (db: IDBDatabase, store: string): Promise<Map<string, string>> =>
+// Cada entrada guarda la foto (o null si el registro no tiene) junto con la
+// version foto_v del servidor: asi solo se re-descarga una foto cuando su
+// version cambia. Entradas viejas (string suelto) se tratan como version 1.
+type FotoCache = { foto: string | null; v: number };
+const idbGetAll = (db: IDBDatabase, store: string): Promise<Map<string, FotoCache>> =>
   new Promise((resolve) => {
-    const map = new Map<string, string>();
+    const map = new Map<string, FotoCache>();
     const req = db.transaction(store, "readonly").objectStore(store).openCursor();
     req.onsuccess = (e) => {
       const cur = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
-      if (cur) { if (cur.value) map.set(cur.key as string, cur.value); cur.continue(); }
+      if (cur) {
+        if (cur.value != null) {
+          const val: FotoCache = typeof cur.value === "string" ? { foto: cur.value, v: 1 } : cur.value;
+          map.set(cur.key as string, val);
+        }
+        cur.continue();
+      }
       else resolve(map);
     };
     req.onerror = () => resolve(map);
   });
-const idbPut = (db: IDBDatabase, store: string, key: string, val: string) => {
+const idbPut = (db: IDBDatabase, store: string, key: string, val: FotoCache) => {
   try { db.transaction(store, "readwrite").objectStore(store).put(val, key); } catch { /* ignore */ }
 };
 
@@ -487,30 +499,38 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // Columnas livianas: las fotos (base64) se cargan despues, en segundo plano,
   // para que la app no tenga que esperar varios MB de imagenes antes de mostrar nada.
   const CLIENTE_COLS =
-    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, created_at";
+    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, foto_local_v, created_at";
   const PRODUCTO_COLS =
-    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, created_at";
+    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
   // timeout de la base de datos. Con fotos de hasta 500KB, 10 por request = ~5MB,
   // bien dentro del limite de Supabase (10MB por response).
   const FOTO_CHUNK = 10;
 
-  const loadFotosProductos = async (ids: string[]) => {
+  // Recibe solo los registros cuya foto falta en el cache o cambio de version
+  // (foto_v); las fotos sin cambios se sirven desde IndexedDB sin tocar la red.
+  const loadFotosProductos = async (items: { id: string; v: number }[]) => {
     const run = ++fotosProdRunRef.current;
     const idb = idbRef.current;
-    for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
+    for (let i = 0; i < items.length; i += FOTO_CHUNK) {
       if (fotosProdRunRef.current !== run) return; // nueva carga iniciada, abortar
-      const lote = ids.slice(i, i + FOTO_CHUNK);
+      const lote = items.slice(i, i + FOTO_CHUNK);
       try {
-        const { data, error } = await supabase.from("productos").select("id, foto").in("id", lote);
+        const { data, error } = await supabase.from("productos").select("id, foto").in("id", lote.map((x) => x.id));
         if (error) { console.error("[v0] Error cargando fotos de productos:", error.message); continue; }
         if (!data || data.length === 0) continue;
+        const vPorId = new Map(lote.map((x) => [x.id, x.v]));
+        const updates = new Map<string, string>();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const updates = new Map((data as any[]).filter((r) => r.foto).map((r) => [r.id, r.foto]));
+        for (const r of data as any[]) {
+          // Se cachea tambien foto=null: sin esa marca, los productos sin foto
+          // se volverian a pedir en cada apertura.
+          if (idb) idbPut(idb, "prod", r.id, { foto: r.foto ?? null, v: vPorId.get(r.id) ?? 1 });
+          if (r.foto) updates.set(r.id, r.foto);
+        }
         if (updates.size > 0) {
           setProductos((prev) => prev.map((p) => (updates.has(p.id) ? { ...p, foto: updates.get(p.id) } : p)));
-          if (idb) updates.forEach((foto, id) => idbPut(idb, "prod", id, foto));
         }
       } catch (err) {
         console.error("[v0] Error inesperado en lote de fotos de productos:", err);
@@ -518,21 +538,25 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const loadFotosClientes = async (ids: string[]) => {
+  const loadFotosClientes = async (items: { id: string; v: number }[]) => {
     const run = ++fotosCliRunRef.current;
     const idb = idbRef.current;
-    for (let i = 0; i < ids.length; i += FOTO_CHUNK) {
+    for (let i = 0; i < items.length; i += FOTO_CHUNK) {
       if (fotosCliRunRef.current !== run) return; // nueva carga iniciada, abortar
-      const lote = ids.slice(i, i + FOTO_CHUNK);
+      const lote = items.slice(i, i + FOTO_CHUNK);
       try {
-        const { data, error } = await supabase.from("clientes").select("id, foto_local").in("id", lote);
+        const { data, error } = await supabase.from("clientes").select("id, foto_local").in("id", lote.map((x) => x.id));
         if (error) { console.error("[v0] Error cargando fotos de clientes:", error.message); continue; }
         if (!data || data.length === 0) continue;
+        const vPorId = new Map(lote.map((x) => [x.id, x.v]));
+        const updates = new Map<string, string>();
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const updates = new Map((data as any[]).filter((r) => r.foto_local).map((r) => [r.id, r.foto_local]));
+        for (const r of data as any[]) {
+          if (idb) idbPut(idb, "cli", r.id, { foto: r.foto_local ?? null, v: vPorId.get(r.id) ?? 1 });
+          if (r.foto_local) updates.set(r.id, r.foto_local);
+        }
         if (updates.size > 0) {
           setClientes((prev) => prev.map((c) => (updates.has(c.id) ? { ...c, foto_local: updates.get(c.id) } : c)));
-          if (idb) updates.forEach((foto, id) => idbPut(idb, "cli", id, foto));
         }
       } catch (err) {
         console.error("[v0] Error inesperado en lote de fotos de clientes:", err);
@@ -596,24 +620,39 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
       if (!idbRef.current) idbRef.current = await idbOpen();
       const idb = idbRef.current;
+      let cachedProd = new Map<string, FotoCache>();
+      let cachedCli = new Map<string, FotoCache>();
       if (idb) {
-        const [cachedProd, cachedCli] = await Promise.all([
+        [cachedProd, cachedCli] = await Promise.all([
           idbGetAll(idb, "prod"),
           idbGetAll(idb, "cli"),
         ]);
         if (cachedProd.size > 0) {
-          setProductos((prev) => prev.map((pd) => cachedProd.has(pd.id) ? { ...pd, foto: cachedProd.get(pd.id) } : pd));
+          setProductos((prev) => prev.map((pd) => cachedProd.get(pd.id)?.foto ? { ...pd, foto: cachedProd.get(pd.id)!.foto } : pd));
         }
         if (cachedCli.size > 0) {
-          setClientes((prev) => prev.map((cl) => cachedCli.has(cl.id) ? { ...cl, foto_local: cachedCli.get(cl.id) } : cl));
+          setClientes((prev) => prev.map((cl) => cachedCli.get(cl.id)?.foto ? { ...cl, foto_local: cachedCli.get(cl.id)!.foto! } : cl));
         }
       }
 
-      // Background: actualizar cache desde Supabase (palm hills primero)
-      const phIds = p.filter((r) => !r.almacen || r.almacen === "palmhills").map((r) => r.id);
-      const castIds = p.filter((r) => r.almacen === "castillo").map((r) => r.id);
+      // Background: bajar SOLO las fotos sin cachear o cuya version (foto_v)
+      // cambio en el servidor. Re-descargar los ~160MB de fotos en cada
+      // apertura agotaba el Disk IO Budget de Supabase y tumbaba la base.
+      // (palm hills primero)
+      const prodPendiente = (r: Producto) => {
+        const cache = cachedProd.get(r.id);
+        return !cache || cache.v !== (r.foto_v ?? 1);
+      };
+      const phIds = p.filter((r) => (!r.almacen || r.almacen === "palmhills") && prodPendiente(r)).map((r) => ({ id: r.id, v: r.foto_v ?? 1 }));
+      const castIds = p.filter((r) => r.almacen === "castillo" && prodPendiente(r)).map((r) => ({ id: r.id, v: r.foto_v ?? 1 }));
       loadFotosProductos([...phIds, ...castIds]).catch(() => {});
-      loadFotosClientes(c.map((r) => r.id)).catch(() => {});
+      const cliPendientes = c
+        .filter((r) => {
+          const cache = cachedCli.get(r.id);
+          return !cache || cache.v !== (r.foto_local_v ?? 1);
+        })
+        .map((r) => ({ id: r.id, v: r.foto_local_v ?? 1 }));
+      loadFotosClientes(cliPendientes).catch(() => {});
       // Load pending todos
       const { data: td } = await supabase.from("todos").select("*").eq("completado", false).order("created_at", { ascending: false });
       setTodos((td as Todo[]) || []);
@@ -708,10 +747,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const updateCliente = async (id: string, updated: Omit<Cliente, "id">) => {
     const anterior = clientes.find((c) => c.id === id);
-    const { data, error } = await supabase.from("clientes").update(updated).eq("id", id).select().single();
+    // foto_local_v lo administra el trigger de la base; no se escribe desde el cliente.
+    const { foto_local_v: _flv, ...payload } = updated;
+    const { data, error } = await supabase.from("clientes").update(payload).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     setClientes((prev) => prev.map((c) => (c.id === id ? (data as Cliente) : c)));
-    if (idbRef.current && updated.foto_local) idbPut(idbRef.current, "cli", id, updated.foto_local);
+    const cliRow = data as Cliente;
+    if (idbRef.current) idbPut(idbRef.current, "cli", id, { foto: cliRow.foto_local ?? null, v: cliRow.foto_local_v ?? 1 });
     // Facturas, notas de credito, ordenes y remitos quedan ligados por NOMBRE:
     // si el nombre cambia, se renombran en cascada para no dejar huerfanos.
     if (anterior && anterior.nom !== updated.nom) {
@@ -860,18 +902,25 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const updateProducto = async (id: string, prod: Omit<Producto, "id">) => {
-    const validated = sanitizeProducto(prod);
+    // foto_v lo administra el trigger de la base; un valor viejo del cliente
+    // no debe pisarlo.
+    const { foto_v: _fv, ...sinFotoV } = sanitizeProducto(prod);
+    const validated = sinFotoV;
     const { data, error } = await supabase.from("productos").update(validated).eq("id", id).select().single();
     if (error) throw new Error(error.message);
     setProductos((prev) => prev.map((p) => (p.id === id ? (data as Producto) : p)));
+    const prodRow = data as Producto;
+    if (idbRef.current) idbPut(idbRef.current, "prod", id, { foto: prodRow.foto ?? null, v: prodRow.foto_v ?? 1 });
     await logAct(`Product updated: ${prod.nom}`);
   };
 
   const updateProductoFoto = async (id: string, foto: string) => {
-    const { error } = await supabase.from("productos").update({ foto }).eq("id", id);
+    const { data, error } = await supabase.from("productos").update({ foto }).eq("id", id).select("foto_v").single();
     if (error) throw new Error(error.message);
-    setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, foto } : p)));
-    if (idbRef.current) idbPut(idbRef.current, "prod", id, foto);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (data as any)?.foto_v ?? 1;
+    setProductos((prev) => prev.map((p) => (p.id === id ? { ...p, foto, foto_v: v } : p)));
+    if (idbRef.current) idbPut(idbRef.current, "prod", id, { foto, v });
   };
 
   const deleteProducto = async (id: string) => {
