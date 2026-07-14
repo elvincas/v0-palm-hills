@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import { BottomNav } from "@/components/bottom-nav";
 import { BackButton } from "@/components/back-button";
+import { ListaPreciosEditorModal } from "@/components/lista-precios-editor";
 
 interface TelefonoContacto {
   rol: string;
@@ -157,6 +158,7 @@ export default function ClientePerfilPage() {
   const [todos, setTodos] = useState<TodoCliente[]>([]);
   const [listasPrecios, setListasPrecios] = useState<{ id: string; nombre: string }[]>([]);
   const [savingLista, setSavingLista] = useState(false);
+  const [editandoLista, setEditandoLista] = useState<string | null>(null);
   const [showTodo, setShowTodo] = useState(false);
   const [todoTexto, setTodoTexto] = useState("");
   const [todoFecha, setTodoFecha] = useState("");
@@ -213,6 +215,39 @@ export default function ClientePerfilPage() {
       alert("Error saving price list: " + e.message);
     }
     setSavingLista(false);
+  };
+
+  // Crea una lista nueva, se la asigna a ESTE cliente y abre el editor
+  const handleNuevaLista = async () => {
+    if (!cliente || savingLista) return;
+    const nombre = (prompt(`Name for the new price list (e.g. ${cliente.ciudad || "Yonkers"}):`) || "").trim();
+    if (!nombre) return;
+    setSavingLista(true);
+    const { data, error: e } = await supabase
+      .from("listas_precios")
+      .insert({ nombre, precios: {} })
+      .select("id, nombre")
+      .single();
+    if (e || !data) {
+      alert("Error creating list: " + (e?.message || "unknown"));
+      setSavingLista(false);
+      return;
+    }
+    await supabase.from("clientes").update({ lista_precio_id: data.id }).eq("id", clienteId);
+    await supabase.from("actividad").insert({ msg: `Price list created: ${nombre} → ${cliente.nom}` });
+    setListasPrecios((prev) => [...prev, data].sort((a, b) => a.nombre.localeCompare(b.nombre, "en")));
+    setCliente({ ...cliente, lista_precio_id: data.id });
+    if (form) setForm({ ...form, lista_precio_id: data.id });
+    setSavingLista(false);
+    setEditandoLista(data.id);
+  };
+
+  // Al cerrar el editor puede haber cambiado el nombre de la lista
+  const handleCierreEditor = (nombre?: string) => {
+    if (nombre && editandoLista) {
+      setListasPrecios((prev) => prev.map((l) => (l.id === editandoLista ? { ...l, nombre } : l)));
+    }
+    setEditandoLista(null);
   };
 
   const cargarFacturas = async (nombreCliente: string) => {
@@ -538,6 +573,27 @@ export default function ClientePerfilPage() {
                   <option key={l.id} value={l.id}>{l.nombre}</option>
                 ))}
               </select>
+              {!readOnly && (
+                <div className="flex gap-2 mt-1.5">
+                  {cliente.lista_precio_id && (
+                    <button
+                      onClick={() => setEditandoLista(cliente.lista_precio_id!)}
+                      className="text-xs font-bold px-3 py-1 rounded-full active:scale-95 transition-all"
+                      style={{ color: "#a3814e", background: "#f5eee2" }}
+                    >
+                      Edit prices
+                    </button>
+                  )}
+                  <button
+                    onClick={handleNuevaLista}
+                    disabled={savingLista}
+                    className="text-xs font-bold px-3 py-1 rounded-full active:scale-95 transition-all disabled:opacity-50"
+                    style={{ color: PH, background: `${PH}18` }}
+                  >
+                    + New list
+                  </button>
+                </div>
+              )}
             </div>
 
             <div className="border-t border-black/5" />
@@ -946,6 +1002,11 @@ export default function ClientePerfilPage() {
       </div>
 
       <BottomNav active="cli" />
+
+      {/* ── PRICE LIST EDITOR ── */}
+      {editandoLista && (
+        <ListaPreciosEditorModal listaId={editandoLista} onClose={handleCierreEditor} readOnly={readOnly} />
+      )}
 
       {/* ── VISIT NOTE MODAL ── */}
       {showNota && (
