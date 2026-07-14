@@ -2044,9 +2044,9 @@ const Calendario = () => {
                   diaSeleccionado === fecha
                     ? "bg-primary text-primary-foreground font-bold"
                     : esEntrega
-                      ? "bg-secondary text-secondary-foreground font-semibold"
+                      ? "bg-primary/15 text-primary font-bold"
                       : "bg-muted text-card-foreground"
-                } ${esHoy && diaSeleccionado !== fecha ? "ring-2 ring-primary" : ""}`}
+                } ${esHoy && diaSeleccionado !== fecha ? "ring-1 ring-inset ring-primary/60" : ""}`}
               >
                 {numDia}
                 <span className="absolute bottom-0.5 flex gap-0.5">

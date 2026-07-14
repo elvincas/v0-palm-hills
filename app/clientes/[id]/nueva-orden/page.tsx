@@ -105,9 +105,9 @@ function DeliveryCalendar({ fechas, value, onChange }: { fechas: string[]; value
                 seleccionado
                   ? 'bg-primary text-primary-foreground font-bold shadow-sm'
                   : esEntrega
-                    ? 'bg-secondary text-secondary-foreground hover:bg-primary/20 font-semibold cursor-pointer'
+                    ? 'bg-primary/15 text-primary hover:bg-primary/25 font-bold cursor-pointer'
                     : 'text-muted-foreground/40 cursor-default'
-              } ${esHoy && !seleccionado ? 'ring-2 ring-primary ring-offset-1' : ''}`}
+              } ${esHoy && !seleccionado ? 'ring-1 ring-inset ring-primary/60' : ''}`}
             >
               {Number(f.slice(-2))}
             </button>
