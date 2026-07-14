@@ -73,7 +73,7 @@ supabase/
 ## Modelos de Datos (tablas Supabase)
 
 ### `clientes`
-`id`, `nom`, `codigo_cliente` (formato `01-0001`), `tel`, `email`, `dir`, `ciudad`, `estado_dir`, `contacto`, `estado` (Active/Inactive/Waiting), `abierto_sabados`, `foto_local` (base64)
+`id`, `nom`, `codigo_cliente` (formato `01-0001`), `tel`, `email`, `dir`, `ciudad`, `estado_dir`, `contacto`, `estado` (Active/Inactive/Waiting), `abierto_sabados`, `foto_local` (base64), `lista_precio_id` (→ listas_precios, nullable)
 
 ### `productos`
 `id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `almacen` (palmhills | castillo | null)
@@ -95,6 +95,9 @@ supabase/
 
 ### `config`
 Tabla key/value (RLS authenticated). Keys: `remito_email` (correo fijo de remitos), `meta_YYYY-MM` (sales goal mensual — sobrevive reinstalar la PWA).
+
+### `listas_precios`
+`id`, `nombre`, `precios` (jsonb `{prodId: precio}`). Precios especiales por cliente: `clientes.lista_precio_id` apunta a UNA lista (o null = precios base). New Order / New Invoice / Edit Order usan el precio de lista como base automática (se muestra en dorado); el ajuste manual por línea va por encima. Gestión: botón "Lists" en Inventario (precios + asignación de clientes) y selector en el perfil del cliente.
 
 ### `mejoras`
 `id`, `titulo`, `descripcion`, `costo`, `prioridad` (High/Medium/Low), `estado` (Pending/In Progress/Completed)
