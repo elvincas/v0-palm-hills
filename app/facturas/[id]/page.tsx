@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { BackButton } from "@/components/back-button";
 
 interface LineaFactura {
   prodNom: string;
@@ -619,7 +620,7 @@ export default function FacturaPage() {
     return (
       <div className="p-6 text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button onClick={() => router.push("/?tab=fact")} className={GLASS_BTN}>← Back</button>
+        <BackButton fallback="/?tab=fact" />
       </div>
     );
   }
@@ -643,7 +644,7 @@ export default function FacturaPage() {
           className="max-w-3xl mx-auto px-4 sm:px-8 py-2.5 flex items-stretch gap-1.5"
           style={{ paddingTop: "calc(0.625rem + env(safe-area-inset-top))" }}
         >
-          <button onClick={() => router.push("/?tab=fact")} className={`${TAB_BTN} bg-white text-[#4a6741] border-[#e3e7dd]`}>
+          <button onClick={() => (window.history.length > 1 ? router.back() : router.push("/?tab=fact"))} className={`${TAB_BTN} bg-white text-[#4a6741] border-[#e3e7dd]`}>
             <Icon d={IC.back} />
             <span className={TAB_LBL}>Back</span>
           </button>

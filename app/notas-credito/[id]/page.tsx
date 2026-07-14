@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { BackButton } from '@/components/back-button'
 
 interface LineaNC {
   prodNom: string
@@ -188,7 +189,7 @@ export default function NotaCreditoPage() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center gap-3">
         <p className="text-muted-foreground text-sm">Credit note not found.</p>
-        <button onClick={() => router.back()} className="text-primary text-sm underline">← Go back</button>
+        <BackButton fallback="/?tab=fact" />
       </div>
     )
   }
@@ -215,12 +216,7 @@ export default function NotaCreditoPage() {
       {/* Toolbar */}
       <div className="no-print sticky top-0 z-10 bg-[#3a4252]/90 backdrop-blur-md border-b border-white/10 px-4 py-3 flex items-center gap-3"
         style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' }}>
-        <button
-          onClick={() => router.back()}
-          className="text-white/80 hover:text-white text-sm font-medium"
-        >
-          ← Back
-        </button>
+        <BackButton fallback="/?tab=fact" />
         <div className="flex-1" />
         {!readOnly && (
           <button

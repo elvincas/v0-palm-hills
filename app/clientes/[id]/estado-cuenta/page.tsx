@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { printOrShare } from "@/lib/print";
+import { BackButton } from "@/components/back-button";
 
 interface Cliente {
   nom: string;
@@ -99,7 +100,7 @@ export default function EstadoCuentaPage() {
   if (error || !cliente) return (
     <div className="p-6 text-center">
       <p className="text-sm text-red-600 mb-3">{error}</p>
-      <button onClick={() => router.back()} className="px-4 py-2 rounded-full text-sm font-medium bg-white border border-gray-300 text-gray-700">← Back</button>
+      <BackButton fallback={`/clientes/${clienteId}`} />
     </div>
   );
 
@@ -118,12 +119,7 @@ export default function EstadoCuentaPage() {
       {/* Toolbar (hidden on print) */}
       <div className="print:hidden sticky top-0 bg-white border-b border-gray-200 shadow-sm z-10">
         <div className="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between" style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}>
-          <button
-            onClick={() => router.back()}
-            className="px-4 py-2 rounded-full text-sm font-medium backdrop-blur-md bg-white/50 border border-white/60 shadow-sm hover:bg-white/70 active:scale-[0.97] transition-all text-[#4a6741]"
-          >
-            ← Back
-          </button>
+          <BackButton fallback={`/clientes/${clienteId}`} />
           <button
             onClick={printOrShare}
             className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"

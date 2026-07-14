@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useParams, useRouter } from "next/navigation";
 import { BottomNav } from "@/components/bottom-nav";
+import { BackButton } from "@/components/back-button";
 
 interface TelefonoContacto {
   rol: string;
@@ -370,12 +371,7 @@ export default function ClientePerfilPage() {
     return (
       <div className="p-6 max-w-md mx-auto text-center">
         <p className="text-sm text-destructive mb-3">{error}</p>
-        <button
-          onClick={() => router.push("/?tab=cli")}
-          className={`px-4 py-2 rounded-full text-sm font-medium ${GLASS_BTN}`}
-        >
-          ← Back
-        </button>
+        <BackButton fallback="/?tab=cli" />
       </div>
     );
   }
@@ -399,13 +395,9 @@ export default function ClientePerfilPage() {
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/15 to-transparent" />
 
         {/* Back */}
-        <button
-          onClick={() => router.push("/?tab=cli")}
-          style={{ top: "calc(0.9rem + env(safe-area-inset-top))" }}
-          className="absolute left-4 flex items-center gap-1 text-white/90 text-sm font-semibold"
-        >
-          ‹ Clients
-        </button>
+        <div className="absolute left-4" style={{ top: "calc(0.9rem + env(safe-area-inset-top))" }}>
+          <BackButton fallback="/?tab=cli" />
+        </div>
 
         {/* Edit toggle */}
         {!readOnly && (

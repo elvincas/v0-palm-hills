@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { flexibleSearch } from '@/lib/search'
+import { BackButton } from '@/components/back-button'
 
 interface Cliente {
   id: string
@@ -431,12 +432,7 @@ export default function NuevaOrdenPage() {
     return (
       <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-center gap-3">
         <p className="text-card-foreground font-medium">You don't have permission to create orders.</p>
-        <button
-          onClick={() => router.push(`/clientes/${clienteId}`)}
-          className="text-sm text-primary underline"
-        >
-          ← Back to client
-        </button>
+        <BackButton fallback={`/clientes/${clienteId}`} />
       </div>
     )
   }
@@ -449,12 +445,7 @@ export default function NuevaOrdenPage() {
     return (
       <div className="min-h-screen bg-background">
         <div className="max-w-2xl mx-auto p-4" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
-          <button
-            onClick={() => router.push(`/clientes/${clienteId}`)}
-            className="text-primary text-sm font-medium mb-2 cursor-pointer"
-          >
-            ← Back to client
-          </button>
+          <BackButton fallback={`/clientes/${clienteId}`} className="mb-2" />
           <h1 className="text-xl font-bold text-card-foreground">New Order</h1>
           {cliente && <p className="text-sm text-muted-foreground mb-4">{cliente.nom}</p>}
           <p className="text-sm font-semibold text-card-foreground mb-3">Select the delivery day</p>
@@ -484,12 +475,9 @@ export default function NuevaOrdenPage() {
       {/* Header fijo — solo visible cuando ya hay fecha seleccionada */}
       <div className="sticky top-0 z-10 bg-background border-b border-border">
         <div className="max-w-2xl mx-auto p-4" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
-          <button
-            onClick={() => router.push(`/clientes/${clienteId}`)}
-            className="text-primary text-sm font-medium mb-2 cursor-pointer"
-          >
-            ← Back to client
-          </button>
+          {/* Back con fecha ya confirmada: vuelve al paso del calendario de
+              fechas (pantalla anterior del flujo), no al perfil del cliente. */}
+          <BackButton onClick={() => { setFechaTemp(fecha); setFecha(''); }} className="mb-2" />
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h1 className="text-xl font-bold text-card-foreground leading-tight">New Order</h1>
