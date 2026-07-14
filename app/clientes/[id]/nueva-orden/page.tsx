@@ -9,6 +9,7 @@ import { BackButton } from '@/components/back-button'
 interface Cliente {
   id: string
   nom: string
+  lista_precio_id?: string | null
 }
 
 interface Producto {
@@ -147,6 +148,9 @@ export default function NuevaOrdenPage() {
   const [cantidades, setCantidades] = useState<Record<string, number>>({})
   // precio con descuento manual por producto: { [prodId]: precioFinal }
   const [descuentos, setDescuentos] = useState<Record<string, number>>({})
+  // lista de precios asignada al cliente: { [prodId]: precio especial }
+  const [listaPrecios, setListaPrecios] = useState<Record<string, number>>({})
+  const [listaNombre, setListaNombre] = useState('')
   const [editandoDescuento, setEditandoDescuento] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState(false)
   const [columnas, setColumnas] = useState<2 | 3>(() => {
@@ -207,8 +211,21 @@ export default function NuevaOrdenPage() {
           setLoading(false)
           return
         }
-        const { data: c } = await supabase.from('clientes').select('id, nom').eq('id', clienteId).single()
+        const { data: c } = await supabase.from('clientes').select('id, nom, lista_precio_id').eq('id', clienteId).single()
         if (c) setCliente(c as Cliente)
+        // Lista de precios del cliente: sus precios pisan el precio base del
+        // inventario en toda la orden (el descuento manual sigue por encima).
+        if (c?.lista_precio_id) {
+          const { data: lp } = await supabase
+            .from('listas_precios')
+            .select('nombre, precios')
+            .eq('id', c.lista_precio_id)
+            .single()
+          if (lp) {
+            setListaPrecios((lp.precios as Record<string, number>) || {})
+            setListaNombre(lp.nombre as string)
+          }
+        }
         const { data: eventos } = await supabase
           .from('eventos_calendario')
           .select('fecha')
@@ -314,7 +331,11 @@ export default function NuevaOrdenPage() {
 
   const disponible = (p: Producto) => Number(p.stock || 0) - Number(p.reservado || 0)
 
-  const precioEfectivo = (p: Producto) => descuentos[p.id] ?? p.precio
+  // Precio base para ESTE cliente: el de su lista de precios si el producto
+  // esta en ella, si no el precio normal del inventario.
+  const precioBase = (p: Producto) => listaPrecios[p.id] ?? p.precio
+
+  const precioEfectivo = (p: Producto) => descuentos[p.id] ?? precioBase(p)
 
   const setDescuento = (prodId: string, precio: number) => {
     setDescuentos((prev) => ({ ...prev, [prodId]: Math.max(0, precio) }))
@@ -372,7 +393,9 @@ export default function NuevaOrdenPage() {
         prodNom: p.nom,
         barcode: p.barcode || '',
         sku: p.sku || '',
-        precio: Number(p.precio),
+        // El precio de lista del cliente ES su precio base: no se muestra
+        // como descuento en la factura. Solo el ajuste manual queda como precioFinal.
+        precio: precioBase(p),
         precioFinal: precioEfectivo(p),
         qty,
         qtyEnviada: qty,
@@ -481,7 +504,12 @@ export default function NuevaOrdenPage() {
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h1 className="text-xl font-bold text-card-foreground leading-tight">New Order</h1>
-              {cliente && <p className="text-sm text-muted-foreground truncate">{cliente.nom}</p>}
+              {cliente && (
+                <p className="text-sm text-muted-foreground truncate">
+                  {cliente.nom}
+                  {listaNombre && <span className="ml-1.5 text-xs font-semibold text-[#b09060]">· {listaNombre}</span>}
+                </p>
+              )}
             </div>
             <button
               onClick={() => { setFechaTemp(fecha); setFecha(''); }}
@@ -641,11 +669,14 @@ export default function NuevaOrdenPage() {
                     {esCastillo ? '🏰 CASTILLO' : stockEstado}
                   </span>
                   <div className="flex items-center gap-1.5 mt-1">
-                    {descuentos[p.id] !== undefined && descuentos[p.id] !== p.precio ? (
+                    {descuentos[p.id] !== undefined && descuentos[p.id] !== precioBase(p) ? (
                       <>
-                        <span className="text-xs text-muted-foreground line-through">{fmt(p.precio)}</span>
+                        <span className="text-xs text-muted-foreground line-through">{fmt(precioBase(p))}</span>
                         <span className="text-sm font-bold text-primary">{fmt(descuentos[p.id])}</span>
                       </>
+                    ) : listaPrecios[p.id] !== undefined ? (
+                      // Precio de la lista del cliente: en dorado (firma de la app)
+                      <span className="text-sm font-bold text-[#b09060]">{fmt(precioBase(p))}</span>
                     ) : (
                       <span className="text-sm font-bold text-secondary-foreground">{fmt(p.precio)}</span>
                     )}
@@ -666,7 +697,7 @@ export default function NuevaOrdenPage() {
                           inputMode="decimal"
                           pattern="[0-9]*[.,]?[0-9]*"
                           autoComplete="off"
-                          defaultValue={descuentos[p.id] ?? p.precio}
+                          defaultValue={descuentos[p.id] ?? precioBase(p)}
                           autoFocus
                           onBlur={(e) => {
                             setDescuento(p.id, Number(e.target.value))
@@ -791,8 +822,8 @@ export default function NuevaOrdenPage() {
                         <p className="text-sm font-medium text-card-foreground truncate">{p.nom}</p>
                         <p className="text-xs text-muted-foreground">
                           {qty} × {fmt(precioEfectivo(p))}
-                          {descuentos[p.id] !== undefined && descuentos[p.id] !== p.precio && (
-                            <span className="ml-1 line-through text-muted-foreground/70">{fmt(p.precio)}</span>
+                          {descuentos[p.id] !== undefined && descuentos[p.id] !== precioBase(p) && (
+                            <span className="ml-1 line-through text-muted-foreground/70">{fmt(precioBase(p))}</span>
                           )}
                         </p>
                         {excede && <p className="text-[10px] text-destructive">Exceeds available ({disp})</p>}

@@ -57,6 +57,16 @@ interface Cliente {
   telefonos?: TelefonoContacto[];
   fax?: string;
   notas_visita?: NotaVisita[];
+  lista_precio_id?: string | null;
+}
+
+// Lista de precios por cliente: precios especiales por producto (prodId -> precio).
+// Un cliente tiene a lo sumo UNA lista; los productos fuera de la lista usan el
+// precio base del inventario.
+interface ListaPrecio {
+  id: string;
+  nombre: string;
+  precios: Record<string, number>;
 }
 
 interface Producto {
@@ -402,6 +412,11 @@ interface DataContextType {
   updateMejora: (id: string, m: Omit<Mejora, "id">) => Promise<void>;
   addEvento: (e: Omit<EventoCalendario, "id">) => Promise<void>;
   deleteEvento: (id: string) => Promise<void>;
+  listasPrecios: ListaPrecio[];
+  addListaPrecio: (l: Omit<ListaPrecio, "id">) => Promise<ListaPrecio>;
+  updateListaPrecio: (id: string, l: Omit<ListaPrecio, "id">) => Promise<void>;
+  deleteListaPrecio: (id: string) => Promise<void>;
+  asignarListaAClientes: (listaId: string | null, clienteIds: string[]) => Promise<void>;
   refreshLogs: () => void;
   refreshAll: () => Promise<void>;
   todos: Todo[];
@@ -471,6 +486,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [todos, setTodos] = useState<Todo[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
+  const [listasPrecios, setListasPrecios] = useState<ListaPrecio[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -499,7 +515,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // Columnas livianas: las fotos (base64) se cargan despues, en segundo plano,
   // para que la app no tenga que esperar varios MB de imagenes antes de mostrar nada.
   const CLIENTE_COLS =
-    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, foto_local_v, created_at";
+    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, lista_precio_id, foto_local_v, created_at";
   const PRODUCTO_COLS =
     "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, created_at";
 
@@ -597,7 +613,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -606,6 +622,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Remito>("remitos", "*", "num", false),
         selectAll<Mejora>("mejoras", "*", "created_at", false),
         selectAll<EventoCalendario>("eventos_calendario", "*", "fecha", true),
+        selectAll<ListaPrecio>("listas_precios", "*", "created_at", true),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
@@ -615,6 +632,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setRemitos(r.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setMejoras(e);
       setEventosCalendario(ev);
+      setListasPrecios(lp.map((row) => ({ ...row, precios: row.precios || {} })));
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1132,6 +1150,46 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     [eventosCalendario]
   );
 
+  // --- Listas de precios ---
+  const addListaPrecio = async (l: Omit<ListaPrecio, "id">) => {
+    const { data, error } = await supabase.from("listas_precios").insert(l).select().single();
+    if (error) throw new Error(error.message);
+    const lista = { ...(data as ListaPrecio), precios: (data as ListaPrecio).precios || {} };
+    setListasPrecios((prev) => [...prev, lista]);
+    await logAct(`Price list created: ${l.nombre}`);
+    return lista;
+  };
+
+  const updateListaPrecio = async (id: string, l: Omit<ListaPrecio, "id">) => {
+    const { data, error } = await supabase.from("listas_precios").update(l).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setListasPrecios((prev) => prev.map((x) => (x.id === id ? { ...(data as ListaPrecio), precios: (data as ListaPrecio).precios || {} } : x)));
+    await logAct(`Price list updated: ${l.nombre}`);
+  };
+
+  const deleteListaPrecio = async (id: string) => {
+    const nombre = listasPrecios.find((x) => x.id === id)?.nombre || "";
+    // Desasignar de los clientes que la tenian antes de borrarla
+    const { error: eCli } = await supabase.from("clientes").update({ lista_precio_id: null }).eq("lista_precio_id", id);
+    if (eCli) throw new Error(eCli.message);
+    const { error } = await supabase.from("listas_precios").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setListasPrecios((prev) => prev.filter((x) => x.id !== id));
+    setClientes((prev) => prev.map((c) => (c.lista_precio_id === id ? { ...c, lista_precio_id: null } : c)));
+    await logAct(`Price list deleted: ${nombre}`);
+  };
+
+  // Asignacion grupal: fija (o quita, con null) la lista de varios clientes a la vez
+  const asignarListaAClientes = async (listaId: string | null, clienteIds: string[]) => {
+    if (clienteIds.length === 0) return;
+    const { error } = await supabase.from("clientes").update({ lista_precio_id: listaId }).in("id", clienteIds);
+    if (error) throw new Error(error.message);
+    const ids = new Set(clienteIds);
+    setClientes((prev) => prev.map((c) => (ids.has(c.id) ? { ...c, lista_precio_id: listaId } : c)));
+    const nombre = listaId ? listasPrecios.find((x) => x.id === listaId)?.nombre || "" : "none";
+    await logAct(`Price list "${nombre}" assigned to ${clienteIds.length} client(s)`);
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1183,6 +1241,11 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     updateMejora,
     addEvento,
     deleteEvento,
+    listasPrecios,
+    addListaPrecio,
+    updateListaPrecio,
+    deleteListaPrecio,
+    asignarListaAClientes,
     refreshLogs,
     refreshAll: loadAll,
     todos,
@@ -2253,7 +2316,7 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly } =
+  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly, listasPrecios } =
     useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de detalle: sin esto, el primer tap a una
@@ -2330,10 +2393,18 @@ const Facturas = () => {
 
   const { visible: visibleFacturas, hasMore, remaining, loadMore } = usePagedList(filtered, [q]);
 
+  // Lista de precios del cliente seleccionado (facturas.cli guarda el NOMBRE)
+  const listaCliente = useMemo(() => {
+    const c = clientes.find((x) => x.nom === clienteSeleccionado);
+    if (!c?.lista_precio_id) return null;
+    return listasPrecios.find((lp) => lp.id === c.lista_precio_id) || null;
+  }, [clienteSeleccionado, clientes, listasPrecios]);
+  const precioCliente = (p: Producto) => listaCliente?.precios?.[p.id] ?? Number(p.precio);
+
   // Sin impuestos: el total es la suma directa de las lineas.
   const total = lineas.reduce((acc, l) => {
     const p = productos.find((x) => x.id === l.prodId);
-    return acc + (p ? Number(p.precio) * Number(l.qty || 1) : 0);
+    return acc + (p ? precioCliente(p) * Number(l.qty || 1) : 0);
   }, 0);
 
   const handleSave = async () => {
@@ -2358,8 +2429,8 @@ const Facturas = () => {
         sku: p.sku || "",
         barcode: p.barcode || "",
         qty: Number(l.qty),
-        precio: Number(p.precio),
-        precioOriginal: Number(p.precio),
+        precio: precioCliente(p),
+        precioOriginal: precioCliente(p),
         almacen: p.almacen || "palmhills",
       };
     });
@@ -2807,7 +2878,7 @@ const Facturas = () => {
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b border-border last:border-0 text-card-foreground"
                               >
                                 <span className="font-medium">{p.sku ? `${p.sku} — ` : ""}{p.nom}</span>
-                                <span className="text-muted-foreground ml-1">{fmt(p.precio)}</span>
+                                <span className={listaCliente?.precios?.[p.id] !== undefined ? "text-[#b09060] font-semibold ml-1" : "text-muted-foreground ml-1"}>{fmt(precioCliente(p))}</span>
                               </button>
                             ))}
                           </div>
@@ -3712,6 +3783,275 @@ const Clientes = () => {
 };
 
 // ------------------------------
+// Listas de precios por cliente
+// ------------------------------
+const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
+  const { listasPrecios, addListaPrecio, updateListaPrecio, deleteListaPrecio, asignarListaAClientes, clientes, productos, readOnly } = useData();
+  const [selId, setSelId] = useState<string | null>(null);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [seccion, setSeccion] = useState<"productos" | "clientes">("productos");
+  const [prodSearch, setProdSearch] = useState("");
+  const [cliSearch, setCliSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const lista = listasPrecios.find((l) => l.id === selId) || null;
+  const clientesAsignados = (id: string) => clientes.filter((c) => c.lista_precio_id === id);
+
+  const crearLista = async () => {
+    const nombre = nuevoNombre.trim();
+    if (!nombre || saving) return;
+    setSaving(true);
+    try {
+      const l = await addListaPrecio({ nombre, precios: {} });
+      setNuevoNombre("");
+      setSelId(l.id);
+      setSeccion("productos");
+    } catch (err) {
+      alert("Error creating list: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Guarda el precio especial de un producto en la lista (vacio o 0 = quitarlo)
+  const setPrecioLista = async (prodId: string, valor: string) => {
+    if (!lista) return;
+    const num = Number(String(valor).replace(",", "."));
+    const precios = { ...lista.precios };
+    const actual = precios[prodId];
+    const nuevo = !valor.trim() || !num || num <= 0 ? undefined : Math.round(num * 100) / 100;
+    if (nuevo === actual) return;
+    if (nuevo === undefined) delete precios[prodId];
+    else precios[prodId] = nuevo;
+    try {
+      await updateListaPrecio(lista.id, { nombre: lista.nombre, precios });
+    } catch (err) {
+      alert("Error saving price: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const borrarLista = async () => {
+    if (!lista) return;
+    const n = clientesAsignados(lista.id).length;
+    if (!confirm(`Delete list "${lista.nombre}"?${n ? ` ${n} client(s) will go back to base prices.` : ""}`)) return;
+    try {
+      await deleteListaPrecio(lista.id);
+      setSelId(null);
+    } catch (err) {
+      alert("Error deleting list: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const toggleCliente = async (c: Cliente) => {
+    if (!lista) return;
+    try {
+      await asignarListaAClientes(c.lista_precio_id === lista.id ? null : lista.id, [c.id]);
+    } catch (err) {
+      alert("Error assigning list: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // Productos: los que ya tienen precio especial primero; busqueda flexible
+  const prodResultados = useMemo(() => {
+    if (!lista) return [];
+    const base = prodSearch.trim()
+      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom)
+      : [...productos].sort((a, b) => {
+          const aIn = lista.precios[a.id] !== undefined ? 0 : 1;
+          const bIn = lista.precios[b.id] !== undefined ? 0 : 1;
+          if (aIn !== bIn) return aIn - bIn;
+          return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
+        });
+    return base.slice(0, 40);
+  }, [lista, prodSearch, productos]);
+
+  // Clientes: los asignados a ESTA lista primero
+  const cliResultados = useMemo(() => {
+    const base = cliSearch.trim()
+      ? clientes.filter((c) => normTag(`${c.nom} ${c.codigo_cliente || ""} ${c.ciudad || ""}`).includes(normTag(cliSearch)))
+      : lista
+        ? [...clientes].sort((a, b) => {
+            const aIn = a.lista_precio_id === lista.id ? 0 : 1;
+            const bIn = b.lista_precio_id === lista.id ? 0 : 1;
+            if (aIn !== bIn) return aIn - bIn;
+            return a.nom.localeCompare(b.nom, "en");
+          })
+        : clientes;
+    return base.slice(0, 40);
+  }, [clientes, cliSearch, lista]);
+
+  return (
+    <Modal title={lista ? lista.nombre : "Price Lists"} onClose={onClose}>
+      {!lista ? (
+        <>
+          <p className="text-xs text-muted-foreground mb-3">
+            Special prices per client. Assign a list to one or many clients; their orders and invoices use these prices automatically.
+          </p>
+          {listasPrecios.length > 0 && (
+            <div className="border border-border rounded-2xl overflow-hidden mb-3">
+              {listasPrecios.map((l) => (
+                <button
+                  key={l.id}
+                  onClick={() => { setSelId(l.id); setSeccion("productos"); setProdSearch(""); setCliSearch(""); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 border-b border-border last:border-b-0 bg-card text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-card-foreground truncate">{l.nombre}</div>
+                    <div className="text-[11px] text-muted-foreground">
+                      {Object.keys(l.precios).length} product{Object.keys(l.precios).length === 1 ? "" : "s"} · {clientesAsignados(l.id).length} client{clientesAsignados(l.id).length === 1 ? "" : "s"}
+                    </div>
+                  </div>
+                  <span className="text-muted-foreground text-lg">›</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {listasPrecios.length === 0 && <Empty text="No price lists yet." />}
+          {!readOnly && (
+            <div className="flex gap-2 mt-2">
+              <input
+                value={nuevoNombre}
+                onChange={(e) => setNuevoNombre(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") crearLista(); }}
+                placeholder="New list name (e.g. Yonkers)…"
+                autoComplete="off"
+                className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={crearLista}
+                disabled={!nuevoNombre.trim() || saving}
+                className={`shrink-0 px-4 py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+              >
+                {saving ? "..." : "Create"}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => { setSelId(null); setProdSearch(""); setCliSearch(""); }}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-card border border-border text-[13px] font-medium text-primary"
+            >
+              ‹ Lists
+            </button>
+            {!readOnly && (
+              <button onClick={borrarLista} className="text-xs font-medium text-destructive underline">
+                Delete list
+              </button>
+            )}
+          </div>
+          <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
+            {(["productos", "clientes"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSeccion(s)}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${seccion === s ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+              >
+                {s === "productos" ? `Prices (${Object.keys(lista.precios).length})` : `Clients (${clientesAsignados(lista.id).length})`}
+              </button>
+            ))}
+          </div>
+
+          {seccion === "productos" ? (
+            <>
+              <input
+                value={prodSearch}
+                onChange={(e) => setProdSearch(e.target.value)}
+                placeholder="Search product by name, SKU…"
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
+              />
+              <div className="border border-border rounded-2xl overflow-hidden">
+                {prodResultados.map((p) => {
+                  const especial = lista.precios[p.id];
+                  return (
+                    <div key={p.id} className="flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 bg-card">
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-card-foreground leading-tight truncate">{p.nom}</div>
+                        <div className="text-[10px] font-mono text-muted-foreground">
+                          {p.sku ? `${p.sku} · ` : ""}base {fmt(p.precio)}
+                        </div>
+                      </div>
+                      <input
+                        key={`${p.id}-${especial ?? ""}`}
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*[.,]?[0-9]*"
+                        autoComplete="off"
+                        disabled={readOnly}
+                        defaultValue={especial !== undefined ? String(especial) : ""}
+                        placeholder={String(p.precio)}
+                        onBlur={(e) => setPrecioLista(p.id, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); }}
+                        className={`w-20 shrink-0 px-2 py-1.5 rounded-lg border text-sm text-center font-bold outline-none focus:ring-2 focus:ring-ring ${
+                          especial !== undefined ? "border-[#e9dcc4] bg-[#f5eee2] text-[#a3814e]" : "border-input bg-background text-card-foreground"
+                        }`}
+                      />
+                    </div>
+                  );
+                })}
+                {prodResultados.length === 0 && (
+                  <div className="px-3 py-3 text-xs text-muted-foreground">No products found</div>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Leave a price empty to use the base price. Prices in gold are on this list.
+              </p>
+            </>
+          ) : (
+            <>
+              <input
+                value={cliSearch}
+                onChange={(e) => setCliSearch(e.target.value)}
+                placeholder="Search client by name, code, city…"
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
+              />
+              <div className="border border-border rounded-2xl overflow-hidden">
+                {cliResultados.map((c) => {
+                  const enEsta = c.lista_precio_id === lista.id;
+                  const otraLista = !enEsta && c.lista_precio_id ? listasPrecios.find((l) => l.id === c.lista_precio_id) : null;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => !readOnly && toggleCliente(c)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 bg-card text-left"
+                    >
+                      <span
+                        className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center text-[11px] font-bold ${
+                          enEsta ? "bg-primary border-primary text-primary-foreground" : "border-border bg-background text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{c.nom}</div>
+                        <div className="text-[10px] text-muted-foreground truncate">
+                          {c.codigo_cliente ? `${c.codigo_cliente}` : ""}{c.ciudad ? ` · ${c.ciudad}` : ""}
+                          {otraLista && <span className="text-[#b09060]"> · on “{otraLista.nombre}”</span>}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
+                {cliResultados.length === 0 && (
+                  <div className="px-3 py-3 text-xs text-muted-foreground">No clients found</div>
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">
+                Tap to assign or remove clients. A client can be on one list at a time.
+              </p>
+            </>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+};
+
+// ------------------------------
 // Inventario
 // ------------------------------
 type BulkRow = {
@@ -3757,6 +4097,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 const Inventario = () => {
   const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, readOnly } = useData();
   const [showTopProductos, setShowTopProductos] = useState(false);
+  const [showListasPrecios, setShowListasPrecios] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
   const topProductosModal = useMemo(() => {
     const d = new Date();
@@ -4445,10 +4786,17 @@ const Inventario = () => {
         >
           🏆 Top
         </button>
+        <button
+          onClick={() => setShowListasPrecios(true)}
+          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
+        >
+          🏷️ Lists
+        </button>
         <span className="text-xs text-muted-foreground shrink-0">
           {filtered.length} prod.
         </span>
       </div>
+      {showListasPrecios && <ListasPreciosModal onClose={() => setShowListasPrecios(false)} />}
       {showTopProductos && (
         <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
           <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
@@ -5117,6 +5465,7 @@ const Ordenes = () => {
     addRemito,
     ajustarInventario,
     readOnly,
+    listasPrecios,
   } = useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de estimate para que el primer tap abra rapido.
@@ -5381,6 +5730,16 @@ const Ordenes = () => {
     });
   };
 
+  // Lista de precios del cliente de la orden en edicion: pisa el precio base
+  // de los productos que se agreguen; el ajuste manual (editPrecios) va encima.
+  const editListaPrecios = useMemo(() => {
+    const c = clienteFor(editCli);
+    if (!c?.lista_precio_id) return {} as Record<string, number>;
+    return listasPrecios.find((lp) => lp.id === c.lista_precio_id)?.precios || {};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editCli, clientes, listasPrecios]);
+  const editPrecioBase = (p: Producto) => editListaPrecios[p.id] ?? Number(p.precio);
+
   const editProductosOrdenados = editProductOrder
     .map((id) => productos.find((p) => p.id === id))
     .filter((p): p is Producto => !!p);
@@ -5405,7 +5764,7 @@ const Ordenes = () => {
 
   const editTotalUnidades = Object.values(editQtys).reduce((a, b) => a + b, 0);
   const editTotal = editProductosOrdenados.reduce(
-    (acc, p) => acc + (editQtys[p.id] || 0) * (editPrecios[p.id] ?? Number(p.precio)),
+    (acc, p) => acc + (editQtys[p.id] || 0) * (editPrecios[p.id] ?? editPrecioBase(p)),
     0
   );
 
@@ -5422,7 +5781,7 @@ const Ordenes = () => {
         console.error("[v0] Producto no encontrado:", prodId);
         return null;
       }
-      const precioFinal = editPrecios[prodId] ?? Number(p.precio);
+      const precioFinal = editPrecios[prodId] ?? editPrecioBase(p);
       // Preserve pick progress for products that were already in the order
       const lineaExistente = (editingOrden.lineas || []).find((l) => l.prodId === prodId);
       return {
@@ -5430,7 +5789,7 @@ const Ordenes = () => {
         prodNom: p.nom,
         barcode: p.barcode || "",
         sku: p.sku || "",
-        precio: Number(p.precio),
+        precio: editPrecioBase(p),
         precioFinal,
         qty,
         qtyEnviada: lineaExistente ? Math.min(lineaExistente.qtyEnviada ?? lineaExistente.qty, qty) : qty,
@@ -5806,11 +6165,13 @@ const Ordenes = () => {
                         <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">{p.sku}</div>
                       )}
                       <div className="flex items-center gap-1.5 mt-1">
-                        {editPrecios[p.id] !== undefined && editPrecios[p.id] !== p.precio ? (
+                        {editPrecios[p.id] !== undefined && editPrecios[p.id] !== editPrecioBase(p) ? (
                           <>
-                            <span className="text-xs text-muted-foreground line-through">{fmt(p.precio)}</span>
+                            <span className="text-xs text-muted-foreground line-through">{fmt(editPrecioBase(p))}</span>
                             <span className="text-sm font-bold text-primary">{fmt(editPrecios[p.id])}</span>
                           </>
+                        ) : editListaPrecios[p.id] !== undefined ? (
+                          <span className="text-sm font-bold text-[#b09060]">{fmt(editPrecioBase(p))}</span>
                         ) : (
                           <span className="text-sm font-bold text-secondary-foreground">{fmt(p.precio)}</span>
                         )}
@@ -5824,7 +6185,7 @@ const Ordenes = () => {
                             inputMode="decimal"
                             pattern="[0-9]*[.,]?[0-9]*"
                             autoComplete="off"
-                            defaultValue={editPrecios[p.id] ?? p.precio}
+                            defaultValue={editPrecios[p.id] ?? editPrecioBase(p)}
                             autoFocus
                             onBlur={(e) => {
                               setEditPrecio(p.id, Number(e.target.value));

@@ -45,6 +45,7 @@ interface Cliente {
   telefonos?: TelefonoContacto[];
   fax?: string;
   notas_visita?: NotaVisita[];
+  lista_precio_id?: string | null;
 }
 
 interface Factura {
@@ -154,6 +155,8 @@ export default function ClientePerfilPage() {
   const [editFax, setEditFax] = useState(false);
   const [faxValue, setFaxValue] = useState("");
   const [todos, setTodos] = useState<TodoCliente[]>([]);
+  const [listasPrecios, setListasPrecios] = useState<{ id: string; nombre: string }[]>([]);
+  const [savingLista, setSavingLista] = useState(false);
   const [showTodo, setShowTodo] = useState(false);
   const [todoTexto, setTodoTexto] = useState("");
   const [todoFecha, setTodoFecha] = useState("");
@@ -189,6 +192,27 @@ export default function ClientePerfilPage() {
     cargarNotasCredito((data as Cliente).nom);
     cargarOrdenes(clienteId, (data as Cliente).nom);
     cargarTodos(clienteId);
+    cargarListasPrecios();
+  };
+
+  const cargarListasPrecios = async () => {
+    const { data } = await supabase.from("listas_precios").select("id, nombre").order("nombre");
+    setListasPrecios((data as { id: string; nombre: string }[]) || []);
+  };
+
+  // Asigna (o quita, con "") la lista de precios del cliente — guarda al instante
+  const handleListaPrecio = async (listaId: string) => {
+    if (!cliente || savingLista) return;
+    setSavingLista(true);
+    const val = listaId || null;
+    const { error: e } = await supabase.from("clientes").update({ lista_precio_id: val }).eq("id", clienteId);
+    if (!e) {
+      setCliente({ ...cliente, lista_precio_id: val });
+      if (form) setForm({ ...form, lista_precio_id: val });
+    } else {
+      alert("Error saving price list: " + e.message);
+    }
+    setSavingLista(false);
   };
 
   const cargarFacturas = async (nombreCliente: string) => {
@@ -497,6 +521,23 @@ export default function ClientePerfilPage() {
               ) : (
                 <p className="text-sm text-gray-700 break-all">{cliente.email || <span className="text-gray-400 text-xs">Not specified</span>}</p>
               )}
+            </div>
+
+            <div className="border-t border-black/5" />
+
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: `${PH}99` }}>Price List</p>
+              <select
+                value={cliente.lista_precio_id || ""}
+                disabled={readOnly || savingLista}
+                onChange={(e) => handleListaPrecio(e.target.value)}
+                className={`w-full px-3 py-2 rounded-xl border border-black/10 bg-white/80 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25 ${cliente.lista_precio_id ? "font-semibold text-[#b09060]" : "text-gray-700"}`}
+              >
+                <option value="">Base prices</option>
+                {listasPrecios.map((l) => (
+                  <option key={l.id} value={l.id}>{l.nombre}</option>
+                ))}
+              </select>
             </div>
 
             <div className="border-t border-black/5" />
