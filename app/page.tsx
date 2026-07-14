@@ -2949,11 +2949,12 @@ const Clientes = () => {
   };
 
   const filtered = useMemo(() => {
-    const base = q
-      ? clientes.filter(
-          (c) =>
-            c.nom.toLowerCase().includes(q.toLowerCase()) ||
-            (c.codigo_cliente || "").toLowerCase().includes(q.toLowerCase())
+    const nq = normTag(q);
+    const base = nq
+      ? clientes.filter((c) =>
+          normTag(
+            `${c.nom} ${c.codigo_cliente || ""} ${c.dir || ""} ${c.ciudad || ""} ${c.estado_dir || ""}`
+          ).includes(nq)
         )
       : clientes;
     const sorted = [...base];
