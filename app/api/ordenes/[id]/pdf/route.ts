@@ -12,6 +12,7 @@ const fdate = (s: string) => {
 };
 
 interface LineaOrden extends LineaDoc {
+  prodId?: string;
   precioFinal?: number;
   precioCatalogo?: number;
 }
@@ -47,14 +48,31 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (logoRes.ok) logo = Buffer.from(await logoRes.arrayBuffer());
   } catch { /* sin logo */ }
 
+  // Ordenes viejas (previas a este cambio) no tienen precioCatalogo guardado
+  // por linea: se completa con el precio actual del producto.
+  const lineasOrden = (o.lineas || []) as LineaOrden[];
+  const idsFaltantes = Array.from(
+    new Set(lineasOrden.filter((l) => l.precioCatalogo === undefined && l.prodId).map((l) => l.prodId as string))
+  );
+  let catalogoPrecios: Record<string, number> = {};
+  if (idsFaltantes.length) {
+    const { data: prods } = await supabase.from("productos").select("id, precio").in("id", idsFaltantes);
+    if (prods) {
+      catalogoPrecios = Object.fromEntries(
+        (prods as { id: string; precio: number }[]).map((p) => [p.id, Number(p.precio)])
+      );
+    }
+  }
+
   // En ordenes el descuento viene como precioFinal; el PDF espera
   // precio = final y precioOriginal = antes del descuento. Con el switch
   // encendido, "antes del descuento" es el precio de catalogo puro (revela
   // tambien el descuento de lista); apagado, es l.precio (solo el ajuste manual).
-  const lineas: LineaDoc[] = [...((o.lineas || []) as LineaOrden[])]
+  const lineas: LineaDoc[] = [...lineasOrden]
     .map((l) => {
       const precioFinal = l.precioFinal ?? l.precio;
-      const comparado = mostrarDescuentoLista ? l.precioCatalogo ?? l.precio : l.precio;
+      const precioCatalogo = l.precioCatalogo ?? (l.prodId ? catalogoPrecios[l.prodId] : undefined);
+      const comparado = mostrarDescuentoLista ? precioCatalogo ?? l.precio : l.precio;
       return {
         prodNom: l.prodNom,
         sku: l.sku,

@@ -312,6 +312,10 @@ export default function FacturaPage() {
   const [savingPago, setSavingPago] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [reverting, setReverting] = useState(false);
+  // Facturas viejas (previas a este cambio) no tienen precioCatalogo guardado
+  // por linea: se completa buscando el producto por SKU+almacen (o nombre).
+  const [catalogoPorSku, setCatalogoPorSku] = useState<Record<string, number>>({});
+  const [catalogoPorNom, setCatalogoPorNom] = useState<Record<string, number>>({});
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
@@ -333,6 +337,32 @@ export default function FacturaPage() {
       // Mostrar la factura de inmediato; los datos del cliente llegan despues
       // sin bloquear el render (antes la pantalla quedaba en "Loading...").
       setLoading(false);
+
+      const lineasFaltantes = ((f as Factura).lineas || []).filter((l) => l.precioCatalogo === undefined);
+      if (lineasFaltantes.length) {
+        const skus = Array.from(new Set(lineasFaltantes.map((l) => (l.sku || "").trim()).filter(Boolean)));
+        const noms = Array.from(new Set(lineasFaltantes.map((l) => l.prodNom).filter(Boolean)));
+        const [porSku, porNom] = await Promise.all([
+          skus.length
+            ? supabase.from("productos").select("sku, nom, almacen, precio").in("sku", skus)
+            : Promise.resolve({ data: [] as never[] }),
+          noms.length
+            ? supabase.from("productos").select("sku, nom, almacen, precio").in("nom", noms)
+            : Promise.resolve({ data: [] as never[] }),
+        ]);
+        const prods = [...(porSku.data || []), ...(porNom.data || [])] as {
+          sku: string | null; nom: string; almacen: string | null; precio: number;
+        }[];
+        const bySku: Record<string, number> = {};
+        const byNom: Record<string, number> = {};
+        for (const p of prods) {
+          if (p.sku) bySku[`${p.sku.trim().toLowerCase()}|${p.almacen || "palmhills"}`] = Number(p.precio);
+          byNom[p.nom] = Number(p.precio);
+        }
+        setCatalogoPorSku(bySku);
+        setCatalogoPorNom(byNom);
+      }
+
       const { data: c } = await supabase
         .from("clientes")
         .select("nom, codigo_cliente, dir, ciudad, estado_dir, tel, email")
@@ -574,7 +604,12 @@ export default function FacturaPage() {
   };
 
   const lineasOrdenadas = useMemo(() => {
-    const arr = [...(factura?.lineas || [])];
+    const arr = (factura?.lineas || []).map((l) => {
+      if (l.precioCatalogo !== undefined) return l;
+      const key = `${(l.sku || "").trim().toLowerCase()}|${l.almacen || "palmhills"}`;
+      const precioCatalogo = catalogoPorSku[key] ?? catalogoPorNom[l.prodNom];
+      return precioCatalogo !== undefined ? { ...l, precioCatalogo } : l;
+    });
     arr.sort((a, b) => {
       const skuA = (a.sku || "").trim();
       const skuB = (b.sku || "").trim();
@@ -583,7 +618,7 @@ export default function FacturaPage() {
       return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
     });
     return arr;
-  }, [factura]);
+  }, [factura, catalogoPorSku, catalogoPorNom]);
 
   // Paginacion por MEDICION real: WebKit (iOS) no repite <thead> al imprimir,
   // asi que se corta a mano — pero midiendo la altura renderizada de cada fila

@@ -43,8 +43,35 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (logoRes.ok) logo = Buffer.from(await logoRes.arrayBuffer());
   } catch { /* sin logo */ }
 
-  type LineaFacturaRow = LineaDoc & { precioCatalogo?: number };
-  const lineas = [...((f.lineas || []) as LineaFacturaRow[])]
+  type LineaFacturaRow = LineaDoc & { precioCatalogo?: number; almacen?: string };
+  const lineasFactura = (f.lineas || []) as LineaFacturaRow[];
+
+  // Facturas viejas (previas a este cambio) no tienen precioCatalogo guardado
+  // por linea: se completa buscando el producto por SKU+almacen (o nombre).
+  const lineasFaltantes = lineasFactura.filter((l) => l.precioCatalogo === undefined);
+  const catalogoPorSku: Record<string, number> = {};
+  const catalogoPorNom: Record<string, number> = {};
+  if (lineasFaltantes.length) {
+    const skus = Array.from(new Set(lineasFaltantes.map((l) => (l.sku || "").trim()).filter(Boolean)));
+    const noms = Array.from(new Set(lineasFaltantes.map((l) => l.prodNom).filter(Boolean)));
+    const [porSku, porNom] = await Promise.all([
+      skus.length
+        ? supabase.from("productos").select("sku, nom, almacen, precio").in("sku", skus)
+        : Promise.resolve({ data: [] as never[] }),
+      noms.length
+        ? supabase.from("productos").select("sku, nom, almacen, precio").in("nom", noms)
+        : Promise.resolve({ data: [] as never[] }),
+    ]);
+    const prods = [...(porSku.data || []), ...(porNom.data || [])] as {
+      sku: string | null; nom: string; almacen: string | null; precio: number;
+    }[];
+    for (const p of prods) {
+      if (p.sku) catalogoPorSku[`${p.sku.trim().toLowerCase()}|${p.almacen || "palmhills"}`] = Number(p.precio);
+      catalogoPorNom[p.nom] = Number(p.precio);
+    }
+  }
+
+  const lineas = [...lineasFactura]
     .sort((a, b) => {
       const sa = (a.sku || "").trim();
       const sb = (b.sku || "").trim();
@@ -52,13 +79,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
       if (sa && !sb) return -1;
       return sa.localeCompare(sb, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
     })
-    .map((l): LineaDoc => ({
-      prodNom: l.prodNom,
-      sku: l.sku,
-      qty: l.qty,
-      precio: l.precio,
-      precioOriginal: mostrarDescuentoLista ? l.precioCatalogo ?? l.precioOriginal : l.precioOriginal,
-    }));
+    .map((l): LineaDoc => {
+      const key = `${(l.sku || "").trim().toLowerCase()}|${l.almacen || "palmhills"}`;
+      const precioCatalogo = l.precioCatalogo ?? catalogoPorSku[key] ?? catalogoPorNom[l.prodNom];
+      return {
+        prodNom: l.prodNom,
+        sku: l.sku,
+        qty: l.qty,
+        precio: l.precio,
+        precioOriginal: mostrarDescuentoLista ? precioCatalogo ?? l.precioOriginal : l.precioOriginal,
+      };
+    });
 
   // Fecha del ultimo pago + metodos usados (para el sello PAID del PDF)
   const pagos = (f.pagos || []) as { monto: number; fecha: string; metodo?: string }[];

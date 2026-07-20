@@ -7,6 +7,7 @@ import { BackButton } from "@/components/back-button";
 import { Switch } from "@/components/ui/switch";
 
 interface LineaOrden {
+  prodId?: string;
   prodNom: string;
   sku?: string;
   barcode?: string;
@@ -229,6 +230,10 @@ export default function EstimadoPage() {
   const [clienteListo, setClienteListo] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // Precio de catalogo actual por producto, para ordenes viejas creadas antes
+  // de guardar precioCatalogo en cada linea (si no, el switch nunca aparece
+  // en pedidos anteriores a este cambio).
+  const [catalogoPrecios, setCatalogoPrecios] = useState<Record<string, number>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -247,6 +252,22 @@ export default function EstimadoPage() {
       // Mostrar el documento de inmediato; los datos del cliente llegan
       // despues sin bloquear el render.
       setLoading(false);
+
+      const idsFaltantes = Array.from(
+        new Set(
+          ((o as Orden).lineas || [])
+            .filter((l) => l.precioCatalogo === undefined && l.prodId)
+            .map((l) => l.prodId as string)
+        )
+      );
+      if (idsFaltantes.length) {
+        const { data: prods } = await supabase.from("productos").select("id, precio").in("id", idsFaltantes);
+        if (prods) {
+          setCatalogoPrecios(
+            Object.fromEntries((prods as { id: string; precio: number }[]).map((p) => [p.id, Number(p.precio)]))
+          );
+        }
+      }
 
       // El cliente de una orden puede estar guardado por id o, en ordenes mas
       // antiguas, por nombre — se intenta de las dos formas.
@@ -271,7 +292,10 @@ export default function EstimadoPage() {
   }, [ordenId, supabase]);
 
   const lineasOrdenadas = useMemo(() => {
-    const arr = [...(orden?.lineas || [])];
+    const arr = (orden?.lineas || []).map((l) => ({
+      ...l,
+      precioCatalogo: l.precioCatalogo ?? (l.prodId ? catalogoPrecios[l.prodId] : undefined),
+    }));
     arr.sort((a, b) => {
       const skuA = (a.sku || "").trim();
       const skuB = (b.sku || "").trim();
@@ -280,7 +304,7 @@ export default function EstimadoPage() {
       return skuA.localeCompare(skuB, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
     });
     return arr;
-  }, [orden]);
+  }, [orden, catalogoPrecios]);
 
   // Paginacion por medicion real (iOS/WebKit no repite <thead> al imprimir).
   // Ver el mismo mecanismo en /facturas/[id].
