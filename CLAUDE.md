@@ -173,6 +173,12 @@ Dos almacenes: `palmhills` (default) y `castillo`. El campo `almacen` en `produc
 ### Impresión / PDF (definitivo 2026-07-11)
 NO usar `window.print()`: iOS/WebKit no repite `<thead>` ni respeta cortes de página. Los botones Print/PDF hacen fetch a `/api/facturas/[id]/pdf` o `/api/ordenes/[id]/pdf` (generación con @react-pdf/renderer, size LETTER, header `<View fixed>` repetido por página) y abren el **share sheet nativo** con el archivo (`navigator.share({files})`) → opción Print/Save/AirDrop. Test: `npx tsx scripts/test-pdf.ts`.
 
+### Descuento de lista de precios en documentos (2026-07-20)
+Facturas y estimates guardan `precioCatalogo` por línea (precio de catálogo puro, sin lista) además de `precio`/`precioOriginal`. En `/facturas/[id]` y `/ordenes/[id]/estimado` hay un switch **"Show list price as discount"** (encendido por defecto, solo aparece si hay descuento de lista que revelar) que decide si el precio tachado es el de catálogo (revela también el descuento de la lista) o el histórico (solo el ajuste manual línea por línea). El PDF respeta el mismo switch vía `?listDiscount=1|0`. Documentos viejos sin `precioCatalogo` lo completan al vuelo con un query a `productos` (por `prodId` en órdenes; por SKU+almacén o nombre en facturas, que no guardan `prodId`).
+
+### Aging Report (2026-07-20)
+Botón junto al buscador de Invoices → `/reportes/facturas-pendientes`: lista facturas Pending/Partially Paid ordenadas por antigüedad (+30 días resaltadas en rojo), con toggle "By age" (plano) / "By client" (agrupado, clientes con la factura pendiente más vieja primero). PDF vía `/api/reportes/facturas-pendientes/pdf?groupBy=flat|client` (mismo patrón @react-pdf; al ser tabla que fluye no necesita la paginación manual de facturas/estimates). Test: `npx tsx scripts/test-reporte-cartera.ts`.
+
 ### Top Clients (score honesto)
 `calcTopClientes` en page.tsx: score = 60% volumen + 40% pago (pago = %pagado × speedFactor30: COD≤2d=1.0, 3-30d 0.9→0.7, >30d cae a 0.4→0.1). Se muestra en Home, modal en Clientes; `calcTopProductos` alimenta Home + modal en Inventario (1m/3m) + top 25% en perfil de cliente.
 
