@@ -2,7 +2,7 @@
 // Ver app/api/facturas/[id]/pdf — mismo patron server-side con @react-pdf.
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { renderReporteCarteraPdf, FilaReporteCartera, GrupoReporteCartera } from "@/lib/pdf/reporte-cartera-pdf";
+import { renderReporteCarteraPdf, FilaReporteCartera, GrupoReporteCartera, NotaCreditoReporte } from "@/lib/pdf/reporte-cartera-pdf";
 
 export const runtime = "nodejs";
 
@@ -49,21 +49,50 @@ export async function GET(request: NextRequest) {
   });
   filas.sort((a, b) => b.dias - a.dias);
 
-  const total = filas.reduce((a, f) => a + f.saldo, 0);
+  const totalBruto = filas.reduce((a, f) => a + f.saldo, 0);
+
+  // Notas de credito no aplicadas: solo las de clientes que aparecen en esta
+  // cartera (si ya no debe nada, la NC no es relevante para el reporte).
+  const clientesConSaldo = Array.from(new Set(filas.map((f) => f.cliNom)));
+  let creditosFlat: NotaCreditoReporte[] = [];
+  if (clientesConSaldo.length) {
+    const { data: ncData } = await supabase
+      .from("notas_credito")
+      .select("cli, num, monto, motivo, aplicada")
+      .in("cli", clientesConSaldo);
+    type NcRow = { cli: string; num: number; monto: number; motivo?: string; aplicada?: boolean };
+    creditosFlat = ((ncData || []) as NcRow[])
+      .filter((n) => !n.aplicada)
+      .map((n) => ({ cliNom: n.cli, num: n.num, monto: Number(n.monto), motivo: n.motivo }));
+  }
+  const totalCreditos = creditosFlat.reduce((a, c) => a + c.monto, 0);
+  const total = totalBruto - totalCreditos;
 
   let grupos: GrupoReporteCartera[] = [];
   if (modo === "grouped") {
+    const creditosPorCliente = new Map<string, NotaCreditoReporte[]>();
+    for (const c of creditosFlat) {
+      if (!creditosPorCliente.has(c.cliNom)) creditosPorCliente.set(c.cliNom, []);
+      creditosPorCliente.get(c.cliNom)!.push(c);
+    }
     const porCliente = new Map<string, FilaReporteCartera[]>();
     for (const f of filas) {
       if (!porCliente.has(f.cliNom)) porCliente.set(f.cliNom, []);
       porCliente.get(f.cliNom)!.push(f);
     }
     grupos = Array.from(porCliente.entries())
-      .map(([cliNom, filasCliente]) => ({
-        cliNom,
-        filas: filasCliente,
-        subtotal: +filasCliente.reduce((a, f) => a + f.saldo, 0).toFixed(2),
-      }))
+      .map(([cliNom, filasCliente]) => {
+        const subtotal = +filasCliente.reduce((a, f) => a + f.saldo, 0).toFixed(2);
+        const creditosCliente = creditosPorCliente.get(cliNom) || [];
+        const totalCreditosCliente = creditosCliente.reduce((a, c) => a + c.monto, 0);
+        return {
+          cliNom,
+          filas: filasCliente,
+          subtotal,
+          creditos: creditosCliente,
+          subtotalNeto: +(subtotal - totalCreditosCliente).toFixed(2),
+        };
+      })
       // Clientes con la factura pendiente mas vieja primero (prioridad pedida)
       .sort((a, b) => b.filas[0].dias - a.filas[0].dias);
   }
@@ -73,6 +102,9 @@ export async function GET(request: NextRequest) {
     modo,
     filas,
     grupos,
+    creditosFlat,
+    totalBruto: +totalBruto.toFixed(2),
+    totalCreditos: +totalCreditos.toFixed(2),
     total: +total.toFixed(2),
   });
 

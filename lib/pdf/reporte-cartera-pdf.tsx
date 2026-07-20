@@ -13,10 +13,19 @@ export interface FilaReporteCartera {
   saldo: number;
 }
 
+export interface NotaCreditoReporte {
+  cliNom: string;
+  num: number;
+  monto: number;
+  motivo?: string;
+}
+
 export interface GrupoReporteCartera {
   cliNom: string;
   filas: FilaReporteCartera[];
-  subtotal: number;
+  subtotal: number; // bruto (solo facturas pendientes)
+  creditos: NotaCreditoReporte[]; // no aplicadas de ese cliente
+  subtotalNeto: number; // subtotal - creditos
 }
 
 export interface DatosReporteCartera {
@@ -24,12 +33,16 @@ export interface DatosReporteCartera {
   modo: "flat" | "grouped";
   filas: FilaReporteCartera[]; // usado en modo flat
   grupos: GrupoReporteCartera[]; // usado en modo grouped
-  total: number;
+  creditosFlat: NotaCreditoReporte[]; // usado en modo flat
+  totalBruto: number;
+  totalCreditos: number;
+  total: number; // neto = totalBruto - totalCreditos
 }
 
 const PH = "#4a6741";
 const INK = "#1a1a18";
 const RED = "#b91c1c";
+const AMBER = "#b45309";
 
 const s = StyleSheet.create({
   page: { paddingTop: 30, paddingBottom: 36, paddingHorizontal: 40, fontSize: 9, fontFamily: "Helvetica", color: "#333" },
@@ -49,7 +62,15 @@ const s = StyleSheet.create({
   grupoHeader: { flexDirection: "row", justifyContent: "space-between", backgroundColor: "#f2f4ee", paddingVertical: 4, paddingHorizontal: 4, marginTop: 6 },
   grupoCli: { fontSize: 9, fontFamily: "Helvetica-Bold", color: INK },
   grupoSubtotal: { fontSize: 9, fontFamily: "Helvetica-Bold", color: PH },
-  totalRow: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 2, borderTopColor: PH, paddingTop: 8, marginTop: 10 },
+  creditosBox: { backgroundColor: "#fffbeb", paddingVertical: 3, paddingHorizontal: 4, marginTop: 1 },
+  creditosLbl: { fontSize: 6.5, fontFamily: "Helvetica-Bold", color: AMBER, textTransform: "uppercase", marginBottom: 1.5 },
+  creditoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 1 },
+  creditoTxt: { fontSize: 7.5, color: AMBER, flex: 1 },
+  creditoMonto: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: AMBER, width: 60, textAlign: "right" },
+  totalsBox: { marginTop: 10, alignItems: "flex-end" },
+  totalsWidth: { width: 220 },
+  totLine: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
+  totalRow: { flexDirection: "row", justifyContent: "space-between", borderTopWidth: 2, borderTopColor: PH, paddingTop: 6, marginTop: 3 },
 });
 
 const fmt = (n: number) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -78,6 +99,23 @@ const Fila = ({ f, showCliente }: { f: FilaReporteCartera; showCliente: boolean 
   );
 };
 
+const CreditosBox = ({ creditos, showCliente }: { creditos: NotaCreditoReporte[]; showCliente: boolean }) => {
+  if (!creditos.length) return null;
+  return (
+    <View style={s.creditosBox} wrap={false}>
+      <Text style={s.creditosLbl}>Unapplied Credit Notes</Text>
+      {creditos.map((c, i) => (
+        <View key={i} style={s.creditoRow}>
+          <Text style={s.creditoTxt}>
+            {showCliente ? `${c.cliNom} · ` : ""}CN #{String(c.num).padStart(3, "0")}{c.motivo ? ` · ${c.motivo}` : ""}
+          </Text>
+          <Text style={s.creditoMonto}>-{fmt(c.monto)}</Text>
+        </View>
+      ))}
+    </View>
+  );
+};
+
 export async function renderReporteCarteraPdf(d: DatosReporteCartera): Promise<Buffer> {
   const doc = (
     <Document title="Aging Report">
@@ -99,25 +137,43 @@ export async function renderReporteCarteraPdf(d: DatosReporteCartera): Promise<B
             {d.filas.map((f, i) => (
               <Fila key={i} f={f} showCliente />
             ))}
+            <CreditosBox creditos={d.creditosFlat} showCliente />
           </>
         ) : (
           d.grupos.map((g, gi) => (
             <View key={gi} wrap={false}>
               <View style={s.grupoHeader}>
                 <Text style={s.grupoCli}>{g.cliNom}</Text>
-                <Text style={s.grupoSubtotal}>{fmt(g.subtotal)}</Text>
+                <Text style={s.grupoSubtotal}>{fmt(g.subtotalNeto)}</Text>
               </View>
               <ColsRow />
               {g.filas.map((f, i) => (
                 <Fila key={i} f={f} showCliente={false} />
               ))}
+              <CreditosBox creditos={g.creditos} showCliente={false} />
             </View>
           ))
         )}
 
-        <View style={s.totalRow} wrap={false}>
-          <Text style={{ fontSize: 11, fontFamily: "Helvetica-Bold", color: INK }}>Total outstanding</Text>
-          <Text style={{ fontSize: 13, fontFamily: "Helvetica-Bold", color: PH }}>{fmt(d.total)}</Text>
+        <View style={s.totalsBox} wrap={false}>
+          <View style={s.totalsWidth}>
+            {d.totalCreditos > 0 ? (
+              <>
+                <View style={s.totLine}>
+                  <Text style={{ color: "#666" }}>Pending invoices</Text>
+                  <Text>{fmt(d.totalBruto)}</Text>
+                </View>
+                <View style={s.totLine}>
+                  <Text style={{ color: AMBER }}>Unapplied credit notes</Text>
+                  <Text style={{ color: AMBER }}>-{fmt(d.totalCreditos)}</Text>
+                </View>
+              </>
+            ) : null}
+            <View style={s.totalRow}>
+              <Text style={{ fontSize: 11, fontFamily: "Helvetica-Bold", color: INK }}>Total outstanding</Text>
+              <Text style={{ fontSize: 13, fontFamily: "Helvetica-Bold", color: PH }}>{fmt(d.total)}</Text>
+            </View>
+          </View>
         </View>
       </Page>
     </Document>

@@ -20,6 +20,14 @@ interface Fila {
   saldo: number;
 }
 
+interface NotaCredito {
+  cli: string;
+  num: number;
+  monto: number;
+  motivo?: string;
+  aplicada?: boolean;
+}
+
 const fmt = (n: number) =>
   "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -52,6 +60,7 @@ export default function ReporteFacturasPendientesPage() {
   const supabase = useMemo(() => createClient(), []);
 
   const [filas, setFilas] = useState<Fila[]>([]);
+  const [creditos, setCreditos] = useState<NotaCredito[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [modo, setModo] = useState<"flat" | "grouped">("flat");
@@ -81,9 +90,31 @@ export default function ReporteFacturasPendientesPage() {
       rows.sort((a, b) => b.dias - a.dias);
       setFilas(rows);
       setLoading(false);
+
+      // Notas de credito no aplicadas: solo importan aqui las de clientes que
+      // aparecen en esta cartera (si ya no debe nada, la NC no es relevante).
+      const clientesConSaldo = new Set(rows.map((r) => r.cliNom));
+      if (clientesConSaldo.size) {
+        const { data: ncData } = await supabase
+          .from("notas_credito")
+          .select("cli, num, monto, motivo, aplicada")
+          .in("cli", Array.from(clientesConSaldo));
+        if (ncData) {
+          setCreditos((ncData as NotaCredito[]).filter((n) => !n.aplicada));
+        }
+      }
     };
     load();
   }, [supabase]);
+
+  const creditosPorCliente = useMemo(() => {
+    const m = new Map<string, NotaCredito[]>();
+    for (const c of creditos) {
+      if (!m.has(c.cli)) m.set(c.cli, []);
+      m.get(c.cli)!.push(c);
+    }
+    return m;
+  }, [creditos]);
 
   const grupos = useMemo(() => {
     const porCliente = new Map<string, Fila[]>();
@@ -92,15 +123,23 @@ export default function ReporteFacturasPendientesPage() {
       porCliente.get(f.cliNom)!.push(f);
     }
     return Array.from(porCliente.entries())
-      .map(([cliNom, filasCliente]) => ({
-        cliNom,
-        filas: filasCliente,
-        subtotal: filasCliente.reduce((a, f) => a + f.saldo, 0),
-      }))
+      .map(([cliNom, filasCliente]) => {
+        const subtotal = filasCliente.reduce((a, f) => a + f.saldo, 0);
+        const creditosCliente = creditosPorCliente.get(cliNom) || [];
+        const totalCreditos = creditosCliente.reduce((a, c) => a + Number(c.monto || 0), 0);
+        return {
+          cliNom,
+          filas: filasCliente,
+          subtotal,
+          creditos: creditosCliente,
+          subtotalNeto: subtotal - totalCreditos,
+        };
+      })
       .sort((a, b) => b.filas[0].dias - a.filas[0].dias);
-  }, [filas]);
+  }, [filas, creditosPorCliente]);
 
-  const total = filas.reduce((a, f) => a + f.saldo, 0);
+  const totalCreditos = creditos.reduce((a, c) => a + Number(c.monto || 0), 0);
+  const total = filas.reduce((a, f) => a + f.saldo, 0) - totalCreditos;
 
   const abrirPdf = async () => {
     if (generandoPdf) return;
@@ -188,6 +227,17 @@ export default function ReporteFacturasPendientesPage() {
             {filas.map((f, i) => (
               <FilaRow key={i} f={f} showCliente />
             ))}
+            {creditos.length > 0 && (
+              <div className="px-4 py-2.5 bg-amber-50/60">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">Unapplied Credit Notes</div>
+                {creditos.map((c, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs text-amber-800 py-0.5">
+                    <span className="truncate">{c.cli} · CN #{String(c.num).padStart(3, "0")}{c.motivo ? ` · ${c.motivo}` : ""}</span>
+                    <span className="font-bold shrink-0 ml-2">-{fmt(c.monto)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
@@ -195,22 +245,47 @@ export default function ReporteFacturasPendientesPage() {
               <div key={gi} className="bg-card border border-border rounded-2xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-secondary/40">
                   <span className="text-sm font-bold text-card-foreground">{g.cliNom}</span>
-                  <span className="text-sm font-bold text-primary">{fmt(g.subtotal)}</span>
+                  <span className="text-sm font-bold text-primary">{fmt(g.subtotalNeto)}</span>
                 </div>
                 <div className="divide-y divide-border">
                   {g.filas.map((f, i) => (
                     <FilaRow key={i} f={f} showCliente={false} />
                   ))}
                 </div>
+                {g.creditos.length > 0 && (
+                  <div className="px-4 py-2.5 bg-amber-50/60 border-t border-border">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 mb-1.5">Unapplied Credit Notes</div>
+                    {g.creditos.map((c, i) => (
+                      <div key={i} className="flex items-center justify-between text-xs text-amber-800 py-0.5">
+                        <span className="truncate">CN #{String(c.num).padStart(3, "0")}{c.motivo ? ` · ${c.motivo}` : ""}</span>
+                        <span className="font-bold shrink-0 ml-2">-{fmt(c.monto)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
 
         {!loading && !error && filas.length > 0 && (
-          <div className="flex items-center justify-between mt-4 px-1">
-            <span className="text-sm font-bold text-card-foreground">Total outstanding</span>
-            <span className="text-lg font-black text-primary">{fmt(total)}</span>
+          <div className="mt-4 px-1">
+            {totalCreditos > 0 && (
+              <>
+                <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                  <span>Pending invoices</span>
+                  <span>{fmt(filas.reduce((a, f) => a + f.saldo, 0))}</span>
+                </div>
+                <div className="flex items-center justify-between text-xs text-amber-700 mb-1">
+                  <span>Unapplied credit notes</span>
+                  <span>-{fmt(totalCreditos)}</span>
+                </div>
+              </>
+            )}
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-bold text-card-foreground">Total outstanding</span>
+              <span className="text-lg font-black text-primary">{fmt(total)}</span>
+            </div>
           </div>
         )}
       </div>
