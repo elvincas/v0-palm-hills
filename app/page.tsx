@@ -2727,6 +2727,16 @@ const Facturas = () => {
           />
           {q && <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
         </div>
+        <button
+          onClick={() => router.push("/reportes/facturas-pendientes")}
+          title="Aging report"
+          className="shrink-0 w-10 h-10 rounded-xl bg-card border border-border flex items-center justify-center text-[#4a6741]"
+        >
+          <svg width={17} height={17} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M3 3v18h18" />
+            <path d="M18.7 8l-5.1 5.2-3-3L7 14" />
+          </svg>
+        </button>
       </div>
       {filtered.length ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
