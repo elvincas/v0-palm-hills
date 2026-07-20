@@ -95,6 +95,9 @@ interface LineaFactura {
   qty: number;
   precio: number;
   precioOriginal?: number;
+  // Precio de catalogo puro (sin lista de precios ni ajuste manual), guardado
+  // solo para poder mostrar el descuento de lista como opcional en la factura.
+  precioCatalogo?: number;
   almacen?: "palmhills" | "castillo";
 }
 
@@ -2431,6 +2434,7 @@ const Facturas = () => {
         qty: Number(l.qty),
         precio: precioCliente(p),
         precioOriginal: precioCliente(p),
+        precioCatalogo: Number(p.precio),
         almacen: p.almacen || "palmhills",
       };
     });
@@ -5589,6 +5593,9 @@ const Ordenes = () => {
           qty: it.qtyEnviada ?? it.qty,
           precio: it.precioFinal ?? it.precio,
           precioOriginal: it.precio,
+          // Precio de catalogo puro (sin lista de precios): permite que la
+          // factura ofrezca mostrar el descuento de lista como opcional.
+          precioCatalogo: productos.find((p) => p.id === it.prodId)?.precio,
           almacen: it.almacen || "palmhills",
         }));
       const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);

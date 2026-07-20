@@ -15,6 +15,10 @@ const fdate = (s: string) => {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Si se pide revelar el descuento de la lista de precios (catalogo -> lista),
+  // ademas del ajuste manual por linea que siempre se muestra. Decidido en la
+  // pantalla de la factura, no aqui: ?listDiscount=1|0, default 0 (comportamiento historico).
+  const mostrarDescuentoLista = new URL(request.url).searchParams.get("listDiscount") === "1";
   const supabase = await createClient();
 
   const { data: userData } = await supabase.auth.getUser();
@@ -39,13 +43,22 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     if (logoRes.ok) logo = Buffer.from(await logoRes.arrayBuffer());
   } catch { /* sin logo */ }
 
-  const lineas = [...((f.lineas || []) as LineaDoc[])].sort((a, b) => {
-    const sa = (a.sku || "").trim();
-    const sb = (b.sku || "").trim();
-    if (!sa && sb) return 1;
-    if (sa && !sb) return -1;
-    return sa.localeCompare(sb, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
-  });
+  type LineaFacturaRow = LineaDoc & { precioCatalogo?: number };
+  const lineas = [...((f.lineas || []) as LineaFacturaRow[])]
+    .sort((a, b) => {
+      const sa = (a.sku || "").trim();
+      const sb = (b.sku || "").trim();
+      if (!sa && sb) return 1;
+      if (sa && !sb) return -1;
+      return sa.localeCompare(sb, "en", { numeric: true }) || a.prodNom.localeCompare(b.prodNom, "en");
+    })
+    .map((l): LineaDoc => ({
+      prodNom: l.prodNom,
+      sku: l.sku,
+      qty: l.qty,
+      precio: l.precio,
+      precioOriginal: mostrarDescuentoLista ? l.precioCatalogo ?? l.precioOriginal : l.precioOriginal,
+    }));
 
   // Fecha del ultimo pago + metodos usados (para el sello PAID del PDF)
   const pagos = (f.pagos || []) as { monto: number; fecha: string; metodo?: string }[];

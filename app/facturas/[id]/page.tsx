@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BackButton } from "@/components/back-button";
+import { Switch } from "@/components/ui/switch";
 
 interface LineaFactura {
   prodNom: string;
@@ -12,6 +13,7 @@ interface LineaFactura {
   qty: number;
   precio: number;
   precioOriginal?: number;
+  precioCatalogo?: number;
   almacen?: "palmhills" | "castillo";
 }
 
@@ -167,8 +169,16 @@ const FilaCols = () => (
   </tr>
 );
 
-const FilaProducto = ({ l, i }: { l: LineaFactura; i: number }) => {
-  const tieneDescuento = l.precioOriginal !== undefined && l.precioOriginal !== l.precio;
+// precioComparado: el precio "de antes" a tachar. Con el switch de descuento
+// de lista encendido se usa el precio de catalogo puro (revela el descuento de
+// lista completo); apagado, se usa precioOriginal (solo el ajuste manual, el
+// comportamiento historico donde el precio de lista se ve como precio normal).
+const precioComparado = (l: LineaFactura, mostrarDescuentoLista: boolean) =>
+  mostrarDescuentoLista ? l.precioCatalogo ?? l.precioOriginal : l.precioOriginal;
+
+const FilaProducto = ({ l, i, mostrarDescuentoLista }: { l: LineaFactura; i: number; mostrarDescuentoLista: boolean }) => {
+  const comparado = precioComparado(l, mostrarDescuentoLista);
+  const tieneDescuento = comparado !== undefined && comparado !== l.precio;
   return (
     <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
       <td className="py-2 pl-6 text-gray-700 text-xs">{l.qty}</td>
@@ -177,7 +187,7 @@ const FilaProducto = ({ l, i }: { l: LineaFactura; i: number }) => {
       <td className="py-2 text-right text-xs">
         {tieneDescuento ? (
           <div className="flex flex-col items-end leading-tight">
-            <span className="text-gray-400 line-through text-[11px]">{fmt(l.precioOriginal!)}</span>
+            <span className="text-gray-400 line-through text-[11px]">{fmt(comparado!)}</span>
             <span className="text-[#4a6741] font-bold">{fmt(l.precio)}</span>
           </div>
         ) : (
@@ -187,7 +197,7 @@ const FilaProducto = ({ l, i }: { l: LineaFactura; i: number }) => {
       <td className="py-2 pr-6 text-right text-xs">
         {tieneDescuento ? (
           <div className="flex flex-col items-end leading-tight">
-            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precioOriginal!)}</span>
+            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * comparado!)}</span>
             <span className="text-[#4a6741] font-bold">{fmt(l.qty * l.precio)}</span>
           </div>
         ) : (
@@ -260,6 +270,11 @@ export default function FacturaPage() {
   const [readOnly, setReadOnly] = useState(false);
 
   const [generandoPdf, setGenerandoPdf] = useState(false);
+  // Si se ve el descuento de la lista de precios (catalogo -> precio de lista)
+  // ademas del ajuste manual por linea. Decidido aqui (no en el pick) porque
+  // es una decision comercial de quien envia/imprime, no de quien pickea.
+  // Encendido por defecto.
+  const [mostrarDescuentoLista, setMostrarDescuentoLista] = useState(true);
 
   // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
   // En la PWA instalada, window.open muestra el PDF sin barra de opciones.
@@ -267,7 +282,7 @@ export default function FacturaPage() {
     if (generandoPdf || !factura) return;
     setGenerandoPdf(true);
     try {
-      const res = await fetch(`/api/facturas/${facturaId}/pdf`);
+      const res = await fetch(`/api/facturas/${facturaId}/pdf?listDiscount=${mostrarDescuentoLista ? "1" : "0"}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], `Invoice-${String(factura.num).padStart(4, "0")}.pdf`, { type: "application/pdf" });
@@ -630,7 +645,13 @@ export default function FacturaPage() {
   const saldo = factura.total - totalPagado;
 
   const lineas = lineasOrdenadas;
-  const subtotal = lineas.reduce((acc, l) => acc + l.qty * (l.precioOriginal ?? l.precio), 0);
+  // Solo tiene sentido ofrecer el switch si al menos una linea tiene un
+  // precio de catalogo distinto al precio de lista/original ya guardado —
+  // si no, no hay ningun descuento de lista que revelar.
+  const hayDescuentoListaDisponible = lineas.some(
+    (l) => l.precioCatalogo !== undefined && l.precioOriginal !== undefined && l.precioCatalogo !== l.precioOriginal
+  );
+  const subtotal = lineas.reduce((acc, l) => acc + l.qty * (precioComparado(l, mostrarDescuentoLista) ?? l.precio), 0);
   const descuento = subtotal - factura.total;
   const isPaid = factura.estado === "Paid";
 
@@ -696,6 +717,18 @@ export default function FacturaPage() {
             </button>
           )}
         </div>
+        {hayDescuentoListaDisponible && (
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 pb-2.5 flex items-center justify-between gap-3">
+            <label htmlFor="mostrar-descuento-lista" className="text-xs font-medium text-gray-600">
+              Show list price as discount
+            </label>
+            <Switch
+              id="mostrar-descuento-lista"
+              checked={mostrarDescuentoLista}
+              onCheckedChange={setMostrarDescuentoLista}
+            />
+          </div>
+        )}
       </div>
 
       {/* Payment form modal */}
@@ -819,7 +852,7 @@ export default function FacturaPage() {
         <div data-m="header"><EncabezadoFactura factura={factura} cliente={cliente} /></div>
         <table className="w-full text-sm">
           <thead><FilaCols /></thead>
-          <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} />)}</tbody>
+          <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
         <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
         <BloqueFirma />
@@ -843,7 +876,7 @@ export default function FacturaPage() {
                   <thead><FilaCols /></thead>
                   <tbody>
                     {pageLineas.length ? (
-                      pageLineas.map((l, i) => <FilaProducto key={i} l={l} i={i} />)
+                      pageLineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>
