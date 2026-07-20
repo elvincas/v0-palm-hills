@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BackButton } from "@/components/back-button";
+import { Switch } from "@/components/ui/switch";
 
 interface LineaOrden {
   prodNom: string;
@@ -12,6 +13,7 @@ interface LineaOrden {
   qty: number;
   precio: number;
   precioFinal?: number;
+  precioCatalogo?: number;
   almacen?: "palmhills" | "castillo";
 }
 
@@ -118,9 +120,17 @@ const FilaColsE = () => (
   </tr>
 );
 
-const FilaProductoE = ({ l, i }: { l: LineaOrden; i: number }) => {
+// precioComparado: el precio "de antes" a tachar. Con el switch de descuento
+// de lista encendido se usa el precio de catalogo puro (revela el descuento
+// de lista completo); apagado, se usa l.precio (solo el ajuste manual, el
+// comportamiento historico donde el precio de lista se ve como precio normal).
+const precioComparadoE = (l: LineaOrden, mostrarDescuentoLista: boolean) =>
+  mostrarDescuentoLista ? l.precioCatalogo ?? l.precio : l.precio;
+
+const FilaProductoE = ({ l, i, mostrarDescuentoLista }: { l: LineaOrden; i: number; mostrarDescuentoLista: boolean }) => {
   const precioFinal = l.precioFinal ?? l.precio;
-  const tieneDescuento = precioFinal !== l.precio;
+  const comparado = precioComparadoE(l, mostrarDescuentoLista);
+  const tieneDescuento = precioFinal !== comparado;
   return (
     <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
       <td className="py-2 pl-6 text-gray-700 text-xs">{l.qty}</td>
@@ -129,21 +139,21 @@ const FilaProductoE = ({ l, i }: { l: LineaOrden; i: number }) => {
       <td className="py-2 text-right text-xs">
         {tieneDescuento ? (
           <div className="flex flex-col items-end leading-tight">
-            <span className="text-gray-400 line-through text-[11px]">{fmt(l.precio)}</span>
+            <span className="text-gray-400 line-through text-[11px]">{fmt(comparado)}</span>
             <span className="text-[#4a6741] font-bold">{fmt(precioFinal)}</span>
           </div>
         ) : (
-          <span className="text-gray-700">{fmt(l.precio)}</span>
+          <span className="text-gray-700">{fmt(precioFinal)}</span>
         )}
       </td>
       <td className="py-2 pr-6 text-right text-xs">
         {tieneDescuento ? (
           <div className="flex flex-col items-end leading-tight">
-            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * l.precio)}</span>
+            <span className="text-gray-400 line-through text-[11px]">{fmt(l.qty * comparado)}</span>
             <span className="text-[#4a6741] font-bold">{fmt(l.qty * precioFinal)}</span>
           </div>
         ) : (
-          <span className="text-gray-800 font-medium">{fmt(l.qty * l.precio)}</span>
+          <span className="text-gray-800 font-medium">{fmt(l.qty * precioFinal)}</span>
         )}
       </td>
     </tr>
@@ -189,13 +199,16 @@ export default function EstimadoPage() {
 
   const [orden, setOrden] = useState<Orden | null>(null);
   const [generandoPdf, setGenerandoPdf] = useState(false);
+  // Mismo switch que en /facturas/[id]: revela el descuento de lista de
+  // precios (catalogo -> lista) ademas del ajuste manual. Encendido por defecto.
+  const [mostrarDescuentoLista, setMostrarDescuentoLista] = useState(true);
 
   // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
   const abrirPdf = async () => {
     if (generandoPdf || !orden) return;
     setGenerandoPdf(true);
     try {
-      const res = await fetch(`/api/ordenes/${ordenId}/pdf`);
+      const res = await fetch(`/api/ordenes/${ordenId}/pdf?listDiscount=${mostrarDescuentoLista ? "1" : "0"}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], `Estimate-Order${orden.num}.pdf`, { type: "application/pdf" });
@@ -322,7 +335,12 @@ export default function EstimadoPage() {
   }
 
   const lineas = lineasOrdenadas;
-  const subtotal = lineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
+  // Solo tiene sentido ofrecer el switch si al menos una linea tiene un
+  // precio de catalogo distinto al precio de lista ya guardado.
+  const hayDescuentoListaDisponible = lineas.some(
+    (l) => l.precioCatalogo !== undefined && l.precioCatalogo !== l.precio
+  );
+  const subtotal = lineas.reduce((acc, l) => acc + l.qty * precioComparadoE(l, mostrarDescuentoLista), 0);
   const total = lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0);
   const descuento = subtotal - total;
 
@@ -346,6 +364,18 @@ export default function EstimadoPage() {
             <span className={TAB_LBL}>{generandoPdf ? "..." : "Print / PDF"}</span>
           </button>
         </div>
+        {hayDescuentoListaDisponible && (
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 pb-2.5 flex items-center justify-between gap-3">
+            <label htmlFor="mostrar-descuento-lista-e" className="text-xs font-medium text-gray-600">
+              Show list price as discount
+            </label>
+            <Switch
+              id="mostrar-descuento-lista-e"
+              checked={mostrarDescuentoLista}
+              onCheckedChange={setMostrarDescuentoLista}
+            />
+          </div>
+        )}
       </div>
 
       {/* Medidor oculto al ancho de impresion (ver /facturas/[id]) */}
@@ -358,7 +388,7 @@ export default function EstimadoPage() {
         <div data-m="header"><EncabezadoEstimado orden={orden} cliente={cliente} /></div>
         <table className="w-full text-sm">
           <thead><FilaColsE /></thead>
-          <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} />)}</tbody>
+          <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
         <BloqueTotalesE subtotal={subtotal} descuento={descuento} total={total} />
         <BloqueDisclaimerE />
@@ -381,7 +411,7 @@ export default function EstimadoPage() {
                   <thead><FilaColsE /></thead>
                   <tbody>
                     {pageLineas.length ? (
-                      pageLineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} />)
+                      pageLineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>

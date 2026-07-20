@@ -45,6 +45,7 @@ interface LineaOrdenRev {
   sku?: string;
   precio: number;
   precioFinal?: number;
+  precioCatalogo?: number;
   qty: number;
   qtyEnviada?: number;
   picked?: boolean;
@@ -457,6 +458,7 @@ export default function FacturaPage() {
             sku: l.sku || "",
             precio: l.precioOriginal ?? l.precio,
             precioFinal: l.precio,
+            precioCatalogo: l.precioCatalogo,
             qty: l.qty,
             qtyEnviada: l.qty,
             picked: true,

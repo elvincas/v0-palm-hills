@@ -157,6 +157,7 @@ interface LineaOrden {
   sku: string;
   precio: number;
   precioFinal?: number;
+  precioCatalogo?: number;
   qty: number;
   qtyEnviada?: number;
   picked?: boolean;
@@ -5595,7 +5596,8 @@ const Ordenes = () => {
           precioOriginal: it.precio,
           // Precio de catalogo puro (sin lista de precios): permite que la
           // factura ofrezca mostrar el descuento de lista como opcional.
-          precioCatalogo: productos.find((p) => p.id === it.prodId)?.precio,
+          // Ordenes viejas sin el campo caen al precio actual del producto.
+          precioCatalogo: it.precioCatalogo ?? productos.find((p) => p.id === it.prodId)?.precio,
           almacen: it.almacen || "palmhills",
         }));
       const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
@@ -5798,6 +5800,7 @@ const Ordenes = () => {
         sku: p.sku || "",
         precio: editPrecioBase(p),
         precioFinal,
+        precioCatalogo: Number(p.precio),
         qty,
         qtyEnviada: lineaExistente ? Math.min(lineaExistente.qtyEnviada ?? lineaExistente.qty, qty) : qty,
         picked: lineaExistente?.picked ?? false,

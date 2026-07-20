@@ -397,6 +397,9 @@ export default function NuevaOrdenPage() {
         // como descuento en la factura. Solo el ajuste manual queda como precioFinal.
         precio: precioBase(p),
         precioFinal: precioEfectivo(p),
+        // Precio de catalogo puro (sin lista): permite que la factura/estimate
+        // ofrezcan mostrar el descuento de lista como opcional.
+        precioCatalogo: Number(p.precio),
         qty,
         qtyEnviada: qty,
         almacen: p.almacen || 'palmhills',

@@ -13,10 +13,14 @@ const fdate = (s: string) => {
 
 interface LineaOrden extends LineaDoc {
   precioFinal?: number;
+  precioCatalogo?: number;
 }
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
+  // Revela el descuento de la lista de precios (catalogo -> lista) ademas del
+  // ajuste manual, decidido en la pantalla del estimate: ?listDiscount=1|0.
+  const mostrarDescuentoLista = new URL(request.url).searchParams.get("listDiscount") === "1";
   const supabase = await createClient();
 
   const { data: userData } = await supabase.auth.getUser();
@@ -44,15 +48,21 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   } catch { /* sin logo */ }
 
   // En ordenes el descuento viene como precioFinal; el PDF espera
-  // precio = final y precioOriginal = antes del descuento.
+  // precio = final y precioOriginal = antes del descuento. Con el switch
+  // encendido, "antes del descuento" es el precio de catalogo puro (revela
+  // tambien el descuento de lista); apagado, es l.precio (solo el ajuste manual).
   const lineas: LineaDoc[] = [...((o.lineas || []) as LineaOrden[])]
-    .map((l) => ({
-      prodNom: l.prodNom,
-      sku: l.sku,
-      qty: l.qty,
-      precio: l.precioFinal ?? l.precio,
-      precioOriginal: l.precioFinal !== undefined && l.precioFinal !== l.precio ? l.precio : undefined,
-    }))
+    .map((l) => {
+      const precioFinal = l.precioFinal ?? l.precio;
+      const comparado = mostrarDescuentoLista ? l.precioCatalogo ?? l.precio : l.precio;
+      return {
+        prodNom: l.prodNom,
+        sku: l.sku,
+        qty: l.qty,
+        precio: precioFinal,
+        precioOriginal: comparado !== precioFinal ? comparado : undefined,
+      };
+    })
     .sort((a, b) => {
       const sa = (a.sku || "").trim();
       const sb = (b.sku || "").trim();
