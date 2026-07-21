@@ -2312,13 +2312,13 @@ const Calendario = () => {
               <button
                 key={fecha}
                 onClick={() => setDiaSeleccionado(fecha === diaSeleccionado ? null : fecha)}
-                className={`aspect-square rounded-lg flex flex-col items-center justify-center relative text-xs ${
+                className={`aspect-square rounded-lg flex flex-col items-center justify-center relative text-xs transition-colors ${
                   diaSeleccionado === fecha
                     ? "bg-primary text-primary-foreground font-bold"
                     : esEntrega
-                      ? "bg-primary/25 text-primary font-bold ring-1 ring-inset ring-primary/50"
+                      ? "bg-primary/40 text-primary font-bold"
                       : "bg-muted text-card-foreground"
-                } ${esHoy && diaSeleccionado !== fecha ? "ring-1 ring-inset ring-primary/60" : ""}`}
+                } ${esHoy ? "ring-2 ring-inset ring-[#b09060]" : ""}`}
               >
                 {numDia}
                 <span className="absolute bottom-0.5 flex gap-0.5">
@@ -2340,6 +2340,17 @@ const Calendario = () => {
               </button>
             );
           })}
+        </div>
+        <div className="flex items-center gap-3 mt-2.5 px-0.5">
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span className="w-2 h-2 rounded-full ring-2 ring-inset ring-[#b09060] shrink-0" /> Today
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" /> Orders that day
+          </div>
+          <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <span className="w-1.5 h-1.5 rounded-full bg-accent shrink-0" /> Visit / Collect / Request
+          </div>
         </div>
       </div>
 

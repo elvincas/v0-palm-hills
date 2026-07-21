@@ -226,13 +226,23 @@ export default function NuevaOrdenPage() {
             setListaNombre(lp.nombre as string)
           }
         }
-        const { data: eventos } = await supabase
+        // Se filtra "delivery" en el cliente (no via .contains()) porque el
+        // operador jsonb-contains de PostgREST no siempre resuelve bien un
+        // array de strings sobre esta columna — mas simple y confiable traer
+        // los eventos futuros (la tabla es chica) y filtrar aqui.
+        const { data: eventos, error: eventosErr } = await supabase
           .from('eventos_calendario')
-          .select('fecha')
-          .contains('tipos', ['delivery'])
+          .select('fecha, tipos')
           .gte('fecha', today())
           .order('fecha')
-        const fechas = Array.from(new Set((eventos || []).map((e) => e.fecha as string)))
+        if (eventosErr) console.error('[v0] Error cargando fechas de entrega:', eventosErr.message)
+        const fechas = Array.from(
+          new Set(
+            (eventos || [])
+              .filter((e) => Array.isArray(e.tipos) && e.tipos.includes('delivery'))
+              .map((e) => e.fecha as string)
+          )
+        )
         setFechasEntrega(fechas)
         // Datos livianos primero (sin foto) para no esperar varios MB de imagenes.
         // Supabase/PostgREST limita cada respuesta (db-max-rows, normalmente 1000),
