@@ -107,7 +107,7 @@ Tabla key/value (RLS authenticated). Keys: `remito_email` (correo fijo de remito
 `id`, `titulo`, `descripcion`, `costo`, `prioridad` (High/Medium/Low), `estado` (Pending/In Progress/Completed)
 
 ### `eventos_calendario`
-`id`, `fecha` (YYYY-MM-DD), `tipo` (delivery/visit/collect_money/order_request), `cliente_id` (nullable)
+`id`, `fecha` (YYYY-MM-DD), `tipos` (jsonb `TipoEvento[]`: delivery/visit/collect_money/order_request — 2026-07-21, antes era `tipo` singular; columna vieja sigue en la tabla sin usarse, solo por si acaso), `cliente_id` (nullable), `nota`. Un evento puede tener varios tipos a la vez (ej. Collect money + Order request en una sola visita) salvo "delivery", que siempre va solo y sin cliente. Tocar un evento en el día seleccionado del Calendario abre el mismo modal en modo edición (`updateEvento`) — antes solo se podía borrar con la "x", nunca leer la nota completa ni editar. Consultas por delivery: `.contains('tipos', ['delivery'])`, no `.eq('tipo', 'delivery')`.
 
 ### `actividad`
 `msg`, `ts` — log de eventos del sistema (todo CRUD escribe aquí)
