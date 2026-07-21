@@ -406,6 +406,45 @@ const LoadMoreButton = ({
   );
 };
 
+// Boton "+" en pildora: relleno verde solido con un degradado sutil y un
+// brillo fino arriba (mismo verde/borde/sombra que los botones planos de
+// documentos, ej. Print/PDF, pero en forma ovalada). Se usa inline en el
+// header/toolbar de cada tab en vez de flotar sobre el contenido — antes
+// tapaba filas de la tabla al quedar fijo en la esquina inferior.
+const AddPillButton = ({
+  onClick,
+  active,
+  "aria-label": ariaLabel,
+  className = "",
+}: {
+  onClick: () => void;
+  active?: boolean;
+  "aria-label"?: string;
+  className?: string;
+}) => (
+  <button
+    type="button"
+    onClick={onClick}
+    aria-label={ariaLabel}
+    className={`relative shrink-0 w-12 h-9 rounded-full bg-gradient-to-b from-[#5c7d52] via-[#4a6741] to-[#3c5536] border border-[#3c5536] shadow-[0_3px_8px_rgba(28,31,25,0.16),0_1px_2px_rgba(28,31,25,0.08)] active:scale-[0.97] transition-all flex items-center justify-center text-white ${className}`}
+  >
+    <span className="pointer-events-none absolute top-1 left-2.5 right-2.5 h-[40%] rounded-full bg-gradient-to-b from-white/35 to-white/0" />
+    <svg
+      width="16"
+      height="16"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2.6}
+      strokeLinecap="round"
+      aria-hidden="true"
+      className={`transition-transform ${active ? "rotate-45" : ""}`}
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  </button>
+);
+
 const Li = ({ left, right }: { left: ReactNode; right: ReactNode }) => (
   <div className="flex items-center justify-between py-3 border-b border-border last:border-b-0 gap-2.5">
     <div className="flex-1 min-w-0">{left}</div>
@@ -2290,6 +2329,32 @@ const Calendario = () => {
               ›
             </button>
           </div>
+          {!readOnly && (
+            <div className="relative">
+              {menuOpen && (
+                <>
+                  <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                  <div className="absolute right-0 top-full mt-2 z-[7] flex flex-col gap-2 items-end">
+                    <button
+                      onClick={() => abrirModalEvento("delivery")}
+                      className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                    >
+                      <span className="text-base" aria-hidden="true">{EVENTO_INFO.delivery.icon}</span>
+                      {EVENTO_INFO.delivery.label}
+                    </button>
+                    <button
+                      onClick={() => abrirModalEvento("client")}
+                      className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                    >
+                      <span className="text-base" aria-hidden="true">📍💰📝</span>
+                      Client event
+                    </button>
+                  </div>
+                </>
+              )}
+              <AddPillButton aria-label="Add to calendar" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-7 gap-1 mb-1">
@@ -2483,39 +2548,6 @@ const Calendario = () => {
             {movingSaving ? "Moving..." : `Move to ${nuevaFechaOrden ? fdate(nuevaFechaOrden) : "..."}`}
           </button>
         </Modal>
-      )}
-
-      {menuOpen && (
-        <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-      )}
-      {!readOnly && (
-        <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
-          {menuOpen && (
-            <div className="flex flex-col gap-2 mb-1">
-              <button
-                onClick={() => abrirModalEvento("delivery")}
-                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-              >
-                <span className="text-base" aria-hidden="true">{EVENTO_INFO.delivery.icon}</span>
-                {EVENTO_INFO.delivery.label}
-              </button>
-              <button
-                onClick={() => abrirModalEvento("client")}
-                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-              >
-                <span className="text-base" aria-hidden="true">📍💰📝</span>
-                Client event
-              </button>
-            </div>
-          )}
-          <button
-            aria-label="Add to calendar"
-            className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            +
-          </button>
-        </div>
       )}
 
       {modalAbierto && (
@@ -2799,6 +2831,12 @@ const Facturas = () => {
               <input value={ncQ} onChange={(e) => setNcQ(e.target.value)} placeholder="Search by client..." className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
               {ncQ && <button onClick={() => setNcQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
             </div>
+            {!readOnly && (
+              <AddPillButton
+                aria-label="New credit note"
+                onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setNcTipo("amount"); setNcLineas([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]); setShowNcForm(true); }}
+              />
+            )}
           </div>
           {(() => {
             const ncs = notasCredito.filter(n => !ncQ || n.cli.toLowerCase().includes(ncQ.toLowerCase())).sort((a,b) => b.num - a.num);
@@ -2840,9 +2878,6 @@ const Facturas = () => {
               <div className="bg-card rounded-2xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No credit notes.</p></div>
             );
           })()}
-          {!readOnly && (
-            <button onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setNcTipo("amount"); setNcLineas([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]); setShowNcForm(true); }} className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}>+</button>
-          )}
           {showNcForm && !readOnly && (
             <Modal title="New Credit Note" onClose={() => setShowNcForm(false)}>
               {/* Tipo selector */}
@@ -3054,6 +3089,7 @@ const Facturas = () => {
             <path d="M18.7 8l-5.1 5.2-3-3L7 14" />
           </svg>
         </button>
+        {!readOnly && <AddPillButton aria-label="New invoice" onClick={() => setShow(true)} />}
       </div>
       {filtered.length ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -3087,14 +3123,6 @@ const Facturas = () => {
         </div>
       )}
       <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
-      {!readOnly && (
-        <button
-          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-          onClick={() => setShow(true)}
-        >
-          +
-        </button>
-      )}
 
       {show && !readOnly && (
         <Modal title="New Invoice" onClose={() => setShow(false)}>
@@ -5483,19 +5511,54 @@ const Inventario = () => {
           </button>
         </div>
       </div>
-      <div className="relative mb-2.5">
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by name, code or tag..."
-          autoComplete="off"
-          autoCorrect="off"
-          autoCapitalize="off"
-          spellCheck={false}
-          className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
-        />
-        {q && (
-          <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>
+      <div className="flex items-center gap-2 mb-2.5">
+        <div className="relative flex-1">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by name, code or tag..."
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+          {q && (
+            <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>
+          )}
+        </div>
+        {!readOnly && (
+          <div className="relative">
+            {menuOpen && (
+              <>
+                <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+                <div className="absolute right-0 top-full mt-2 z-[7] flex flex-col gap-2 items-end">
+                  <button
+                    onClick={openNew}
+                    className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                  >
+                    <span className="text-base" aria-hidden="true">✏️</span>
+                    Add Manually
+                  </button>
+                  <button
+                    onClick={openBulk}
+                    className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                  >
+                    <span className="text-base" aria-hidden="true">📄</span>
+                    Bulk Upload
+                  </button>
+                  <button
+                    onClick={() => { setMenuOpen(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); setShowBulkFotos(true); }}
+                    className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                  >
+                    <span className="text-base" aria-hidden="true">🖼️</span>
+                    Bulk Photos (ZIP)
+                  </button>
+                </div>
+              </>
+            )}
+            <AddPillButton aria-label="Add product" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+          </div>
         )}
       </div>
       <div className="flex items-center gap-2 mb-3">
@@ -5663,49 +5726,6 @@ const Inventario = () => {
         )}
       </div>
       <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
-      {menuOpen && (
-        <div
-          className="fixed inset-0 z-[6]"
-          onClick={() => setMenuOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-      {!readOnly && (
-        <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
-          {menuOpen && (
-            <div className="flex flex-col gap-2 mb-1">
-              <button
-                onClick={openNew}
-                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-              >
-                <span className="text-base" aria-hidden="true">✏️</span>
-                Add Manually
-              </button>
-              <button
-                onClick={openBulk}
-                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-              >
-                <span className="text-base" aria-hidden="true">📄</span>
-                Bulk Upload
-              </button>
-              <button
-                onClick={() => { setMenuOpen(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); setShowBulkFotos(true); }}
-                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-              >
-                <span className="text-base" aria-hidden="true">🖼️</span>
-                Bulk Photos (ZIP)
-              </button>
-            </div>
-          )}
-          <button
-            aria-label="Add product"
-            className={`w-13 h-13 rounded-full bg-primary text-primary-foreground text-2xl border-none cursor-pointer shadow-lg flex items-center justify-center transition-transform ${menuOpen ? "rotate-45" : ""}`}
-            onClick={() => setMenuOpen((o) => !o)}
-          >
-            +
-          </button>
-        </div>
-      )}
 
       {showBulkFotos && (
         <Modal title="Bulk Photos Upload (ZIP)" onClose={() => { setShowBulkFotos(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); }}>
@@ -6643,6 +6663,11 @@ const Ordenes = () => {
 
   return (
     <div>
+      {!readOnly && (
+        <div className="flex justify-end mb-3">
+          <AddPillButton aria-label="New order" onClick={() => { setShowClientPicker(true); setPickerSearch(""); }} />
+        </div>
+      )}
       {draftOrdenes.length > 0 && (
         <div className="mb-3 space-y-2">
           {draftOrdenes.map((d) => (
@@ -6761,14 +6786,6 @@ const Ordenes = () => {
         )}
       </div>
       <LoadMoreButton hasMore={ordenesHasMore} remaining={ordenesRemaining} onClick={ordenesLoadMore} />
-      {!readOnly && (
-        <button
-          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-          onClick={() => { setShowClientPicker(true); setPickerSearch(""); }}
-        >
-          +
-        </button>
-      )}
 
       {showClientPicker && !readOnly && (
         <Modal title="New Order — Select Client" onClose={() => setShowClientPicker(false)}>
@@ -7471,6 +7488,12 @@ const Mejoras = () => {
         </div>
       </div>
 
+      {!readOnly && (
+        <div className="flex justify-end mb-3">
+          <AddPillButton aria-label="Add improvement" onClick={openNew} />
+        </div>
+      )}
+
       {mejoras.length === 0 ? (
         <div className="bg-card rounded-2xl p-3.5 border border-border">
           <Empty text="No improvements yet. Tap + to add an idea for the business." />
@@ -7497,16 +7520,6 @@ const Mejoras = () => {
             </>
           )}
         </>
-      )}
-
-      {!readOnly && (
-        <button
-          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-          onClick={openNew}
-          aria-label="Add improvement"
-        >
-          +
-        </button>
       )}
 
       {show && !readOnly && (
@@ -7683,10 +7696,11 @@ const Compras = () => {
 
   return (
     <div>
-      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
-        <p className="text-xs text-muted-foreground">
+      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3 flex items-center gap-3">
+        <p className="text-xs text-muted-foreground flex-1">
           Record each supplier purchase invoice here: it adds the quantity to inventory and updates the product's cost, feeding the P&L report's cost of goods sold.
         </p>
+        {!readOnly && <AddPillButton aria-label="New purchase" onClick={() => { reset(); setShow(true); }} />}
       </div>
 
       {comprasOrdenadas.length ? (
@@ -7715,15 +7729,6 @@ const Compras = () => {
         </div>
       )}
       <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
-
-      {!readOnly && (
-        <button
-          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-          onClick={() => { reset(); setShow(true); }}
-        >
-          +
-        </button>
-      )}
 
       {show && (
         <Modal title="New Purchase" onClose={() => setShow(false)}>
@@ -8358,9 +8363,12 @@ const GestionarUsuarios = () => {
   return (
     <div>
       <div className="grid grid-cols-1 gap-2.5 mb-3.5">
-        <div className="bg-card rounded-xl p-3.5 border border-border">
-          <div className="text-xs text-muted-foreground mb-1">Active users</div>
-          <div className="text-2xl font-bold text-card-foreground">{users.length}</div>
+        <div className="bg-card rounded-xl p-3.5 border border-border flex items-center justify-between gap-3">
+          <div>
+            <div className="text-xs text-muted-foreground mb-1">Active users</div>
+            <div className="text-2xl font-bold text-card-foreground">{users.length}</div>
+          </div>
+          <AddPillButton aria-label="Create user" onClick={() => setShow(true)} />
         </div>
       </div>
 
@@ -8395,13 +8403,6 @@ const GestionarUsuarios = () => {
         )}
       </div>
 
-      <button
-        className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
-        onClick={() => setShow(true)}
-        aria-label="Create user"
-      >
-        +
-      </button>
 
       {show && (
         <Modal
