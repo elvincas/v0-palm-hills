@@ -20,8 +20,19 @@ const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as Comp
 // ------------------------------
 interface TelefonoContacto {
   rol: string;
+  nombre?: string;
+  establecimiento?: string;
   num: string;
 }
+
+// Formatea un numero mientras se escribe: (xxx) xxx-xxxx (formato US).
+// Ignora cualquier caracter que no sea digito y trunca a 10 digitos.
+const formatPhone = (value: string) => {
+  const d = value.replace(/\D/g, "").slice(0, 10);
+  if (d.length <= 3) return d.length ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+};
 
 interface NotaVisita {
   id: string;
@@ -3671,7 +3682,8 @@ const Clientes = () => {
             <Field label="Phone">
               <input
                 value={form.tel}
-                onChange={(e) => setForm({ ...form, tel: e.target.value })}
+                onChange={(e) => setForm({ ...form, tel: formatPhone(e.target.value) })}
+                placeholder="(xxx) xxx-xxxx"
                 autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
@@ -3681,32 +3693,50 @@ const Clientes = () => {
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5">Contact Numbers</div>
             {(form.telefonos || []).map((t, i) => (
-              <div key={i} className="flex gap-1.5 mb-1.5 items-center">
-                <select
-                  value={t.rol}
-                  onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, rol: e.target.value } : x) })}
-                  className="px-2 py-2 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring shrink-0"
-                >
-                  <option>Store</option>
-                  <option>Manager</option>
-                  <option>Owner</option>
-                  <option>Payments</option>
-                  <option>Places orders</option>
-                </select>
-                <input
-                  value={t.num}
-                  onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, num: e.target.value } : x) })}
-                  placeholder="Number"
-                  autoComplete="off"
-                  className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
-                />
-                <button
-                  type="button"
-                  onClick={() => setForm({ ...form, telefonos: (form.telefonos || []).filter((_, j) => j !== i) })}
-                  className="text-muted-foreground text-lg px-1 leading-none hover:text-card-foreground"
-                >
-                  ×
-                </button>
+              <div key={i} className="flex flex-col gap-1.5 mb-2.5 p-2.5 rounded-xl border border-border bg-background">
+                <div className="flex gap-1.5 items-center">
+                  <select
+                    value={t.rol}
+                    onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, rol: e.target.value } : x) })}
+                    className="px-2 py-2 rounded-lg border border-input bg-card text-card-foreground text-xs outline-none focus:ring-2 focus:ring-ring shrink-0"
+                  >
+                    <option>Store</option>
+                    <option>Manager</option>
+                    <option>Owner</option>
+                    <option>Payments</option>
+                    <option>Places orders</option>
+                  </select>
+                  <input
+                    value={t.num}
+                    onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, num: formatPhone(e.target.value) } : x) })}
+                    placeholder="(xxx) xxx-xxxx"
+                    autoComplete="off"
+                    className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setForm({ ...form, telefonos: (form.telefonos || []).filter((_, j) => j !== i) })}
+                    className="text-muted-foreground text-lg px-1 leading-none hover:text-card-foreground"
+                  >
+                    ×
+                  </button>
+                </div>
+                <div className="flex gap-1.5">
+                  <input
+                    value={t.nombre || ""}
+                    onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, nombre: e.target.value } : x) })}
+                    placeholder="Name (Pete, Rafael…)"
+                    autoComplete="off"
+                    className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                  <input
+                    value={t.establecimiento || ""}
+                    onChange={(e) => setForm({ ...form, telefonos: (form.telefonos || []).map((x, j) => j === i ? { ...x, establecimiento: e.target.value } : x) })}
+                    placeholder="Establishment / location"
+                    autoComplete="off"
+                    className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                  />
+                </div>
               </div>
             ))}
             <button

@@ -12,8 +12,17 @@ import { ListaPreciosEditorModal } from "@/components/lista-precios-editor";
 interface TelefonoContacto {
   rol: string;
   nombre?: string;
+  establecimiento?: string;
   num: string;
 }
+
+// Formatea un numero mientras se escribe: (xxx) xxx-xxxx (formato US).
+const formatPhone = (value: string) => {
+  const d = value.replace(/\D/g, "").slice(0, 10);
+  if (d.length <= 3) return d.length ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`;
+  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`;
+};
 
 interface NotaVisita {
   id: string;
@@ -151,6 +160,7 @@ export default function ClientePerfilPage() {
   const [showAddPhone, setShowAddPhone] = useState(false);
   const [newPhoneRol, setNewPhoneRol] = useState("");
   const [newPhoneNombre, setNewPhoneNombre] = useState("");
+  const [newPhoneEstablecimiento, setNewPhoneEstablecimiento] = useState("");
   const [newPhoneNum, setNewPhoneNum] = useState("");
   const [savingPhone, setSavingPhone] = useState(false);
   const [editFax, setEditFax] = useState(false);
@@ -390,7 +400,15 @@ export default function ClientePerfilPage() {
   const handleAddTelefono = async () => {
     if (!newPhoneRol || !newPhoneNum.trim() || !cliente) return;
     setSavingPhone(true);
-    const nuevos: TelefonoContacto[] = [...(cliente.telefonos || []), { rol: newPhoneRol, nombre: newPhoneNombre.trim() || undefined, num: newPhoneNum.trim() }];
+    const nuevos: TelefonoContacto[] = [
+      ...(cliente.telefonos || []),
+      {
+        rol: newPhoneRol,
+        nombre: newPhoneNombre.trim() || undefined,
+        establecimiento: newPhoneEstablecimiento.trim() || undefined,
+        num: newPhoneNum.trim(),
+      },
+    ];
     const { error: e } = await supabase.from("clientes").update({ telefonos: nuevos }).eq("id", clienteId);
     if (!e) {
       const updated = { ...cliente, telefonos: nuevos };
@@ -399,6 +417,7 @@ export default function ClientePerfilPage() {
       setShowAddPhone(false);
       setNewPhoneRol("");
       setNewPhoneNombre("");
+      setNewPhoneEstablecimiento("");
       setNewPhoneNum("");
     }
     setSavingPhone(false);
@@ -659,7 +678,9 @@ export default function ClientePerfilPage() {
                     {(t.nombre || t.rol)[0].toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">{t.rol}</p>
+                    <p className="text-[9px] font-bold uppercase tracking-wider text-gray-400">
+                      {t.rol}{t.establecimiento ? ` · ${t.establecimiento}` : ""}
+                    </p>
                     {t.nombre && <p className="text-xs font-semibold text-gray-700 leading-tight">{t.nombre}</p>}
                     <a href={`tel:${t.num}`} className="text-sm font-semibold" style={{ color: PH }}>{t.num}</a>
                   </div>
@@ -710,14 +731,15 @@ export default function ClientePerfilPage() {
                 {newPhoneRol && (
                   <div className="space-y-2">
                     <input type="text" value={newPhoneNombre} onChange={(e) => setNewPhoneNombre(e.target.value)} placeholder="Name (Pete, Rafael…)" autoFocus className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
-                    <input type="tel" value={newPhoneNum} onChange={(e) => setNewPhoneNum(e.target.value)} placeholder={`Phone — ${newPhoneRol}`} onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()} className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+                    <input type="text" value={newPhoneEstablecimiento} onChange={(e) => setNewPhoneEstablecimiento(e.target.value)} placeholder="Establishment / location" className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
+                    <input type="tel" value={newPhoneNum} onChange={(e) => setNewPhoneNum(formatPhone(e.target.value))} placeholder="(xxx) xxx-xxxx" onKeyDown={(e) => e.key === "Enter" && handleAddTelefono()} className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25" />
                   </div>
                 )}
                 <div className="flex gap-2">
                   <button onClick={handleAddTelefono} disabled={!newPhoneRol || !newPhoneNum.trim() || savingPhone} className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white disabled:opacity-40 active:scale-[0.98] transition-all" style={{ background: PH }}>
                     {savingPhone ? "Saving…" : "Save Contact"}
                   </button>
-                  <button onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNombre(""); setNewPhoneNum(""); }} className="px-4 py-2.5 rounded-xl text-sm text-gray-500 bg-gray-100">Cancel</button>
+                  <button onClick={() => { setShowAddPhone(false); setNewPhoneRol(""); setNewPhoneNombre(""); setNewPhoneEstablecimiento(""); setNewPhoneNum(""); }} className="px-4 py-2.5 rounded-xl text-sm text-gray-500 bg-gray-100">Cancel</button>
                 </div>
               </div>
             )}
