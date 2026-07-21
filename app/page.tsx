@@ -272,7 +272,7 @@ type TipoEvento = "delivery" | "visit" | "collect_money" | "order_request";
 interface EventoCalendario {
   id: string;
   fecha: string;
-  tipo: TipoEvento;
+  tipos: TipoEvento[];
   cliente_id: string | null;
   nota?: string;
   created_at?: string;
@@ -493,6 +493,7 @@ interface DataContextType {
   deleteMejora: (id: string) => Promise<void>;
   updateMejora: (id: string, m: Omit<Mejora, "id">) => Promise<void>;
   addEvento: (e: Omit<EventoCalendario, "id">) => Promise<void>;
+  updateEvento: (id: string, e: Omit<EventoCalendario, "id">) => Promise<void>;
   deleteEvento: (id: string) => Promise<void>;
   listasPrecios: ListaPrecio[];
   addListaPrecio: (l: Omit<ListaPrecio, "id">) => Promise<ListaPrecio>;
@@ -731,7 +732,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setRemitos(r.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setMejoras(e);
-      setEventosCalendario(ev);
+      setEventosCalendario(ev.map((row) => ({ ...row, tipos: row.tipos || [] })));
       setListasPrecios(lp.map((row) => ({ ...row, precios: row.precios || {} })));
       setGastos(ga);
       setCategorias(cat.map((row) => ({ ...row, valores: row.valores || [] })));
@@ -1295,7 +1296,14 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const { data, error } = await supabase.from("eventos_calendario").insert(ev).select().single();
     if (error) throw new Error(error.message);
     setEventosCalendario((prev) => [...prev, data as EventoCalendario]);
-    await logAct(`Calendar event added: ${ev.tipo} on ${ev.fecha}`);
+    await logAct(`Calendar event added: ${ev.tipos.join(" + ")} on ${ev.fecha}`);
+  };
+
+  const updateEvento = async (id: string, ev: Omit<EventoCalendario, "id">) => {
+    const { data, error } = await supabase.from("eventos_calendario").update(ev).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setEventosCalendario((prev) => prev.map((e) => (e.id === id ? (data as EventoCalendario) : e)));
+    await logAct(`Calendar event updated: ${ev.tipos.join(" + ")} on ${ev.fecha}`);
   };
 
   const deleteEvento = async (id: string) => {
@@ -1313,7 +1321,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       Array.from(
         new Set(
           eventosCalendario
-            .filter((e) => e.tipo === "delivery" && e.fecha >= today())
+            .filter((e) => e.tipos.includes("delivery") && e.fecha >= today())
             .map((e) => e.fecha)
         )
       ).sort(),
@@ -1456,6 +1464,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     deleteMejora,
     updateMejora,
     addEvento,
+    updateEvento,
     deleteEvento,
     listasPrecios,
     addListaPrecio,
@@ -2092,14 +2101,19 @@ const EVENTO_INFO: Record<TipoEvento, { icon: string; label: string }> = {
 };
 
 const Calendario = () => {
-  const { ordenes, clientes, facturas, eventosCalendario, addEvento, deleteEvento, updateOrden, readOnly } = useData();
+  const { ordenes, clientes, facturas, eventosCalendario, addEvento, updateEvento, deleteEvento, updateOrden, readOnly } = useData();
   const [mesActual, setMesActual] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
   });
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [modalTipo, setModalTipo] = useState<TipoEvento | null>(null);
+  // El modal sirve tanto para crear como editar. modalTipos permite elegir
+  // varios tipos a la vez para un mismo evento (ej. Collect money + Order
+  // request) excepto "delivery", que no lleva cliente y se agrega aparte.
+  const [modalAbierto, setModalAbierto] = useState<"delivery" | "client" | null>(null);
+  const [editingEventoId, setEditingEventoId] = useState<string | null>(null);
+  const [modalTipos, setModalTipos] = useState<TipoEvento[]>([]);
   const [formFecha, setFormFecha] = useState(today());
   const [formClienteId, setFormClienteId] = useState("");
   const [formClienteSearch, setFormClienteSearch] = useState("");
@@ -2126,9 +2140,9 @@ const Calendario = () => {
       await updateOrden(movingOrden.id, { ...movingOrden, fecha: nuevaFechaOrden });
       // Si el dia destino no esta marcado como delivery en el calendario, se
       // marca para que se pinte y aparezca en los selectores de fecha.
-      const yaMarcado = eventosCalendario.some((e) => e.fecha === nuevaFechaOrden && e.tipo === "delivery");
+      const yaMarcado = eventosCalendario.some((e) => e.fecha === nuevaFechaOrden && e.tipos.includes("delivery"));
       if (!yaMarcado) {
-        await addEvento({ fecha: nuevaFechaOrden, tipo: "delivery", cliente_id: null });
+        await addEvento({ fecha: nuevaFechaOrden, tipos: ["delivery"], cliente_id: null });
       }
       setMovingOrden(null);
     } catch (err) {
@@ -2181,13 +2195,16 @@ const Calendario = () => {
   };
 
   const TIPO_PRIORIDAD: Record<TipoEvento, number> = { delivery: 0, collect_money: 1, order_request: 2, visit: 3 };
+  const prioridadEvento = (ev: EventoCalendario) => Math.min(...ev.tipos.map((t) => TIPO_PRIORIDAD[t] ?? 9), 9);
   const ordenesDelDia = diaSeleccionado ? ordenesPorFecha[diaSeleccionado] || [] : [];
   const eventosDelDia = (diaSeleccionado ? eventosPorFecha[diaSeleccionado] || [] : [])
     .slice()
-    .sort((a, b) => (TIPO_PRIORIDAD[a.tipo] ?? 9) - (TIPO_PRIORIDAD[b.tipo] ?? 9));
+    .sort((a, b) => prioridadEvento(a) - prioridadEvento(b));
 
-  const abrirModalEvento = (tipo: TipoEvento) => {
-    setModalTipo(tipo);
+  const abrirModalEvento = (modo: "delivery" | "client") => {
+    setModalAbierto(modo);
+    setEditingEventoId(null);
+    setModalTipos(modo === "delivery" ? ["delivery"] : []);
     setFormFecha(diaSeleccionado ?? today());
     setFormClienteId("");
     setFormClienteSearch("");
@@ -2196,23 +2213,50 @@ const Calendario = () => {
     setMenuOpen(false);
   };
 
-  const handleCrearEvento = async () => {
-    if (!modalTipo) return;
-    if (modalTipo !== "delivery" && !formClienteId) {
+  const abrirEditarEvento = (ev: EventoCalendario) => {
+    const cInfo = ev.cliente_id ? clienteFor(ev.cliente_id) : null;
+    setModalAbierto(ev.tipos.includes("delivery") ? "delivery" : "client");
+    setEditingEventoId(ev.id);
+    setModalTipos(ev.tipos);
+    setFormFecha(ev.fecha);
+    setFormClienteId(ev.cliente_id || "");
+    setFormClienteSearch(cInfo?.nom || "");
+    setFormClienteOpen(false);
+    setFormNota(ev.nota || "");
+  };
+
+  const toggleModalTipo = (tipo: TipoEvento) => {
+    setModalTipos((prev) => (prev.includes(tipo) ? prev.filter((t) => t !== tipo) : [...prev, tipo]));
+  };
+
+  const cerrarModalEvento = () => {
+    setModalAbierto(null);
+    setEditingEventoId(null);
+  };
+
+  const handleGuardarEvento = async () => {
+    if (!modalAbierto) return;
+    if (modalAbierto === "client" && !modalTipos.length) {
+      alert("Select at least one type (Visit, Collect money, Order request)");
+      return;
+    }
+    if (modalAbierto === "client" && !formClienteId) {
       alert("Select a client");
       return;
     }
     setSaving(true);
     try {
-      await addEvento({
+      const payload = {
         fecha: formFecha,
-        tipo: modalTipo,
-        cliente_id: modalTipo === "delivery" ? null : formClienteId,
+        tipos: modalAbierto === "delivery" ? (["delivery"] as TipoEvento[]) : modalTipos,
+        cliente_id: modalAbierto === "delivery" ? null : formClienteId,
         ...(formNota.trim() ? { nota: formNota.trim() } : {}),
-      });
-      setModalTipo(null);
+      };
+      if (editingEventoId) await updateEvento(editingEventoId, payload);
+      else await addEvento(payload);
+      cerrarModalEvento();
     } catch (err) {
-      alert(`Could not add this to the calendar: ${err instanceof Error ? err.message : String(err)}`);
+      alert(`Could not save this to the calendar: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setSaving(false);
     }
@@ -2220,9 +2264,9 @@ const Calendario = () => {
 
   const handleDeleteEvento = (ev: EventoCalendario) => {
     if (!confirm("Remove this from the calendar?")) return;
-    deleteEvento(ev.id).catch((err) =>
-      alert(`Could not remove it: ${err instanceof Error ? err.message : String(err)}`)
-    );
+    deleteEvento(ev.id)
+      .then(() => cerrarModalEvento())
+      .catch((err) => alert(`Could not remove it: ${err instanceof Error ? err.message : String(err)}`));
   };
 
   return (
@@ -2259,8 +2303,8 @@ const Calendario = () => {
           {celdas.map((fecha, i) => {
             if (!fecha) return <div key={i} />;
             const eventosDia = eventosPorFecha[fecha] || [];
-            const esEntrega = eventosDia.some((e) => e.tipo === "delivery");
-            const tieneAgenda = eventosDia.some((e) => e.tipo !== "delivery");
+            const esEntrega = eventosDia.some((e) => e.tipos.includes("delivery"));
+            const tieneAgenda = eventosDia.some((e) => e.tipos.some((t) => t !== "delivery"));
             const ordenesDia = ordenesPorFecha[fecha] || [];
             const numDia = Number(fecha.slice(-2));
             const esHoy = fecha === today();
@@ -2307,30 +2351,35 @@ const Calendario = () => {
           {eventosDelDia.length > 0 && (
             <div className="mb-2">
               {eventosDelDia.map((ev) => {
-                const info = EVENTO_INFO[ev.tipo];
+                const infos = ev.tipos.map((t) => EVENTO_INFO[t]);
                 const cInfo = ev.cliente_id ? clienteFor(ev.cliente_id) : null;
                 return (
-                  <div key={ev.id} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+                  <button
+                    key={ev.id}
+                    onClick={() => abrirEditarEvento(ev)}
+                    className="w-full flex items-center justify-between gap-2 py-2 border-b border-border last:border-b-0 text-left"
+                  >
                     <div className="min-w-0 flex items-center gap-2">
-                      <span className="text-base" aria-hidden="true">{info.icon}</span>
+                      <span className="text-base shrink-0" aria-hidden="true">{infos.map((i) => i.icon).join("")}</span>
                       <div className="min-w-0">
-                        <div className="text-sm font-semibold uppercase text-card-foreground truncate">
-                          {cInfo ? cInfo.nom : info.label}
+                        <div className="text-sm font-semibold uppercase text-card-foreground break-words">
+                          {cInfo ? cInfo.nom : infos.map((i) => i.label).join(" + ")}
                         </div>
-                        <div className="text-xs text-muted-foreground">{info.label}</div>
-                        {ev.nota && <div className="text-xs text-muted-foreground italic mt-0.5 truncate">"{ev.nota}"</div>}
+                        <div className="text-xs text-muted-foreground">{infos.map((i) => i.label).join(" + ")}</div>
+                        {ev.nota && <div className="text-xs text-muted-foreground italic mt-0.5 break-words">"{ev.nota}"</div>}
                       </div>
                     </div>
                     {!readOnly && (
-                      <button
-                        onClick={() => handleDeleteEvento(ev)}
+                      <span
+                        onClick={(e) => { e.stopPropagation(); handleDeleteEvento(ev); }}
+                        role="button"
                         aria-label="Remove"
                         className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 shrink-0"
                       >
                         ×
-                      </button>
+                      </span>
                     )}
-                  </div>
+                  </button>
                 );
               })}
             </div>
@@ -2385,7 +2434,7 @@ const Calendario = () => {
             const proximas = Array.from(
               new Set(
                 eventosCalendario
-                  .filter((e) => e.tipo === "delivery" && e.fecha >= today() && e.fecha !== movingOrden.fecha)
+                  .filter((e) => e.tipos.includes("delivery") && e.fecha >= today() && e.fecha !== movingOrden.fecha)
                   .map((e) => e.fecha)
               )
             ).sort().slice(0, 8);
@@ -2432,16 +2481,20 @@ const Calendario = () => {
         <div className="fixed bottom-[72px] right-4 z-[7] flex flex-col items-end gap-2">
           {menuOpen && (
             <div className="flex flex-col gap-2 mb-1">
-              {(Object.keys(EVENTO_INFO) as TipoEvento[]).map((tipo) => (
-                <button
-                  key={tipo}
-                  onClick={() => abrirModalEvento(tipo)}
-                  className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-                >
-                  <span className="text-base" aria-hidden="true">{EVENTO_INFO[tipo].icon}</span>
-                  {EVENTO_INFO[tipo].label}
-                </button>
-              ))}
+              <button
+                onClick={() => abrirModalEvento("delivery")}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">{EVENTO_INFO.delivery.icon}</span>
+                {EVENTO_INFO.delivery.label}
+              </button>
+              <button
+                onClick={() => abrirModalEvento("client")}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">📍💰📝</span>
+                Client event
+              </button>
             </div>
           )}
           <button
@@ -2454,10 +2507,10 @@ const Calendario = () => {
         </div>
       )}
 
-      {modalTipo && (
+      {modalAbierto && (
         <Modal
-          title={EVENTO_INFO[modalTipo].label}
-          onClose={() => setModalTipo(null)}
+          title={editingEventoId ? "Edit calendar event" : modalAbierto === "delivery" ? EVENTO_INFO.delivery.label : "Client event"}
+          onClose={cerrarModalEvento}
         >
           <Field label="Date">
             <input
@@ -2468,7 +2521,26 @@ const Calendario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          {modalTipo !== "delivery" && (
+          {modalAbierto === "client" && (
+            <Field label="Type (select one or more)">
+              <div className="flex flex-wrap gap-1.5">
+                {(["visit", "collect_money", "order_request"] as TipoEvento[]).map((tipo) => (
+                  <button
+                    key={tipo}
+                    type="button"
+                    onClick={() => toggleModalTipo(tipo)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                      modalTipos.includes(tipo) ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-transparent"
+                    }`}
+                  >
+                    <span aria-hidden="true">{EVENTO_INFO[tipo].icon}</span>
+                    {EVENTO_INFO[tipo].label}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+          {modalAbierto !== "delivery" && (
             <Field label="Client">
               <div className="relative">
                 <input
@@ -2522,18 +2594,28 @@ const Calendario = () => {
             <textarea
               value={formNota}
               onChange={(e) => setFormNota(e.target.value)}
-              placeholder={modalTipo === "visit" ? "e.g. Before noon, ask for Rafael…" : "Add a note…"}
-              rows={2}
-              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring resize-none"
+              placeholder={modalTipos.includes("visit") ? "e.g. Before noon, ask for Rafael…" : "Add a note…"}
+              rows={4}
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <button
-            onClick={handleCrearEvento}
-            disabled={saving}
-            className={`w-full mt-2 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
-          >
-            {saving ? "Saving..." : "Add"}
-          </button>
+          <div className="flex gap-2.5 mt-2">
+            {editingEventoId && !readOnly && (
+              <button
+                onClick={() => handleDeleteEvento({ id: editingEventoId, fecha: formFecha, tipos: modalTipos, cliente_id: formClienteId || null, nota: formNota })}
+                className={`px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_DESTRUCTIVE}`}
+              >
+                Delete
+              </button>
+            )}
+            <button
+              onClick={handleGuardarEvento}
+              disabled={saving}
+              className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+            >
+              {saving ? "Saving..." : editingEventoId ? "Save Changes" : "Add"}
+            </button>
+          </div>
         </Modal>
       )}
     </div>

@@ -229,7 +229,7 @@ export default function NuevaOrdenPage() {
         const { data: eventos } = await supabase
           .from('eventos_calendario')
           .select('fecha')
-          .eq('tipo', 'delivery')
+          .contains('tipos', ['delivery'])
           .gte('fecha', today())
           .order('fecha')
         const fechas = Array.from(new Set((eventos || []).map((e) => e.fecha as string)))
