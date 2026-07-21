@@ -4252,10 +4252,164 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "sku", label: "SKU" },
 ];
 
+// Miniatura chica para el catalogo (no la foto completa que se guarda en
+// productos.foto): @react-pdf embeda los bytes de la imagen tal cual, sin
+// recomprimir, asi que con miles de productos un catalogo con las fotos a
+// tamaño completo pesaria cientos de MB. Se reduce aqui, en el navegador
+// (mismo patron que otros compresores de foto de la app), para no depender
+// de una libreria de imagenes nueva en el servidor.
+const compressCatalogPhoto = (dataUrl: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const MAX = 160;
+      const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+      const w = Math.max(1, Math.round(img.width * scale));
+      const h = Math.max(1, Math.round(img.height * scale));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return reject(new Error("no ctx"));
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, w, h);
+      ctx.drawImage(img, 0, 0, w, h);
+      resolve(canvas.toDataURL("image/jpeg", 0.55));
+    };
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
+
+const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
+  const { productos } = useData();
+  const [conPrecio, setConPrecio] = useState(true);
+  const [conFotos, setConFotos] = useState(true);
+  const [almacenCat, setAlmacenCat] = useState<"all" | "palmhills" | "castillo">("all");
+  const [generando, setGenerando] = useState(false);
+  const [progreso, setProgreso] = useState({ hecho: 0, total: 0 });
+
+  const productosFiltrados = useMemo(
+    () =>
+      productos.filter((p) => {
+        if (almacenCat === "all") return true;
+        const a = p.almacen ?? null;
+        if (almacenCat === "palmhills") return a === "palmhills" || a === null;
+        return a === almacenCat;
+      }),
+    [productos, almacenCat]
+  );
+
+  const generar = async () => {
+    if (generando) return;
+    setGenerando(true);
+    setProgreso({ hecho: 0, total: productosFiltrados.length });
+    try {
+      const ordenados = [...productosFiltrados].sort((a, b) => {
+        const sa = (a.sku || "").trim();
+        const sb = (b.sku || "").trim();
+        if (!sa && sb) return 1;
+        if (sa && !sb) return -1;
+        return sa.localeCompare(sb, "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
+      });
+
+      const items: { nom: string; sku?: string; precio: number; foto?: string }[] = [];
+      for (const p of ordenados) {
+        let foto: string | undefined;
+        if (conFotos && p.foto) {
+          try {
+            foto = await compressCatalogPhoto(p.foto);
+          } catch {
+            foto = undefined;
+          }
+        }
+        items.push({ nom: p.nom, sku: p.sku, precio: Number(p.precio), foto });
+        setProgreso((s) => ({ ...s, hecho: s.hecho + 1 }));
+      }
+
+      const almacenLabel = almacenCat === "all" ? "Both Warehouses" : almacenCat === "palmhills" ? "Palm Hills" : "Castillo";
+      const res = await fetch("/api/reportes/catalogo/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ conPrecio, conFotos, almacenLabel, productos: items }),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], "Product-Catalog.pdf", { type: "application/pdf" });
+      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+      } else {
+        window.open(URL.createObjectURL(blob), "_blank");
+      }
+      onClose();
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        alert("Could not generate the catalog: " + (err instanceof Error ? err.message : String(err)));
+      }
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  return (
+    <Modal title="Generate Catalog" onClose={onClose}>
+      <Field label="Warehouse">
+        <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+          {([
+            { id: "all", label: "Both" },
+            { id: "palmhills", label: "🌴 Palm Hills" },
+            { id: "castillo", label: "🏰 Castillo" },
+          ] as const).map((o) => (
+            <button
+              key={o.id}
+              onClick={() => setAlmacenCat(o.id)}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${almacenCat === o.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+        <div className="text-[11px] text-muted-foreground mt-1.5">{productosFiltrados.length} product(s) match this filter</div>
+      </Field>
+
+      <div className="flex items-center justify-between bg-muted rounded-xl px-3.5 py-2.5 mb-3">
+        <div className="text-sm font-semibold text-card-foreground">Show prices</div>
+        <button
+          onClick={() => setConPrecio((v) => !v)}
+          className={`w-11 h-6 rounded-full relative transition-colors ${conPrecio ? "bg-primary" : "bg-border"}`}
+        >
+          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${conPrecio ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+
+      <div className="flex items-center justify-between bg-muted rounded-xl px-3.5 py-2.5 mb-4">
+        <div>
+          <div className="text-sm font-semibold text-card-foreground">Include photos</div>
+          <div className="text-[11px] text-muted-foreground">Bigger file, takes longer to generate</div>
+        </div>
+        <button
+          onClick={() => setConFotos((v) => !v)}
+          className={`w-11 h-6 rounded-full relative transition-colors ${conFotos ? "bg-primary" : "bg-border"}`}
+        >
+          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${conFotos ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+        </button>
+      </div>
+
+      <button
+        disabled={generando || !productosFiltrados.length}
+        onClick={generar}
+        className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+      >
+        {generando ? `Preparing photos... ${progreso.hecho}/${progreso.total}` : "Generate PDF"}
+      </button>
+    </Modal>
+  );
+};
+
 const Inventario = () => {
   const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, readOnly } = useData();
   const [showTopProductos, setShowTopProductos] = useState(false);
   const [showListasPrecios, setShowListasPrecios] = useState(false);
+  const [showCatalogo, setShowCatalogo] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
   const topProductosModal = useMemo(() => {
     const d = new Date();
@@ -4950,11 +5104,18 @@ const Inventario = () => {
         >
           🏷️ Lists
         </button>
+        <button
+          onClick={() => setShowCatalogo(true)}
+          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
+        >
+          📖 Catalog
+        </button>
         <span className="text-xs text-muted-foreground shrink-0">
           {filtered.length} prod.
         </span>
       </div>
       {showListasPrecios && <ListasPreciosModal onClose={() => setShowListasPrecios(false)} />}
+      {showCatalogo && <CatalogoModal onClose={() => setShowCatalogo(false)} />}
       {showTopProductos && (
         <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
           <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
