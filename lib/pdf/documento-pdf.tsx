@@ -188,7 +188,7 @@ export async function renderDocumentoPdf(d: DatosDocumento): Promise<Buffer> {
             <View key={i} style={[s.row, { backgroundColor: i % 2 === 0 ? "#ffffff" : "#e3e9da" }]} wrap={false}>
               <Text style={s.cQty}>{l.qty}</Text>
               <Text style={s.cSku}>{l.sku || "—"}</Text>
-              <Text style={s.cDesc}>{l.prodNom}</Text>
+              <Text style={s.cDesc}>{l.prodNom.toUpperCase()}</Text>
               <View style={s.cPrice}>
                 {conDesc ? <Text style={s.strike}>{fmt(l.precioOriginal!)}</Text> : null}
                 <Text style={conDesc ? s.descPrecio : { textAlign: "right" }}>{fmt(l.precio)}</Text>

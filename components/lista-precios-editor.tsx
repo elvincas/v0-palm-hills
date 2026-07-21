@@ -147,7 +147,7 @@ export function ListaPreciosEditorModal({
                 return (
                   <div key={p.id} className="flex items-center gap-2 px-3 py-2.5 border-b border-[#e3e7dd] last:border-b-0 bg-white">
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-gray-800 leading-tight truncate">{p.nom}</div>
+                      <div className="text-xs font-semibold text-gray-800 leading-tight break-words uppercase">{p.nom}</div>
                       <div className="text-[10px] font-mono text-gray-400">
                         {p.sku ? `${p.sku} · ` : ""}base {fmt(p.precio)}
                       </div>

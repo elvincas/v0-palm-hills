@@ -984,7 +984,7 @@ export default function ClientePerfilPage() {
                     style={{ scrollSnapAlign: "start" }}
                   >
                     <div className="text-[9px] font-black mb-1" style={{ color: PH }}>#{i + 1}</div>
-                    <div className="text-[11px] font-semibold text-gray-800 leading-snug mb-1" style={{ display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden", minHeight: "2.1rem" }}>
+                    <div className="text-[11px] font-semibold text-gray-800 leading-snug mb-1 uppercase break-words" style={{ minHeight: "2.1rem" }}>
                       {p.nom}
                     </div>
                     {p.sku && <div className="text-[9px] font-mono text-gray-400 truncate">{p.sku}</div>}

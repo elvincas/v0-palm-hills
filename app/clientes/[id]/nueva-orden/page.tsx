@@ -640,7 +640,7 @@ export default function NuevaOrdenPage() {
                       p.icon || '📦'
                     )}
                   </div>
-                  <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words min-h-[2.25rem]">
+                  <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words min-h-[2.25rem] uppercase">
                     {p.nom}
                   </div>
                   {p.sku && (
@@ -822,7 +822,7 @@ export default function NuevaOrdenPage() {
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-card-foreground truncate">{p.nom}</p>
+                        <p className="text-sm font-medium text-card-foreground break-words uppercase">{p.nom}</p>
                         <p className="text-xs text-muted-foreground">
                           {qty} × {fmt(precioEfectivo(p))}
                           {descuentos[p.id] !== undefined && descuentos[p.id] !== precioBase(p) && (

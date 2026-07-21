@@ -184,7 +184,7 @@ const FilaProducto = ({ l, i, mostrarDescuentoLista }: { l: LineaFactura; i: num
     <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
       <td className="py-2 pl-6 text-gray-700 text-xs">{l.qty}</td>
       <td className="py-2 text-gray-400 font-mono text-[9px]">{l.sku || "—"}</td>
-      <td className="py-2 text-gray-800 text-[10px]">{l.prodNom}</td>
+      <td className="py-2 text-gray-800 text-[10px] uppercase">{l.prodNom}</td>
       <td className="py-2 text-right text-xs">
         {tieneDescuento ? (
           <div className="flex flex-col items-end leading-tight">

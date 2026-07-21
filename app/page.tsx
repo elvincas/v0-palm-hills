@@ -1614,10 +1614,10 @@ const Dashboard = () => {
                       )}
                       <div className="absolute top-1 left-1 text-sm leading-none">{medals[i]}</div>
                       <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1" style={{ background: "linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 100%)" }}>
-                        <div className="text-[8px] font-bold text-white leading-tight truncate">{p.nom}</div>
+                        <div className="text-[8px] font-bold text-white leading-tight truncate uppercase">{p.nom}</div>
                       </div>
                     </div>
-                    <div className="text-[9px] font-semibold text-card-foreground text-center leading-tight line-clamp-2" style={{ minHeight: "1.8rem" }}>
+                    <div className="text-[9px] font-semibold text-card-foreground text-center leading-tight line-clamp-2 uppercase" style={{ minHeight: "1.8rem" }}>
                       {p.nom}
                     </div>
                     {p.sku && <div className="text-[8px] font-mono text-primary/60 text-center truncate w-full">{p.sku}</div>}
@@ -1646,7 +1646,7 @@ const Dashboard = () => {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{p.nom}</div>
+                      <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{p.nom}</div>
                       {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
                       <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
                         <div className="h-full rounded-full" style={{ width: `${barW}%`, background: "var(--primary)" }} />
@@ -2612,7 +2612,7 @@ const Facturas = () => {
                                       setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, prodId: p.id, prodSearch: p.nom, precio: String(p.precio) } : l));
                                       setNcProdOpen(null);
                                     }} className="w-full text-left px-3 py-2 hover:bg-muted border-b border-border last:border-0">
-                                      <div className="text-sm font-medium text-card-foreground">{p.nom}</div>
+                                      <div className="text-sm font-medium text-card-foreground uppercase">{p.nom}</div>
                                       <div className="text-xs text-muted-foreground">{p.sku ? `SKU: ${p.sku} · ` : ""}${fmt(p.precio)}</div>
                                     </button>
                                   ))}
@@ -2892,7 +2892,7 @@ const Facturas = () => {
                                 }}
                                 className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b border-border last:border-0 text-card-foreground"
                               >
-                                <span className="font-medium">{p.sku ? `${p.sku} — ` : ""}{p.nom}</span>
+                                <span className="font-medium uppercase">{p.sku ? `${p.sku} — ` : ""}{p.nom}</span>
                                 <span className={listaCliente?.precios?.[p.id] !== undefined ? "text-[#b09060] font-semibold ml-1" : "text-muted-foreground ml-1"}>{fmt(precioCliente(p))}</span>
                               </button>
                             ))}
@@ -3984,7 +3984,7 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
                   return (
                     <div key={p.id} className="flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 bg-card">
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs font-semibold text-card-foreground leading-tight truncate">{p.nom}</div>
+                        <div className="text-xs font-semibold text-card-foreground leading-tight break-words uppercase">{p.nom}</div>
                         <div className="text-[10px] font-mono text-muted-foreground">
                           {p.sku ? `${p.sku} · ` : ""}base {fmt(p.precio)}
                         </div>
@@ -4833,7 +4833,7 @@ const Inventario = () => {
                   <div key={p.sku || p.nom} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
                     <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{p.nom}</div>
+                      <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{p.nom}</div>
                       {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
                       <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
                         <div className="h-full rounded-full" style={{ width: `${Math.round((p.monto / maxMonto) * 100)}%`, background: "var(--primary)" }} />
@@ -4887,7 +4887,7 @@ const Inventario = () => {
                     p.icon || "📦"
                   )}
                 </div>
-                <div className="text-[13px] font-semibold mb-1 text-card-foreground leading-snug break-words text-pretty min-h-[2.25rem] tracking-tight">
+                <div className="text-[13px] font-semibold mb-1 text-card-foreground leading-snug break-words text-pretty min-h-[2.25rem] tracking-tight uppercase">
                   {p.nom}
                 </div>
                 <div className="text-xs text-muted-foreground font-mono mb-0.5 break-all">
@@ -5116,9 +5116,9 @@ const Inventario = () => {
                             <span className="text-green-600">✓</span>
                           )}
                         </td>
-                        <td className="px-2 py-1.5 text-card-foreground max-w-xs truncate">
+                        <td className="px-2 py-1.5 text-card-foreground max-w-xs break-words uppercase">
                           {r.nom || (
-                            <span className="text-destructive italic">No name</span>
+                            <span className="text-destructive italic normal-case">No name</span>
                           )}
                           {r._error && (
                             <div className="text-xs text-destructive mt-0.5">
@@ -6178,7 +6178,7 @@ const Ordenes = () => {
                           p.icon || "📦"
                         )}
                       </div>
-                      <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words min-h-[2.25rem]">
+                      <div className="text-xs font-bold mb-1 text-card-foreground leading-snug break-words min-h-[2.25rem] uppercase">
                         {p.nom}
                       </div>
                       {p.sku && (
@@ -6388,7 +6388,7 @@ const Ordenes = () => {
                       {item.sku && (
                         <div className="text-sm font-bold font-mono text-primary leading-tight">{item.sku}</div>
                       )}
-                      <div className="text-xs text-card-foreground leading-snug break-words mt-0.5">
+                      <div className="text-xs text-card-foreground leading-snug break-words mt-0.5 uppercase">
                         {item.prodNom}
                       </div>
                       <div className="text-xs text-muted-foreground mt-0.5">Ordered: {item.qty}</div>

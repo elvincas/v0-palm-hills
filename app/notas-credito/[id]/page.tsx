@@ -366,7 +366,7 @@ export default function NotaCreditoPage() {
                     {nota.lineas.map((l, i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #e5e7eb' }}>
                         <td className="py-2.5 pr-3">
-                          <div className="font-semibold text-gray-800 text-sm">{l.prodNom}</div>
+                          <div className="font-semibold text-gray-800 text-sm uppercase">{l.prodNom}</div>
                           {l.sku && <div className="text-[10px] text-gray-400 font-mono">SKU: {l.sku}</div>}
                         </td>
                         <td className="text-center py-2.5 text-gray-700">{l.qty}</td>

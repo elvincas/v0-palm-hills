@@ -147,7 +147,7 @@ export default function RemitoPage() {
                       <span className="font-mono text-sm font-bold text-[#4a6741]">{l.sku || '—'}</span>
                     </td>
                     <td className="py-2.5 pr-4">
-                      <span className="text-sm text-gray-700">{l.prodNom}</span>
+                      <span className="text-sm text-gray-700 uppercase">{l.prodNom}</span>
                     </td>
                     <td className="py-2.5 text-center">
                       <span className="text-sm font-bold text-gray-800">{l.qtyEnviada ?? l.qty}</span>
