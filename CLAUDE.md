@@ -80,7 +80,7 @@ supabase/
 `id`, `nom`, `codigo_cliente` (formato `01-0001`), `tel`, `email`, `dir`, `ciudad`, `estado_dir`, `contacto`, `estado` (Active/Inactive/Waiting), `abierto_sabados`, `foto_local` (base64), `lista_precio_id` (→ listas_precios, nullable)
 
 ### `productos`
-`id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `almacen` (palmhills | castillo | null)
+`id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `almacen` (palmhills | castillo | null), `categorias` (jsonb `{categoriaId: valores[]}`, ver `categorias` abajo)
 
 ### `facturas`
 `id`, `num` (empieza en 1001), `cli` (nombre string), `fecha`, `estado` (Pending/Partially Paid/Paid), `total`, `lineas` (LineaFactura[]), `pagos` ([{monto, fecha, nota?, metodo?}] — metodo: Cash/Zelle/Check/Card/Bank Transfer/Credit), `orden_id` (orden que la generó, para revertir)
@@ -114,6 +114,9 @@ Tabla key/value (RLS authenticated). Keys: `remito_email` (correo fijo de remito
 
 ### `gastos` (2026-07-21)
 `id`, `categoria` (texto, ver `CATEGORIAS_GASTO` en page.tsx), `descripcion`, `monto`, `fecha` (fecha del gasto/vencimiento), `pagado` (bool), `fecha_pago`, `comprobante` (foto base64, opcional). RLS bloquea escritura a rol `visitante` (igual patrón que `mejoras`). Solo los gastos con `pagado = true` cuentan en el P&L, filtrados por `fecha_pago` dentro del periodo — un gasto fijo sin pagar (ej. renta pendiente) NO aparece como gasto todavía (pedido explícito del usuario).
+
+### `categorias` (2026-07-21)
+`id`, `nombre` (ej. "Tipo de Negocio"), `valores` (jsonb string[], ej. `["Farmacias","Supermercados","Beauty Supply","Botanica","99 Cents"]`). Los productos guardan a cuáles valores pertenecen en `productos.categorias` (`{categoriaId: valores[]}`) — un producto puede tener varios valores de la misma categoría y pertenecer a varias categorías. Gestión: botón "🗂️ Categories" en Inventario (mismo patrón bidireccional que "Lists": crear categoría → agregar valores → buscar y asignar productos a un valor) y sección "Categories" en el edit de un producto existente (chips seleccionables, toggle instantáneo vía `setProductoCategoriaValor`, no espera al Save del form). RLS: visitante lee, no escribe (igual que `mejoras`/`gastos`/`compras`). Piloto sembrado: categoría "Tipo de Negocio" con los 5 valores de ejemplo.
 
 ### `compras` (Ingresado de Inventario, 2026-07-21)
 `id`, `num` (auto-incremental, empieza en 1), `proveedor` (texto libre), `num_factura_proveedor` (referencia opcional de la factura del proveedor), `fecha`, `total`, `lineas` (jsonb `LineaCompra[]`: `{prodId, prodNom, sku, qty, costoUnitario, almacen}`), `nota`. RLS bloquea escritura a `visitante`. Al guardar (`addCompra` en el DataContext): suma `qty` al stock de cada producto (solo `palmhills`, `castillo` no lleva stock en vivo — mismo criterio que `ajustarInventario`) y sobrescribe `productos.costo` con el `costoUnitario` más reciente de cada línea. No hay snapshot histórico de costo por compra — el costo del producto es siempre "el más reciente conocido".
