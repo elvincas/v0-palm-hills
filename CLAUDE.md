@@ -185,6 +185,7 @@ Los nombres de producto se muestran SIEMPRE en mayúscula visualmente (clase `up
 - SKUs SIEMPRE en mono gris (el usuario rechazó cambiarles color/fuente)
 - **El usuario exige simetría y alineación perfecta en toda la UI** — mismos altos, filas llenas sin huecos, revisar en móvil ~390px
 - Mobile-first, max-width 480px, safe-area insets; pull-to-refresh propio en todos los tabs (spinner iOS + anillo de progreso, threshold 80px)
+- **Botón "+" (2026-07-22):** componente compartido `AddPillButton` en page.tsx — cápsula verde sólida con degradado sutil y brillo superior, elegida por el usuario entre varios mockups. Va SIEMPRE inline en el header/toolbar de cada tab (junto al buscador, o en la tarjeta de resumen), nunca flotando fijo sobre el contenido — el `fixed bottom-[72px] right-4` circular de antes tapaba filas de la lista. Si abre un menú de varias opciones (Calendario, Inventario), el dropdown se ancla debajo del botón (`relative`/`absolute top-full`), no flota sobre la pantalla.
 
 ### Impresión / PDF (definitivo 2026-07-11)
 NO usar `window.print()`: iOS/WebKit no repite `<thead>` ni respeta cortes de página. Los botones Print/PDF hacen fetch a `/api/facturas/[id]/pdf` o `/api/ordenes/[id]/pdf` (generación con @react-pdf/renderer, size LETTER, header `<View fixed>` repetido por página) y abren el **share sheet nativo** con el archivo (`navigator.share({files})`) → opción Print/Save/AirDrop. Test: `npx tsx scripts/test-pdf.ts`.
