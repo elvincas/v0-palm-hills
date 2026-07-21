@@ -69,6 +69,16 @@ interface ListaPrecio {
   precios: Record<string, number>;
 }
 
+// Categoria (ej. "Tipo de Negocio") + sus valores posibles (ej. "Farmacias",
+// "Supermercados"...). Un producto guarda a cuales valores pertenece por
+// categoria en `Producto.categorias`.
+interface Categoria {
+  id: string;
+  nombre: string;
+  valores: string[];
+  created_at?: string;
+}
+
 interface Producto {
   id: string;
   nom: string;
@@ -86,6 +96,7 @@ interface Producto {
   foto?: string | null;
   foto_v?: number;
   almacen?: "palmhills" | "castillo";
+  categorias?: Record<string, string[]>;
 }
 
 interface LineaFactura {
@@ -477,6 +488,11 @@ interface DataContextType {
   updateListaPrecio: (id: string, l: Omit<ListaPrecio, "id">) => Promise<void>;
   deleteListaPrecio: (id: string) => Promise<void>;
   asignarListaAClientes: (listaId: string | null, clienteIds: string[]) => Promise<void>;
+  categorias: Categoria[];
+  addCategoria: (c: Omit<Categoria, "id">) => Promise<Categoria>;
+  updateCategoria: (id: string, c: Omit<Categoria, "id">) => Promise<void>;
+  deleteCategoria: (id: string) => Promise<void>;
+  setProductoCategoriaValor: (prodId: string, categoriaId: string, valor: string, activo: boolean) => Promise<void>;
   refreshLogs: () => void;
   refreshAll: () => Promise<void>;
   todos: Todo[];
@@ -556,6 +572,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [compras, setCompras] = useState<Compra[]>([]);
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
   const [listasPrecios, setListasPrecios] = useState<ListaPrecio[]>([]);
+  const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -586,7 +603,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const CLIENTE_COLS =
     "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, lista_precio_id, foto_local_v, created_at";
   const PRODUCTO_COLS =
-    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, created_at";
+    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, categorias, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
   // timeout de la base de datos. Con fotos de hasta 500KB, 10 por request = ~5MB,
@@ -682,7 +699,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -694,9 +711,10 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<ListaPrecio>("listas_precios", "*", "created_at", true),
         selectAll<Gasto>("gastos", "*", "fecha", false),
         selectAll<Compra>("compras", "*", "num", false),
+        selectAll<Categoria>("categorias", "*", "created_at", true),
       ]);
       setClientes(c);
-      setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
+      setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
       setFacturas(f);
       setNotasCredito(nc);
       setOrdenes(o.map((row) => ({ ...row, lineas: row.lineas || [] })));
@@ -705,6 +723,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setEventosCalendario(ev);
       setListasPrecios(lp.map((row) => ({ ...row, precios: row.precios || {} })));
       setGastos(ga);
+      setCategorias(cat.map((row) => ({ ...row, valores: row.valores || [] })));
       setCompras(co.map((row) => ({ ...row, lineas: row.lineas || [] })));
       await refreshLogs();
 
@@ -1330,6 +1349,52 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Price list "${nombre}" assigned to ${clienteIds.length} client(s)`);
   };
 
+  // --- Categorias (Tipo de Negocio, etc.) ---
+  const addCategoria = async (c: Omit<Categoria, "id">) => {
+    const { data, error } = await supabase.from("categorias").insert(c).select().single();
+    if (error) throw new Error(error.message);
+    const cat = { ...(data as Categoria), valores: (data as Categoria).valores || [] };
+    setCategorias((prev) => [...prev, cat]);
+    await logAct(`Category created: ${c.nombre}`);
+    return cat;
+  };
+
+  const updateCategoria = async (id: string, c: Omit<Categoria, "id">) => {
+    const { data, error } = await supabase.from("categorias").update(c).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setCategorias((prev) => prev.map((x) => (x.id === id ? { ...(data as Categoria), valores: (data as Categoria).valores || [] } : x)));
+  };
+
+  const deleteCategoria = async (id: string) => {
+    const nombre = categorias.find((x) => x.id === id)?.nombre || "";
+    const { error } = await supabase.from("categorias").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setCategorias((prev) => prev.filter((x) => x.id !== id));
+    // Limpiar la categoria borrada de todos los productos que la tuvieran
+    setProductos((prev) =>
+      prev.map((p) => {
+        if (!p.categorias?.[id]) return p;
+        const rest = { ...p.categorias };
+        delete rest[id];
+        return { ...p, categorias: rest };
+      })
+    );
+    await logAct(`Category deleted: ${nombre}`);
+  };
+
+  // Marca/desmarca UN valor de UNA categoria en UN producto, sin tocar el
+  // resto del producto (a diferencia de updateProducto, que reemplaza todo).
+  const setProductoCategoriaValor = async (prodId: string, categoriaId: string, valor: string, activo: boolean) => {
+    const p = productos.find((x) => x.id === prodId);
+    if (!p) return;
+    const actuales = p.categorias?.[categoriaId] || [];
+    const nuevos = activo ? Array.from(new Set([...actuales, valor])) : actuales.filter((v) => v !== valor);
+    const categoriasNuevas = { ...(p.categorias || {}), [categoriaId]: nuevos };
+    const { error } = await supabase.from("productos").update({ categorias: categoriasNuevas }).eq("id", prodId);
+    if (error) throw new Error(error.message);
+    setProductos((prev) => prev.map((x) => (x.id === prodId ? { ...x, categorias: categoriasNuevas } : x)));
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1386,6 +1451,11 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     updateListaPrecio,
     deleteListaPrecio,
     asignarListaAClientes,
+    categorias,
+    addCategoria,
+    updateCategoria,
+    deleteCategoria,
+    setProductoCategoriaValor,
     refreshLogs,
     refreshAll: loadAll,
     todos,
@@ -4405,11 +4475,243 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
+  const { categorias, addCategoria, updateCategoria, deleteCategoria, setProductoCategoriaValor, productos, readOnly } = useData();
+  const [selId, setSelId] = useState<string | null>(null);
+  const [nuevoNombre, setNuevoNombre] = useState("");
+  const [valorInput, setValorInput] = useState("");
+  const [valorSel, setValorSel] = useState<string | null>(null);
+  const [prodSearch, setProdSearch] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const categoria = categorias.find((c) => c.id === selId) || null;
+
+  const productosConValor = (categoriaId: string, valor: string) =>
+    productos.filter((p) => (p.categorias?.[categoriaId] || []).includes(valor));
+
+  const crearCategoria = async () => {
+    const nombre = nuevoNombre.trim();
+    if (!nombre || saving) return;
+    setSaving(true);
+    try {
+      const c = await addCategoria({ nombre, valores: [] });
+      setNuevoNombre("");
+      setSelId(c.id);
+    } catch (err) {
+      alert("Error creating category: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const agregarValor = async () => {
+    if (!categoria) return;
+    const valor = valorInput.trim();
+    if (!valor || categoria.valores.some((v) => v.toLowerCase() === valor.toLowerCase())) { setValorInput(""); return; }
+    try {
+      await updateCategoria(categoria.id, { nombre: categoria.nombre, valores: [...categoria.valores, valor] });
+      setValorInput("");
+      setValorSel(valor);
+    } catch (err) {
+      alert("Error adding value: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const quitarValor = async (valor: string) => {
+    if (!categoria) return;
+    const n = productosConValor(categoria.id, valor).length;
+    if (!confirm(`Remove "${valor}"?${n ? ` ${n} product(s) will lose this tag.` : ""}`)) return;
+    try {
+      await updateCategoria(categoria.id, { nombre: categoria.nombre, valores: categoria.valores.filter((v) => v !== valor) });
+      if (valorSel === valor) setValorSel(null);
+    } catch (err) {
+      alert("Error removing value: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const borrarCategoria = async () => {
+    if (!categoria) return;
+    if (!confirm(`Delete category "${categoria.nombre}"? Products will lose all its tags.`)) return;
+    try {
+      await deleteCategoria(categoria.id);
+      setSelId(null);
+    } catch (err) {
+      alert("Error deleting category: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const toggleProducto = async (prodId: string, tiene: boolean) => {
+    if (!categoria || !valorSel) return;
+    try {
+      await setProductoCategoriaValor(prodId, categoria.id, valorSel, !tiene);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const prodResultados = useMemo(() => {
+    if (!categoria || !valorSel) return [];
+    const base = prodSearch.trim()
+      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom)
+      : [...productos].sort((a, b) => {
+          const aIn = (a.categorias?.[categoria.id] || []).includes(valorSel) ? 0 : 1;
+          const bIn = (b.categorias?.[categoria.id] || []).includes(valorSel) ? 0 : 1;
+          if (aIn !== bIn) return aIn - bIn;
+          return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
+        });
+    return base.slice(0, 40);
+  }, [categoria, valorSel, prodSearch, productos]);
+
+  return (
+    <Modal title={categoria ? categoria.nombre : "Categories"} onClose={onClose}>
+      {!categoria ? (
+        <>
+          <p className="text-xs text-muted-foreground mb-3">
+            Group products by business type, product type, or anything else — like "Tipo de Negocio" with values Farmacias, Supermercados, Beauty Supply...
+          </p>
+          {categorias.length > 0 && (
+            <div className="border border-border rounded-2xl overflow-hidden mb-3">
+              {categorias.map((c) => (
+                <button
+                  key={c.id}
+                  onClick={() => { setSelId(c.id); setValorSel(null); setProdSearch(""); }}
+                  className="w-full flex items-center gap-2.5 px-4 py-3 border-b border-border last:border-b-0 bg-card text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-card-foreground truncate">{c.nombre}</div>
+                    <div className="text-[11px] text-muted-foreground">{c.valores.length} value{c.valores.length === 1 ? "" : "s"}</div>
+                  </div>
+                  <span className="text-muted-foreground text-lg">›</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {categorias.length === 0 && <Empty text="No categories yet." />}
+          {!readOnly && (
+            <div className="flex gap-2 mt-2">
+              <input
+                value={nuevoNombre}
+                onChange={(e) => setNuevoNombre(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") crearCategoria(); }}
+                placeholder="New category name (e.g. Tipo de Negocio)…"
+                autoComplete="off"
+                className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={crearCategoria}
+                disabled={!nuevoNombre.trim() || saving}
+                className={`shrink-0 px-4 py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+              >
+                {saving ? "..." : "Create"}
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => { setSelId(null); setValorSel(null); setProdSearch(""); }}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-card border border-border text-[13px] font-medium text-primary"
+            >
+              ‹ Categories
+            </button>
+            {!readOnly && (
+              <button onClick={borrarCategoria} className="text-xs font-medium text-destructive underline">
+                Delete category
+              </button>
+            )}
+          </div>
+
+          <Field label="Values">
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {categoria.valores.map((v) => (
+                <button
+                  key={v}
+                  onClick={() => setValorSel(v === valorSel ? null : v)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold border flex items-center gap-1.5 ${
+                    valorSel === v ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-transparent"
+                  }`}
+                >
+                  {v}
+                  {!readOnly && (
+                    <span onClick={(e) => { e.stopPropagation(); quitarValor(v); }} className="opacity-70 hover:opacity-100">×</span>
+                  )}
+                </button>
+              ))}
+              {categoria.valores.length === 0 && <span className="text-xs text-muted-foreground">No values yet — add one below.</span>}
+            </div>
+            {!readOnly && (
+              <div className="flex gap-2">
+                <input
+                  value={valorInput}
+                  onChange={(e) => setValorInput(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Enter") agregarValor(); }}
+                  placeholder="Add value (e.g. Farmacias)…"
+                  autoComplete="off"
+                  className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                />
+                <button onClick={agregarValor} disabled={!valorInput.trim()} className={`shrink-0 px-3 py-2 rounded-xl font-bold text-xs ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+                  Add
+                </button>
+              </div>
+            )}
+          </Field>
+
+          {valorSel ? (
+            <>
+              <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+                Products in "{valorSel}"
+              </div>
+              <input
+                value={prodSearch}
+                onChange={(e) => setProdSearch(e.target.value)}
+                placeholder="Search product by name, SKU…"
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
+              />
+              <div className="border border-border rounded-2xl overflow-hidden">
+                {prodResultados.map((p) => {
+                  const tiene = (p.categorias?.[categoria.id] || []).includes(valorSel);
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => !readOnly && toggleProducto(p.id, tiene)}
+                      className="w-full flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 bg-card text-left"
+                    >
+                      <span
+                        className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center text-[11px] font-bold ${
+                          tiene ? "bg-primary border-primary text-primary-foreground" : "border-border bg-background text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-semibold text-card-foreground truncate uppercase leading-tight">{p.nom}</div>
+                        <div className="text-[10px] font-mono text-muted-foreground">{p.sku}</div>
+                      </div>
+                    </button>
+                  );
+                })}
+                {prodResultados.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No products found</div>}
+              </div>
+              <p className="text-[11px] text-muted-foreground mt-2">Tap a product to add or remove this tag.</p>
+            </>
+          ) : (
+            <p className="text-xs text-muted-foreground text-center py-4">Pick a value above to see/assign its products.</p>
+          )}
+        </>
+      )}
+    </Modal>
+  );
+};
+
 const Inventario = () => {
-  const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, readOnly } = useData();
+  const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, categorias, setProductoCategoriaValor, readOnly } = useData();
   const [showTopProductos, setShowTopProductos] = useState(false);
   const [showListasPrecios, setShowListasPrecios] = useState(false);
   const [showCatalogo, setShowCatalogo] = useState(false);
+  const [showCategorias, setShowCategorias] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
   const topProductosModal = useMemo(() => {
     const d = new Date();
@@ -5110,12 +5412,19 @@ const Inventario = () => {
         >
           📖 Catalog
         </button>
+        <button
+          onClick={() => setShowCategorias(true)}
+          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
+        >
+          🗂️ Categories
+        </button>
         <span className="text-xs text-muted-foreground shrink-0">
           {filtered.length} prod.
         </span>
       </div>
       {showListasPrecios && <ListasPreciosModal onClose={() => setShowListasPrecios(false)} />}
       {showCatalogo && <CatalogoModal onClose={() => setShowCatalogo(false)} />}
+      {showCategorias && <CategoriasModal onClose={() => setShowCategorias(false)} />}
       {showTopProductos && (
         <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
           <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
@@ -5641,6 +5950,39 @@ const Inventario = () => {
               />
             </div>
           </Field>
+          {editId && categorias.length > 0 && (
+            <Field label="Categories">
+              <div className="space-y-2.5">
+                {categorias.map((c) => {
+                  const activos = productos.find((p) => p.id === editId)?.categorias?.[c.id] || [];
+                  return (
+                    <div key={c.id}>
+                      <div className="text-[11px] font-bold text-muted-foreground mb-1">{c.nombre}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {c.valores.map((v) => {
+                          const activo = activos.includes(v);
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              disabled={readOnly}
+                              onClick={() => setProductoCategoriaValor(editId, c.id, v, !activo)}
+                              className={`px-3 py-1.5 rounded-full text-xs font-bold border ${
+                                activo ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-transparent"
+                              }`}
+                            >
+                              {v}
+                            </button>
+                          );
+                        })}
+                        {c.valores.length === 0 && <span className="text-xs text-muted-foreground">No values defined yet — add them from "Categories" in Inventory.</span>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Field>
+          )}
           <Row2>
             <Field label="Price ($)">
               <input
