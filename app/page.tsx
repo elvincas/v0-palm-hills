@@ -264,6 +264,10 @@ interface Compra {
   total: number;
   lineas: LineaCompra[];
   nota?: string;
+  // Comprobante de la factura del proveedor (foto, PDF o Excel) como data URI
+  // base64, con el nombre original para mostrarlo y para el tipo (data:<mime>;base64,...).
+  comprobante?: string | null;
+  comprobante_nombre?: string | null;
   created_at?: string;
 }
 
@@ -406,11 +410,12 @@ const LoadMoreButton = ({
   );
 };
 
-// Boton "+" en pildora: relleno verde solido con un degradado sutil y un
-// brillo fino arriba (mismo verde/borde/sombra que los botones planos de
-// documentos, ej. Print/PDF, pero en forma ovalada). Se usa inline en el
-// header/toolbar de cada tab en vez de flotar sobre el contenido — antes
-// tapaba filas de la tabla al quedar fijo en la esquina inferior.
+// Boton "+" en pildora: relleno verde solido con un degradado sutil (sin
+// brillo/highlight — el usuario lo pidio quitar), mismo verde/borde/sombra
+// que los botones planos de documentos (ej. Print/PDF) pero ovalado.
+// Flota fijo en la esquina inferior (ubicacion que el usuario prefiere),
+// un poco mas arriba que el circulo original.
+const ADD_PILL_POS = "fixed bottom-24 right-4 z-[6]";
 const AddPillButton = ({
   onClick,
   active,
@@ -426,9 +431,8 @@ const AddPillButton = ({
     type="button"
     onClick={onClick}
     aria-label={ariaLabel}
-    className={`relative shrink-0 w-12 h-9 rounded-full bg-gradient-to-b from-[#5c7d52] via-[#4a6741] to-[#3c5536] border border-[#3c5536] shadow-[0_3px_8px_rgba(28,31,25,0.16),0_1px_2px_rgba(28,31,25,0.08)] active:scale-[0.97] transition-all flex items-center justify-center text-white ${className}`}
+    className={`shrink-0 w-12 h-9 rounded-full bg-gradient-to-b from-[#5c7d52] via-[#4a6741] to-[#3c5536] border border-[#3c5536] shadow-[0_3px_8px_rgba(28,31,25,0.16),0_1px_2px_rgba(28,31,25,0.08)] active:scale-[0.97] transition-all flex items-center justify-center text-white ${className}`}
   >
-    <span className="pointer-events-none absolute top-1 left-2.5 right-2.5 h-[40%] rounded-full bg-gradient-to-b from-white/35 to-white/0" />
     <svg
       width="16"
       height="16"
@@ -2329,33 +2333,33 @@ const Calendario = () => {
               ›
             </button>
           </div>
-          {!readOnly && (
-            <div className="relative">
-              {menuOpen && (
-                <>
-                  <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-                  <div className="absolute right-0 top-full mt-2 z-[7] flex flex-col gap-2 items-end">
-                    <button
-                      onClick={() => abrirModalEvento("delivery")}
-                      className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-                    >
-                      <span className="text-base" aria-hidden="true">{EVENTO_INFO.delivery.icon}</span>
-                      {EVENTO_INFO.delivery.label}
-                    </button>
-                    <button
-                      onClick={() => abrirModalEvento("client")}
-                      className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-                    >
-                      <span className="text-base" aria-hidden="true">📍💰📝</span>
-                      Client event
-                    </button>
-                  </div>
-                </>
-              )}
-              <AddPillButton aria-label="Add to calendar" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
-            </div>
-          )}
         </div>
+        {menuOpen && (
+          <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+        )}
+        {!readOnly && (
+          <div className={`${ADD_PILL_POS} flex flex-col items-end gap-2`}>
+            {menuOpen && (
+              <div className="flex flex-col gap-2 mb-1">
+                <button
+                  onClick={() => abrirModalEvento("delivery")}
+                  className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                >
+                  <span className="text-base" aria-hidden="true">{EVENTO_INFO.delivery.icon}</span>
+                  {EVENTO_INFO.delivery.label}
+                </button>
+                <button
+                  onClick={() => abrirModalEvento("client")}
+                  className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+                >
+                  <span className="text-base" aria-hidden="true">📍💰📝</span>
+                  Client event
+                </button>
+              </div>
+            )}
+            <AddPillButton aria-label="Add to calendar" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+          </div>
+        )}
 
         <div className="grid grid-cols-7 gap-1 mb-1">
           {DIAS_CORTOS.map((d, i) => (
@@ -2831,13 +2835,14 @@ const Facturas = () => {
               <input value={ncQ} onChange={(e) => setNcQ(e.target.value)} placeholder="Search by client..." className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
               {ncQ && <button onClick={() => setNcQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
             </div>
-            {!readOnly && (
-              <AddPillButton
-                aria-label="New credit note"
-                onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setNcTipo("amount"); setNcLineas([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]); setShowNcForm(true); }}
-              />
-            )}
           </div>
+          {!readOnly && (
+            <AddPillButton
+              className={ADD_PILL_POS}
+              aria-label="New credit note"
+              onClick={() => { setNcForm({ cli: "", fecha: today(), monto: "", motivo: "" }); setNcCliSearch(""); setNcTipo("amount"); setNcLineas([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]); setShowNcForm(true); }}
+            />
+          )}
           {(() => {
             const ncs = notasCredito.filter(n => !ncQ || n.cli.toLowerCase().includes(ncQ.toLowerCase())).sort((a,b) => b.num - a.num);
             return ncs.length ? (
@@ -3089,8 +3094,8 @@ const Facturas = () => {
             <path d="M18.7 8l-5.1 5.2-3-3L7 14" />
           </svg>
         </button>
-        {!readOnly && <AddPillButton aria-label="New invoice" onClick={() => setShow(true)} />}
       </div>
+      {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New invoice" onClick={() => setShow(true)} />}
       {filtered.length ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
           {visibleFacturas.map((f, i) => (
@@ -5527,40 +5532,40 @@ const Inventario = () => {
             <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>
           )}
         </div>
-        {!readOnly && (
-          <div className="relative">
-            {menuOpen && (
-              <>
-                <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
-                <div className="absolute right-0 top-full mt-2 z-[7] flex flex-col gap-2 items-end">
-                  <button
-                    onClick={openNew}
-                    className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-                  >
-                    <span className="text-base" aria-hidden="true">✏️</span>
-                    Add Manually
-                  </button>
-                  <button
-                    onClick={openBulk}
-                    className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-                  >
-                    <span className="text-base" aria-hidden="true">📄</span>
-                    Bulk Upload
-                  </button>
-                  <button
-                    onClick={() => { setMenuOpen(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); setShowBulkFotos(true); }}
-                    className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
-                  >
-                    <span className="text-base" aria-hidden="true">🖼️</span>
-                    Bulk Photos (ZIP)
-                  </button>
-                </div>
-              </>
-            )}
-            <AddPillButton aria-label="Add product" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
-          </div>
-        )}
       </div>
+      {menuOpen && (
+        <div className="fixed inset-0 z-[6]" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+      )}
+      {!readOnly && (
+        <div className={`${ADD_PILL_POS} flex flex-col items-end gap-2`}>
+          {menuOpen && (
+            <div className="flex flex-col gap-2 mb-1">
+              <button
+                onClick={openNew}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">✏️</span>
+                Add Manually
+              </button>
+              <button
+                onClick={openBulk}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">📄</span>
+                Bulk Upload
+              </button>
+              <button
+                onClick={() => { setMenuOpen(false); setBulkFotosMatches([]); setBulkFotosNoMatch([]); setShowBulkFotos(true); }}
+                className="flex items-center gap-2 bg-card border border-border text-card-foreground rounded-xl px-4 py-2.5 shadow-lg text-sm font-medium whitespace-nowrap"
+              >
+                <span className="text-base" aria-hidden="true">🖼️</span>
+                Bulk Photos (ZIP)
+              </button>
+            </div>
+          )}
+          <AddPillButton aria-label="Add product" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
+        </div>
+      )}
       <div className="flex items-center gap-2 mb-3">
         <label
           htmlFor="sortBy"
@@ -6663,11 +6668,7 @@ const Ordenes = () => {
 
   return (
     <div>
-      {!readOnly && (
-        <div className="flex justify-end mb-3">
-          <AddPillButton aria-label="New order" onClick={() => { setShowClientPicker(true); setPickerSearch(""); }} />
-        </div>
-      )}
+      {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New order" onClick={() => { setShowClientPicker(true); setPickerSearch(""); }} />}
       {draftOrdenes.length > 0 && (
         <div className="mb-3 space-y-2">
           {draftOrdenes.map((d) => (
@@ -7488,11 +7489,7 @@ const Mejoras = () => {
         </div>
       </div>
 
-      {!readOnly && (
-        <div className="flex justify-end mb-3">
-          <AddPillButton aria-label="Add improvement" onClick={openNew} />
-        </div>
-      )}
+      {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="Add improvement" onClick={openNew} />}
 
       {mejoras.length === 0 ? (
         <div className="bg-card rounded-2xl p-3.5 border border-border">
@@ -7620,6 +7617,9 @@ const Compras = () => {
   const [lineas, setLineas] = useState<LineaCompra[]>([]);
   const [prodSearch, setProdSearch] = useState("");
   const [prodOpen, setProdOpen] = useState(false);
+  const [comprobante, setComprobante] = useState<string | null>(null);
+  const [comprobanteNombre, setComprobanteNombre] = useState("");
+  const [subiendoComprobante, setSubiendoComprobante] = useState(false);
 
   const comprasOrdenadas = useMemo(() => [...compras].sort((a, b) => b.num - a.num), [compras]);
   const { visible, hasMore, remaining, loadMore } = usePagedList(comprasOrdenadas, []);
@@ -7636,6 +7636,39 @@ const Compras = () => {
     setNota("");
     setLineas([]);
     setProdSearch("");
+    setComprobante(null);
+    setComprobanteNombre("");
+  };
+
+  // Foto: se reduce (mismo compresor que el comprobante de pago de gastos).
+  // PDF/Excel: se guardan tal cual, no hay forma practica de comprimirlos en
+  // el navegador.
+  const handleComprobanteUpload = async (file: File | undefined) => {
+    if (!file) return;
+    const MAX_BYTES = 5 * 1024 * 1024;
+    if (file.size > MAX_BYTES) {
+      alert("That file is too large (max 5MB). Try a smaller photo or a compressed PDF.");
+      return;
+    }
+    setSubiendoComprobante(true);
+    try {
+      if (file.type.startsWith("image/")) {
+        setComprobante(await compressComprobante(file));
+      } else {
+        const dataUrl = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        setComprobante(dataUrl);
+      }
+      setComprobanteNombre(file.name);
+    } catch {
+      alert("Could not read that file");
+    } finally {
+      setSubiendoComprobante(false);
+    }
   };
 
   const agregarProducto = (p: Producto) => {
@@ -7674,6 +7707,8 @@ const Compras = () => {
         total: +total.toFixed(2),
         lineas,
         nota: nota.trim() || undefined,
+        comprobante: comprobante || undefined,
+        comprobante_nombre: comprobante ? comprobanteNombre : undefined,
       });
       reset();
       setShow(false);
@@ -7696,12 +7731,12 @@ const Compras = () => {
 
   return (
     <div>
-      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3 flex items-center gap-3">
-        <p className="text-xs text-muted-foreground flex-1">
+      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+        <p className="text-xs text-muted-foreground">
           Record each supplier purchase invoice here: it adds the quantity to inventory and updates the product's cost, feeding the P&L report's cost of goods sold.
         </p>
-        {!readOnly && <AddPillButton aria-label="New purchase" onClick={() => { reset(); setShow(true); }} />}
       </div>
+      {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New purchase" onClick={() => { reset(); setShow(true); }} />}
 
       {comprasOrdenadas.length ? (
         <div className="bg-card border border-border rounded-2xl overflow-hidden">
@@ -7794,6 +7829,36 @@ const Compras = () => {
             <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Reference, delivery details..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
           </Field>
 
+          <Field label="Supporting document (optional)">
+            <p className="text-[11px] text-muted-foreground mb-1.5 -mt-1">Photo, PDF or Excel of the supplier's invoice — proof of what was ordered and billed.</p>
+            {comprobante ? (
+              <div className="flex items-center gap-2.5 border border-border rounded-xl p-2.5">
+                {comprobante.startsWith("data:image/") ? (
+                  <img src={comprobante} alt="Supporting document" className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" />
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-xl shrink-0" aria-hidden="true">
+                    {comprobante.startsWith("data:application/pdf") ? "📕" : "📊"}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 text-xs font-medium text-card-foreground truncate">{comprobanteNombre}</div>
+                <a href={comprobante} target="_blank" rel="noreferrer" download={comprobanteNombre} className="text-xs font-bold text-primary shrink-0">View</a>
+                <button onClick={() => { setComprobante(null); setComprobanteNombre(""); }} className="text-muted-foreground hover:text-destructive text-lg leading-none px-1 shrink-0">×</button>
+              </div>
+            ) : (
+              <label className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-dashed border-border text-sm text-muted-foreground cursor-pointer">
+                {subiendoComprobante ? "Uploading..." : "📎 Upload photo, PDF or Excel"}
+                <input
+                  type="file"
+                  accept="image/*,application/pdf,.pdf,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                  capture="environment"
+                  className="hidden"
+                  disabled={subiendoComprobante}
+                  onChange={(e) => handleComprobanteUpload(e.target.files?.[0])}
+                />
+              </label>
+            )}
+          </Field>
+
           {lineas.length > 0 && (
             <div className="flex items-center justify-between bg-primary/10 rounded-xl px-4 py-2.5 mb-3">
               <span className="text-sm font-bold text-card-foreground">Total</span>
@@ -7831,6 +7896,26 @@ const Compras = () => {
             <span className="text-sm font-bold text-card-foreground">Total</span>
             <span className="text-lg font-black text-primary">{fmt(detalle.total)}</span>
           </div>
+
+          {detalle.comprobante && (
+            <div className="mb-4">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5">Supporting document</div>
+              <div className="flex items-center gap-2.5 border border-border rounded-xl p-2.5">
+                {detalle.comprobante.startsWith("data:image/") ? (
+                  <a href={detalle.comprobante} target="_blank" rel="noreferrer">
+                    <img src={detalle.comprobante} alt="Supporting document" className="w-12 h-12 rounded-lg object-cover border border-border shrink-0" />
+                  </a>
+                ) : (
+                  <div className="w-12 h-12 rounded-lg bg-muted flex items-center justify-center text-xl shrink-0" aria-hidden="true">
+                    {detalle.comprobante.startsWith("data:application/pdf") ? "📕" : "📊"}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0 text-xs font-medium text-card-foreground truncate">{detalle.comprobante_nombre || "Document"}</div>
+                <a href={detalle.comprobante} target="_blank" rel="noreferrer" download={detalle.comprobante_nombre || undefined} className="text-xs font-bold text-primary shrink-0">View</a>
+              </div>
+            </div>
+          )}
+
           {!readOnly && (
             <button onClick={() => handleDelete(detalle)} className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_DESTRUCTIVE}`}>
               Delete Purchase
@@ -8363,14 +8448,12 @@ const GestionarUsuarios = () => {
   return (
     <div>
       <div className="grid grid-cols-1 gap-2.5 mb-3.5">
-        <div className="bg-card rounded-xl p-3.5 border border-border flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xs text-muted-foreground mb-1">Active users</div>
-            <div className="text-2xl font-bold text-card-foreground">{users.length}</div>
-          </div>
-          <AddPillButton aria-label="Create user" onClick={() => setShow(true)} />
+        <div className="bg-card rounded-xl p-3.5 border border-border">
+          <div className="text-xs text-muted-foreground mb-1">Active users</div>
+          <div className="text-2xl font-bold text-card-foreground">{users.length}</div>
         </div>
       </div>
+      <AddPillButton className={ADD_PILL_POS} aria-label="Create user" onClick={() => setShow(true)} />
 
       <div className="bg-card rounded-2xl p-3.5 border border-border mb-20">
         {users.length === 0 ? (
