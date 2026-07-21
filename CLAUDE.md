@@ -77,7 +77,7 @@ supabase/
 ## Modelos de Datos (tablas Supabase)
 
 ### `clientes`
-`id`, `nom`, `codigo_cliente` (formato `01-0001`), `tel`, `email`, `dir`, `ciudad`, `estado_dir`, `contacto`, `estado` (Active/Inactive/Waiting), `abierto_sabados`, `foto_local` (base64), `lista_precio_id` (→ listas_precios, nullable)
+`id`, `nom`, `codigo_cliente` (formato `01-0001`), `tel` (teléfono principal), `email`, `dir`, `ciudad`, `estado_dir`, `contacto`, `estado` (Active/Inactive/Waiting), `abierto_sabados`, `foto_local` (base64), `lista_precio_id` (→ listas_precios, nullable), `fax`, `telefonos` (jsonb `TelefonoContacto[]`: `{rol, nombre?, establecimiento?, num}` — contactos adicionales del cliente, ej. "Manager · Store #2 — Pete — (551) 248-3442"; `rol` es de una lista fija en `ROLES_TELEFONO` (Store/Owner/Manager/Payments/Places orders). Todo número (principal y adicionales) se formatea en vivo a `(xxx) xxx-xxxx` con `formatPhone()` — 2026-07-21, definida por duplicado en `app/page.tsx` y `app/clientes/[id]/page.tsx`, mismo patrón que otros helpers puros del proyecto)
 
 ### `productos`
 `id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `almacen` (palmhills | castillo | null), `categorias` (jsonb `{categoriaId: valores[]}`, ver `categorias` abajo)
