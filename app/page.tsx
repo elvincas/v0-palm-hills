@@ -8,7 +8,7 @@ import { flexibleSearch, normTag } from "@/lib/search";
 import "react-easy-crop/react-easy-crop.css";
 import JSZip from "jszip";
 import type { CropperProps } from "react-easy-crop";
-import { BottomNav, NAV_TABS } from "@/components/bottom-nav";
+import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom-nav";
 import { proximaFechaEntrega } from "@/lib/delivery";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
@@ -187,6 +187,62 @@ interface Mejora {
 interface LogEntry {
   msg: string;
   ts: string;
+}
+
+// Categorias fijas de gastos operativos para un negocio B2B tipo almacen.
+// "Other" siempre disponible para lo que no encaje.
+const CATEGORIAS_GASTO = [
+  "Payroll",
+  "Rent",
+  "Phone",
+  "Electricity",
+  "Water",
+  "Gas",
+  "Internet",
+  "Parking Meter",
+  "Supplies",
+  "Insurance",
+  "Vehicle Maintenance",
+  "Facility Maintenance",
+  "Software & Subscriptions",
+  "Professional Fees",
+  "Advertising & Marketing",
+  "Licenses & Permits",
+  "Bank & Card Fees",
+  "Other",
+] as const;
+
+interface Gasto {
+  id: string;
+  categoria: string;
+  descripcion?: string;
+  monto: number;
+  fecha: string;
+  pagado: boolean;
+  fecha_pago?: string | null;
+  comprobante?: string | null;
+  created_at?: string;
+}
+
+interface LineaCompra {
+  prodId: string;
+  prodNom: string;
+  sku?: string;
+  qty: number;
+  costoUnitario: number;
+  almacen?: "palmhills" | "castillo";
+}
+
+interface Compra {
+  id: string;
+  num: number;
+  proveedor: string;
+  num_factura_proveedor?: string;
+  fecha: string;
+  total: number;
+  lineas: LineaCompra[];
+  nota?: string;
+  created_at?: string;
 }
 
 type TipoEvento = "delivery" | "visit" | "collect_money" | "order_request";
@@ -426,6 +482,13 @@ interface DataContextType {
   todos: Todo[];
   addTodo: (t: Omit<Todo, "id" | "created_at" | "completado">) => Promise<void>;
   toggleTodo: (id: string) => Promise<void>;
+  gastos: Gasto[];
+  addGasto: (g: Omit<Gasto, "id">) => Promise<void>;
+  updateGasto: (id: string, g: Omit<Gasto, "id">) => Promise<void>;
+  deleteGasto: (id: string) => Promise<void>;
+  compras: Compra[];
+  addCompra: (c: Omit<Compra, "id" | "num">) => Promise<void>;
+  deleteCompra: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -489,6 +552,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [remitos, setRemitos] = useState<Remito[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
+  const [gastos, setGastos] = useState<Gasto[]>([]);
+  const [compras, setCompras] = useState<Compra[]>([]);
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
   const [listasPrecios, setListasPrecios] = useState<ListaPrecio[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
@@ -617,7 +682,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -627,6 +692,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Mejora>("mejoras", "*", "created_at", false),
         selectAll<EventoCalendario>("eventos_calendario", "*", "fecha", true),
         selectAll<ListaPrecio>("listas_precios", "*", "created_at", true),
+        selectAll<Gasto>("gastos", "*", "fecha", false),
+        selectAll<Compra>("compras", "*", "num", false),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [] })));
@@ -637,6 +704,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setMejoras(e);
       setEventosCalendario(ev);
       setListasPrecios(lp.map((row) => ({ ...row, precios: row.precios || {} })));
+      setGastos(ga);
+      setCompras(co.map((row) => ({ ...row, lineas: row.lineas || [] })));
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1124,6 +1193,73 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Improvement updated: ${m.titulo}`);
   };
 
+  // --- Gastos (P&L: solo los pagados cuentan como gasto real del periodo) ---
+  const sanitizeGasto = (g: Omit<Gasto, "id">) => ({
+    categoria: g.categoria || "Other",
+    descripcion: (g.descripcion || "").trim(),
+    monto: Math.max(0, Number(g.monto) || 0),
+    fecha: g.fecha,
+    pagado: !!g.pagado,
+    fecha_pago: g.pagado ? g.fecha_pago || null : null,
+    comprobante: g.pagado ? g.comprobante || null : null,
+  });
+
+  const addGasto = async (g: Omit<Gasto, "id">) => {
+    const { data, error } = await supabase.from("gastos").insert(sanitizeGasto(g)).select().single();
+    if (error) throw new Error(error.message);
+    setGastos((prev) => [data as Gasto, ...prev]);
+    await logAct(`Expense added: ${g.categoria} — ${fmt(g.monto)}`);
+  };
+
+  const updateGasto = async (id: string, g: Omit<Gasto, "id">) => {
+    const { data, error } = await supabase.from("gastos").update(sanitizeGasto(g)).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setGastos((prev) => prev.map((e) => (e.id === id ? (data as Gasto) : e)));
+    await logAct(g.pagado ? `Expense marked as paid: ${g.categoria} — ${fmt(g.monto)}` : `Expense updated: ${g.categoria}`);
+  };
+
+  const deleteGasto = async (id: string) => {
+    const { error } = await supabase.from("gastos").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setGastos((prev) => prev.filter((e) => e.id !== id));
+    await logAct(`Expense deleted`);
+  };
+
+  // --- Compras (ingresado de inventario): suma stock (solo palmhills, igual
+  // que ajustarInventario) y actualiza el costo del producto al mas reciente.
+  const addCompra = async (c: Omit<Compra, "id" | "num">) => {
+    const { data: maxRow } = await supabase.from("compras").select("num").order("num", { ascending: false }).limit(1);
+    const num = (maxRow && maxRow.length ? Number(maxRow[0].num) || 0 : 0) + 1;
+    const { data, error } = await supabase
+      .from("compras")
+      .insert({ ...c, num, proveedor: (c.proveedor || "").trim() })
+      .select()
+      .single();
+    if (error) throw new Error(error.message);
+    setCompras((prev) => [data as Compra, ...prev]);
+
+    // Actualizar costo de cada producto y sumar stock (palmhills en vivo; castillo no lleva stock)
+    await Promise.all(
+      c.lineas.map((l) => supabase.from("productos").update({ costo: l.costoUnitario }).eq("id", l.prodId))
+    );
+    setProductos((prev) =>
+      prev.map((p) => {
+        const l = c.lineas.find((x) => x.prodId === p.id);
+        return l ? { ...p, costo: l.costoUnitario } : p;
+      })
+    );
+    await ajustarInventario(c.lineas.map((l) => ({ prodId: l.prodId, deltaStock: Number(l.qty) || 0 })));
+
+    await logAct(`Purchase #${num} from ${c.proveedor}: ${c.lineas.length} product(s), ${fmt(c.total)}`);
+  };
+
+  const deleteCompra = async (id: string) => {
+    const { error } = await supabase.from("compras").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setCompras((prev) => prev.filter((e) => e.id !== id));
+    await logAct(`Purchase deleted`);
+  };
+
   // --- Calendario (agenda de ruta) ---
   const addEvento = async (ev: Omit<EventoCalendario, "id">) => {
     const { data, error } = await supabase.from("eventos_calendario").insert(ev).select().single();
@@ -1255,6 +1391,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     todos,
     addTodo,
     toggleTodo,
+    gastos,
+    addGasto,
+    updateGasto,
+    deleteGasto,
+    compras,
+    addCompra,
+    deleteCompra,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -6824,6 +6967,654 @@ const Mejoras = () => {
 };
 
 // ------------------------------
+// Compras (Ingresado de Inventario)
+// ------------------------------
+const Compras = () => {
+  const { compras, productos, addCompra, deleteCompra, readOnly } = useData();
+  const [show, setShow] = useState(false);
+  const [detalle, setDetalle] = useState<Compra | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [proveedor, setProveedor] = useState("");
+  const [numFacturaProveedor, setNumFacturaProveedor] = useState("");
+  const [fecha, setFecha] = useState(today());
+  const [nota, setNota] = useState("");
+  const [lineas, setLineas] = useState<LineaCompra[]>([]);
+  const [prodSearch, setProdSearch] = useState("");
+  const [prodOpen, setProdOpen] = useState(false);
+
+  const comprasOrdenadas = useMemo(() => [...compras].sort((a, b) => b.num - a.num), [compras]);
+  const { visible, hasMore, remaining, loadMore } = usePagedList(comprasOrdenadas, []);
+
+  const sugeridos = useMemo(() => {
+    if (!prodSearch.trim()) return [];
+    return flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom).slice(0, 20);
+  }, [productos, prodSearch]);
+
+  const reset = () => {
+    setProveedor("");
+    setNumFacturaProveedor("");
+    setFecha(today());
+    setNota("");
+    setLineas([]);
+    setProdSearch("");
+  };
+
+  const agregarProducto = (p: Producto) => {
+    if (lineas.some((l) => l.prodId === p.id)) {
+      setProdSearch("");
+      setProdOpen(false);
+      return;
+    }
+    setLineas((prev) => [
+      ...prev,
+      { prodId: p.id, prodNom: p.nom, sku: p.sku, qty: 1, costoUnitario: Number(p.costo) || 0, almacen: p.almacen || "palmhills" },
+    ]);
+    setProdSearch("");
+    setProdOpen(false);
+  };
+
+  const setLineaQty = (prodId: string, qty: number) =>
+    setLineas((prev) => prev.map((l) => (l.prodId === prodId ? { ...l, qty: Math.max(0, qty) } : l)));
+  const setLineaCosto = (prodId: string, costo: number) =>
+    setLineas((prev) => prev.map((l) => (l.prodId === prodId ? { ...l, costoUnitario: Math.max(0, costo) } : l)));
+  const quitarLinea = (prodId: string) => setLineas((prev) => prev.filter((l) => l.prodId !== prodId));
+
+  const total = lineas.reduce((acc, l) => acc + l.qty * l.costoUnitario, 0);
+
+  const handleSave = async () => {
+    if (saving) return;
+    if (!proveedor.trim()) { alert("Enter the supplier name"); return; }
+    if (!fecha) { alert("Select a date"); return; }
+    if (!lineas.length) { alert("Add at least one product"); return; }
+    setSaving(true);
+    try {
+      await addCompra({
+        proveedor: proveedor.trim(),
+        num_factura_proveedor: numFacturaProveedor.trim() || undefined,
+        fecha,
+        total: +total.toFixed(2),
+        lineas,
+        nota: nota.trim() || undefined,
+      });
+      reset();
+      setShow(false);
+    } catch (err) {
+      alert("Error saving: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (c: Compra) => {
+    if (!confirm(`Delete purchase #${c.num} from ${c.proveedor}? This does NOT reverse the stock/cost changes it made.`)) return;
+    try {
+      await deleteCompra(c.id);
+      setDetalle(null);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  return (
+    <div>
+      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+        <p className="text-xs text-muted-foreground">
+          Record each supplier purchase invoice here: it adds the quantity to inventory and updates the product's cost, feeding the P&L report's cost of goods sold.
+        </p>
+      </div>
+
+      {comprasOrdenadas.length ? (
+        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+          {visible.map((c, i) => (
+            <div
+              key={c.id}
+              onClick={() => setDetalle(c)}
+              className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 ${i > 0 ? "border-t border-border" : ""}`}
+            >
+              <div className="shrink-0">
+                <div className="text-xs font-mono font-semibold text-[#a3814e] whitespace-nowrap">#{String(c.num).padStart(4, "0")}</div>
+                <div className="text-[11px] text-muted-foreground whitespace-nowrap">{fdate(c.fecha)}</div>
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{c.proveedor}</div>
+                <div className="text-[11px] text-muted-foreground truncate">{c.lineas.length} product(s)</div>
+              </div>
+              <div className="text-sm font-bold text-card-foreground tabular-nums shrink-0">{fmt(c.total)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-card rounded-2xl p-3.5 border border-border">
+          <Empty text="No purchases recorded yet. Tap + to add one." />
+        </div>
+      )}
+      <LoadMoreButton hasMore={hasMore} remaining={remaining} onClick={loadMore} />
+
+      {!readOnly && (
+        <button
+          className={`fixed bottom-[72px] right-4 w-13 h-13 rounded-full text-2xl cursor-pointer z-[6] flex items-center justify-center ${GLASS_BTN_PRIMARY}`}
+          onClick={() => { reset(); setShow(true); }}
+        >
+          +
+        </button>
+      )}
+
+      {show && (
+        <Modal title="New Purchase" onClose={() => setShow(false)}>
+          <Row2>
+            <Field label="Supplier">
+              <input value={proveedor} onChange={(e) => setProveedor(e.target.value)} placeholder="Supplier name" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+            </Field>
+            <Field label="Date">
+              <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+            </Field>
+          </Row2>
+          <Field label="Supplier invoice # (optional)">
+            <input value={numFacturaProveedor} onChange={(e) => setNumFacturaProveedor(e.target.value)} placeholder="Reference number on their invoice" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+
+          <Field label="Products">
+            <div className="relative">
+              <input
+                value={prodSearch}
+                onChange={(e) => { setProdSearch(e.target.value); setProdOpen(true); }}
+                onFocus={() => setProdOpen(true)}
+                onBlur={() => setTimeout(() => setProdOpen(false), 200)}
+                placeholder="Search product by name, SKU or barcode..."
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+              {prodOpen && sugeridos.length > 0 && (
+                <div className="absolute left-0 right-0 top-full mt-1 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden max-h-56 overflow-y-auto">
+                  {sugeridos.map((p) => (
+                    <button key={p.id} onMouseDown={() => agregarProducto(p)} className="w-full text-left px-3 py-2 hover:bg-muted border-b border-border last:border-0">
+                      <div className="text-sm font-medium text-card-foreground uppercase">{p.nom}</div>
+                      <div className="text-xs text-muted-foreground">{p.sku ? `SKU: ${p.sku} · ` : ""}current cost {fmt(p.costo)}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </Field>
+
+          {lineas.length > 0 && (
+            <div className="border border-border rounded-2xl overflow-hidden mb-3">
+              {lineas.map((l) => (
+                <div key={l.prodId} className="flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{l.prodNom}</div>
+                    {l.sku && <div className="text-[10px] font-mono text-muted-foreground">{l.sku}</div>}
+                  </div>
+                  <div className="w-16 shrink-0">
+                    <label className="text-[9px] font-bold uppercase text-muted-foreground">Qty</label>
+                    <input type="number" min="0" value={l.qty} onChange={(e) => setLineaQty(l.prodId, parseInt(e.target.value) || 0)} className="w-full px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                  </div>
+                  <div className="w-20 shrink-0">
+                    <label className="text-[9px] font-bold uppercase text-muted-foreground">Cost</label>
+                    <input type="number" min="0" step="0.01" value={l.costoUnitario} onChange={(e) => setLineaCosto(l.prodId, parseFloat(e.target.value) || 0)} className="w-full px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                  </div>
+                  <button onClick={() => quitarLinea(l.prodId)} className="text-muted-foreground hover:text-destructive text-lg leading-none px-1 shrink-0">×</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <Field label="Note (optional)">
+            <input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Reference, delivery details..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+
+          {lineas.length > 0 && (
+            <div className="flex items-center justify-between bg-primary/10 rounded-xl px-4 py-2.5 mb-3">
+              <span className="text-sm font-bold text-card-foreground">Total</span>
+              <span className="text-lg font-black text-primary">{fmt(total)}</span>
+            </div>
+          )}
+
+          <button
+            disabled={saving || !proveedor.trim() || !lineas.length}
+            onClick={handleSave}
+            className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+          >
+            {saving ? "Saving..." : "Save Purchase"}
+          </button>
+        </Modal>
+      )}
+
+      {detalle && (
+        <Modal title={`Purchase #${String(detalle.num).padStart(4, "0")}`} onClose={() => setDetalle(null)}>
+          <div className="text-sm text-card-foreground font-semibold">{detalle.proveedor}</div>
+          <div className="text-xs text-muted-foreground mb-1">{fdate(detalle.fecha)}{detalle.num_factura_proveedor ? ` · Ref: ${detalle.num_factura_proveedor}` : ""}</div>
+          {detalle.nota && <div className="text-xs text-muted-foreground italic mb-2">"{detalle.nota}"</div>}
+          <div className="border border-border rounded-2xl overflow-hidden mt-2 mb-3">
+            {detalle.lineas.map((l, i) => (
+              <div key={i} className={`flex items-center justify-between px-3 py-2 ${i > 0 ? "border-t border-border" : ""}`}>
+                <div className="min-w-0">
+                  <div className="text-xs font-semibold text-card-foreground uppercase break-words">{l.prodNom}</div>
+                  <div className="text-[10px] font-mono text-muted-foreground">{l.sku} · qty {l.qty}</div>
+                </div>
+                <div className="text-sm font-bold text-card-foreground shrink-0">{fmt(l.costoUnitario * l.qty)}</div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center justify-between px-1 mb-4">
+            <span className="text-sm font-bold text-card-foreground">Total</span>
+            <span className="text-lg font-black text-primary">{fmt(detalle.total)}</span>
+          </div>
+          {!readOnly && (
+            <button onClick={() => handleDelete(detalle)} className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_DESTRUCTIVE}`}>
+              Delete Purchase
+            </button>
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ------------------------------
+// P&L Report
+// ------------------------------
+// Comprime la foto del comprobante de pago (recibo/transferencia) a un
+// data URL manejable, mismo patron que las fotos de producto/cliente.
+const compressComprobante = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX_W = 1000;
+        const scale = Math.min(1, MAX_W / img.width);
+        const w = Math.round(img.width * scale);
+        const h = Math.round(img.height * scale);
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no ctx"));
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, w, h);
+        ctx.drawImage(img, 0, 0, w, h);
+        let out = canvas.toDataURL("image/jpeg", 0.75);
+        if (out.length > 500000) out = canvas.toDataURL("image/jpeg", 0.55);
+        resolve(out);
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+const primerDiaMes = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+const PLReport = () => {
+  const { facturas, productos, gastos, addGasto, updateGasto, deleteGasto, readOnly } = useData();
+  const [desde, setDesde] = useState(primerDiaMes());
+  const [hasta, setHasta] = useState(today());
+  const [showGastoForm, setShowGastoForm] = useState(false);
+  const [editGastoId, setEditGastoId] = useState<string | null>(null);
+  const [gCategoria, setGCategoria] = useState<string>(CATEGORIAS_GASTO[0]);
+  const [gDescripcion, setGDescripcion] = useState("");
+  const [gMonto, setGMonto] = useState("");
+  const [gFecha, setGFecha] = useState(today());
+  const [gPagado, setGPagado] = useState(false);
+  const [gFechaPago, setGFechaPago] = useState(today());
+  const [gComprobante, setGComprobante] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [filtroGastos, setFiltroGastos] = useState<"all" | "pending" | "paid">("all");
+
+  const aplicarPreset = (p: "month" | "lastMonth" | "quarter" | "year") => {
+    const now = new Date();
+    if (p === "month") { setDesde(primerDiaMes(now)); setHasta(today()); }
+    else if (p === "lastMonth") {
+      const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDesde(primerDiaMes(lm));
+      setHasta(`${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`);
+    } else if (p === "quarter") {
+      const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+      setDesde(primerDiaMes(new Date(now.getFullYear(), qStartMonth, 1)));
+      setHasta(today());
+    } else {
+      setDesde(`${now.getFullYear()}-01-01`);
+      setHasta(today());
+    }
+  };
+
+  // Mapas de costo actual por producto: por sku+almacen (preferido) y por
+  // nombre (respaldo) — las lineas de factura no guardan prodId.
+  const { costoPorSku, costoPorNom } = useMemo(() => {
+    const bySku: Record<string, number> = {};
+    const byNom: Record<string, number> = {};
+    for (const p of productos) {
+      if (p.sku) bySku[`${p.sku.trim().toLowerCase()}|${p.almacen || "palmhills"}`] = Number(p.costo) || 0;
+      byNom[p.nom] = Number(p.costo) || 0;
+    }
+    return { costoPorSku: bySku, costoPorNom: byNom };
+  }, [productos]);
+
+  const costoDeLinea = (l: { sku?: string; prodNom: string; almacen?: string }) => {
+    const key = `${(l.sku || "").trim().toLowerCase()}|${l.almacen || "palmhills"}`;
+    return costoPorSku[key] ?? costoPorNom[l.prodNom] ?? 0;
+  };
+
+  const enRango = (fecha: string) => fecha >= desde && fecha <= hasta;
+
+  const { cashCollected, invoiced, cogs } = useMemo(() => {
+    let cash = 0, inv = 0, cogsTotal = 0;
+    for (const f of facturas) {
+      for (const pago of f.pagos || []) {
+        if (enRango(pago.fecha)) cash += Number(pago.monto) || 0;
+      }
+      if (enRango(f.fecha)) {
+        inv += Number(f.total) || 0;
+        for (const l of f.lineas || []) {
+          cogsTotal += Number(l.qty || 0) * costoDeLinea(l);
+        }
+      }
+    }
+    return { cashCollected: cash, invoiced: inv, cogs: cogsTotal };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [facturas, desde, hasta, costoPorSku, costoPorNom]);
+
+  const grossProfit = invoiced - cogs;
+
+  const outstandingReceivables = useMemo(
+    () =>
+      facturas
+        .filter((f) => f.estado === "Pending" || f.estado === "Partially Paid")
+        .reduce((acc, f) => acc + (Number(f.total) - (f.pagos || []).reduce((a, p) => a + Number(p.monto || 0), 0)), 0),
+    [facturas]
+  );
+
+  const gastosPagadosPeriodo = useMemo(
+    () => gastos.filter((g) => g.pagado && g.fecha_pago && enRango(g.fecha_pago)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gastos, desde, hasta]
+  );
+  const gastosPorCategoria = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of gastosPagadosPeriodo) map.set(g.categoria, (map.get(g.categoria) || 0) + Number(g.monto));
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [gastosPagadosPeriodo]);
+  const totalGastosPagados = gastosPagadosPeriodo.reduce((a, g) => a + Number(g.monto), 0);
+
+  const netCashFlow = cashCollected - totalGastosPagados;
+  const netIncomeAccrual = grossProfit - totalGastosPagados;
+
+  const gastosOrdenados = useMemo(
+    () =>
+      [...gastos]
+        .filter((g) => (filtroGastos === "all" ? true : filtroGastos === "paid" ? g.pagado : !g.pagado))
+        .sort((a, b) => (b.pagado ? b.fecha_pago || b.fecha : b.fecha).localeCompare(a.pagado ? a.fecha_pago || a.fecha : a.fecha)),
+    [gastos, filtroGastos]
+  );
+
+  const resetGastoForm = () => {
+    setEditGastoId(null);
+    setGCategoria(CATEGORIAS_GASTO[0]);
+    setGDescripcion("");
+    setGMonto("");
+    setGFecha(today());
+    setGPagado(false);
+    setGFechaPago(today());
+    setGComprobante(null);
+  };
+
+  const openNewGasto = () => {
+    resetGastoForm();
+    setShowGastoForm(true);
+  };
+
+  const openEditGasto = (g: Gasto) => {
+    setEditGastoId(g.id);
+    setGCategoria(g.categoria);
+    setGDescripcion(g.descripcion || "");
+    setGMonto(String(g.monto));
+    setGFecha(g.fecha);
+    setGPagado(g.pagado);
+    setGFechaPago(g.fecha_pago || today());
+    setGComprobante(g.comprobante || null);
+    setShowGastoForm(true);
+  };
+
+  const handleComprobanteUpload = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      setGComprobante(await compressComprobante(file));
+    } catch {
+      alert("Could not process that image");
+    }
+  };
+
+  const handleSaveGasto = async () => {
+    if (saving) return;
+    const monto = parseFloat(gMonto);
+    if (!monto || monto <= 0) { alert("Enter a valid amount"); return; }
+    if (!gFecha) { alert("Select a date"); return; }
+    if (gPagado && !gFechaPago) { alert("Select the payment date"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        categoria: gCategoria,
+        descripcion: gDescripcion,
+        monto,
+        fecha: gFecha,
+        pagado: gPagado,
+        fecha_pago: gPagado ? gFechaPago : null,
+        comprobante: gPagado ? gComprobante : null,
+      };
+      if (editGastoId) await updateGasto(editGastoId, payload);
+      else await addGasto(payload);
+      resetGastoForm();
+      setShowGastoForm(false);
+    } catch (err) {
+      alert("Error saving: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteGasto = async (id: string) => {
+    if (!confirm("Delete this expense?")) return;
+    try {
+      await deleteGasto(id);
+      setShowGastoForm(false);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const Linea = ({ label, value, sub, bold, tint }: { label: string; value: number; sub?: string; bold?: boolean; tint?: "primary" | "destructive" | "muted" }) => (
+    <div className="flex items-center justify-between py-1.5">
+      <div>
+        <div className={`text-sm ${bold ? "font-bold text-card-foreground" : "text-muted-foreground"}`}>{label}</div>
+        {sub && <div className="text-[10px] text-muted-foreground/70">{sub}</div>}
+      </div>
+      <div
+        className={`tabular-nums ${bold ? "text-lg font-black" : "text-sm font-semibold"} ${
+          tint === "primary" ? "text-primary" : tint === "destructive" ? "text-destructive" : "text-card-foreground"
+        }`}
+      >
+        {fmt(value)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div>
+      {/* Selector de periodo */}
+      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+        <div className="flex gap-1.5 mb-3 flex-wrap">
+          {[
+            { id: "month", label: "This Month" },
+            { id: "lastMonth", label: "Last Month" },
+            { id: "quarter", label: "This Quarter" },
+            { id: "year", label: "This Year" },
+          ].map((p) => (
+            <button key={p.id} onClick={() => aplicarPreset(p.id as "month" | "lastMonth" | "quarter" | "year")} className="px-3 py-1.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">
+              {p.label}
+            </button>
+          ))}
+        </div>
+        <Row2>
+          <Field label="From">
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+          <Field label="To">
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+        </Row2>
+      </div>
+
+      {/* Resumen financiero */}
+      <div className="bg-card rounded-2xl p-4 border border-border mb-3">
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Revenue (Cash Basis)</div>
+        <Linea label="Cash Collected" value={cashCollected} sub="Payments received in this period" bold tint="primary" />
+        <Linea label="Invoiced (reference)" value={invoiced} sub="Total billed in this period, collected or not" />
+        <div className="h-px bg-border my-2" />
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Cost of Goods Sold</div>
+        <Linea label="COGS" value={cogs} sub="Based on invoiced lines × current product cost" />
+        <Linea label="Gross Profit (accrual)" value={grossProfit} bold />
+        <div className="h-px bg-border my-2" />
+        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Operating Expenses</div>
+        <Linea label="Paid Expenses" value={totalGastosPagados} sub="Only expenses actually paid in this period" tint="destructive" />
+        {gastosPorCategoria.length > 0 && (
+          <div className="mt-1 mb-2 pl-2 border-l-2 border-border space-y-0.5">
+            {gastosPorCategoria.map(([cat, monto]) => (
+              <div key={cat} className="flex items-center justify-between text-xs text-muted-foreground">
+                <span>{cat}</span>
+                <span className="tabular-nums">{fmt(monto)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="h-px bg-border my-2" />
+        <Linea label="Net Cash Flow" value={netCashFlow} sub="Cash Collected − Paid Expenses" bold tint={netCashFlow >= 0 ? "primary" : "destructive"} />
+        <Linea label="Net Income (accrual)" value={netIncomeAccrual} sub="Gross Profit − Paid Expenses" bold tint={netIncomeAccrual >= 0 ? "primary" : "destructive"} />
+        <div className="h-px bg-border my-2" />
+        <Linea label="Outstanding Receivables" value={outstandingReceivables} sub="As of today, all pending invoices — see Aging Report" />
+      </div>
+
+      {/* Gastos */}
+      <div className="bg-card rounded-2xl p-3.5 border border-border">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-sm font-bold text-card-foreground">Expenses</span>
+          {!readOnly && (
+            <button onClick={openNewGasto} className={`px-3 py-1.5 rounded-full text-xs font-bold ${GLASS_BTN_PRIMARY}`}>
+              + Add Expense
+            </button>
+          )}
+        </div>
+        <div className="flex gap-1.5 mb-2">
+          {(["all", "pending", "paid"] as const).map((f) => (
+            <button key={f} onClick={() => setFiltroGastos(f)} className={`px-3 py-1 rounded-full text-xs font-bold ${filtroGastos === f ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+              {f === "all" ? "All" : f === "pending" ? "Pending" : "Paid"}
+            </button>
+          ))}
+        </div>
+        {gastosOrdenados.length ? (
+          <div className="border border-border rounded-xl overflow-hidden">
+            {gastosOrdenados.map((g, i) => (
+              <div
+                key={g.id}
+                onClick={() => openEditGasto(g)}
+                className={`flex items-center justify-between gap-2 px-3 py-2.5 cursor-pointer hover:bg-secondary/30 ${i > 0 ? "border-t border-border" : ""}`}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-card-foreground truncate">{g.categoria}</div>
+                  <div className="text-[11px] text-muted-foreground truncate">
+                    {g.pagado ? `Paid ${fdate(g.fecha_pago || g.fecha)}` : `Due ${fdate(g.fecha)}`}
+                    {g.descripcion ? ` · ${g.descripcion}` : ""}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end gap-0.5 shrink-0">
+                  <span className="text-sm font-bold text-card-foreground tabular-nums">{fmt(g.monto)}</span>
+                  <Badge e={g.pagado ? "Paid" : "Pending"} />
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <Empty text="No expenses recorded." />
+        )}
+      </div>
+
+      {showGastoForm && (
+        <Modal title={editGastoId ? "Edit Expense" : "New Expense"} onClose={() => setShowGastoForm(false)}>
+          <Field label="Category">
+            <select value={gCategoria} onChange={(e) => setGCategoria(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring">
+              {CATEGORIAS_GASTO.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </Field>
+          <Row2>
+            <Field label="Amount ($)">
+              <input type="number" min="0" step="0.01" value={gMonto} onChange={(e) => setGMonto(e.target.value)} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+            </Field>
+            <Field label="Date">
+              <input type="date" value={gFecha} onChange={(e) => setGFecha(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+            </Field>
+          </Row2>
+          <Field label="Note (optional)">
+            <input value={gDescripcion} onChange={(e) => setGDescripcion(e.target.value)} placeholder="Details..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+
+          <div className="flex items-center justify-between bg-muted rounded-xl px-3.5 py-2.5 mb-3">
+            <div>
+              <div className="text-sm font-semibold text-card-foreground">Already paid</div>
+              <div className="text-[11px] text-muted-foreground">Only paid expenses count in the P&L</div>
+            </div>
+            <button
+              onClick={() => setGPagado((v) => !v)}
+              className={`w-11 h-6 rounded-full relative transition-colors ${gPagado ? "bg-primary" : "bg-border"}`}
+            >
+              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${gPagado ? "translate-x-[22px]" : "translate-x-0.5"}`} />
+            </button>
+          </div>
+
+          {gPagado && (
+            <>
+              <Field label="Payment date">
+                <input type="date" value={gFechaPago} onChange={(e) => setGFechaPago(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              </Field>
+              <Field label="Proof of payment (optional)">
+                {gComprobante ? (
+                  <div className="relative">
+                    <img src={gComprobante} alt="Proof of payment" className="w-full max-h-48 object-contain rounded-xl border border-border bg-white" />
+                    <button onClick={() => setGComprobante(null)} className="absolute top-2 right-2 bg-black/60 text-white rounded-full w-7 h-7 flex items-center justify-center text-sm">×</button>
+                  </div>
+                ) : (
+                  <label className="flex items-center justify-center gap-2 px-3 py-3 rounded-xl border border-dashed border-border text-sm text-muted-foreground cursor-pointer">
+                    📎 Upload receipt photo
+                    <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handleComprobanteUpload(e.target.files?.[0])} />
+                  </label>
+                )}
+              </Field>
+            </>
+          )}
+
+          <div className="flex gap-2.5 mt-3.5">
+            {editGastoId && !readOnly && (
+              <button onClick={() => handleDeleteGasto(editGastoId)} className={`px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_DESTRUCTIVE}`}>
+                Delete
+              </button>
+            )}
+            <button onClick={() => setShowGastoForm(false)} className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}>
+              Cancel
+            </button>
+            <button disabled={saving} onClick={handleSaveGasto} className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ------------------------------
 // Main App
 // ------------------------------
 const TITLES: Record<string, string> = {
@@ -6835,6 +7626,8 @@ const TITLES: Record<string, string> = {
   ord: "Orders",
   mej: "Improvements",
   usr: "Manage Users",
+  pl: "P&L Report",
+  com: "Purchases",
 };
 
 // Gestionar Usuarios component
@@ -7073,6 +7866,7 @@ function AppContent() {
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
+  const [showMoreMenu, setShowMoreMenu] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -7126,7 +7920,7 @@ function AppContent() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam && NAV_TABS.some((t) => t.id === tabParam)) {
+      if (tabParam && ALL_TAB_IDS.includes(tabParam)) {
         setTab(tabParam);
       }
     }
@@ -7178,7 +7972,14 @@ function AppContent() {
     ord: <Ordenes />,
     mej: <Mejoras />,
     usr: role === "admin" ? <GestionarUsuarios /> : <Dashboard />,
+    pl: <PLReport />,
+    com: <Compras />,
   };
+
+  const MORE_ITEMS = [
+    { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
+    ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
+  ];
 
   return (
     <div className="max-w-[480px] mx-auto min-h-svh flex flex-col bg-background">
@@ -7210,6 +8011,38 @@ function AppContent() {
               <div className="text-[10px] text-muted-foreground/70 truncate max-w-[120px]">
                 {email}
               </div>
+            )}
+          </div>
+          <div className="relative">
+            <button
+              onClick={() => setShowMoreMenu((v) => !v)}
+              aria-label="More"
+              className={`shrink-0 w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center ${showMoreMenu ? "text-primary" : "text-muted-foreground hover:text-foreground"}`}
+            >
+              <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="5" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="19" cy="12" r="1.5" fill="currentColor" stroke="none" />
+              </svg>
+            </button>
+            {showMoreMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowMoreMenu(false)} />
+                <div className="absolute right-0 top-full mt-1.5 z-20 bg-card border border-border rounded-xl shadow-lg overflow-hidden w-44">
+                  {MORE_ITEMS.map((it) => (
+                    <button
+                      key={it.id}
+                      onClick={() => { setTab(it.id); setShowMoreMenu(false); }}
+                      className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
+                    >
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+                        {it.icon.split("|").map((d, i) => <path key={i} d={d} />)}
+                      </svg>
+                      {it.label}
+                    </button>
+                  ))}
+                </div>
+              </>
             )}
           </div>
           <button

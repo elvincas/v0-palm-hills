@@ -12,8 +12,13 @@ export const NAV_ICONS: Record<string, string> = {
   ord: "M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17M17 17a2 2 0 1 0 4 0 2 2 0 0 0-4 0zM9 19a2 2 0 1 0 4 0 2 2 0 0 0-4 0z",
   mej: "M12 19V5M5 12l7-7 7 7",
   usr: "M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 9c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zm0 1c2.21 0 4 1.79 4 4v2c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2v-2c0-2.21 1.79-4 4-4z",
+  pl: "M3 3v18h18 M7 15l4-6 3 4 5-8",
+  com: "M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96 12 12l8.73-5.04 M12 22V12 M12 2v5 M9.5 3.5l5 3",
 };
 
+// Tabs visibles en el bottom nav. Mejoras y Users se movieron al menu "More"
+// del header (2026-07-21): son de uso poco frecuente y asi caben P&L/Purchases
+// sin saturar la barra.
 export const NAV_TABS = [
   { id: "dash", label: "Home" },
   { id: "cal", label: "Calendar" },
@@ -21,9 +26,13 @@ export const NAV_TABS = [
   { id: "cli", label: "Clients" },
   { id: "inv", label: "Inventory" },
   { id: "ord", label: "Orders" },
-  { id: "mej", label: "Improvements" },
-  { id: "usr", label: "Users" },
+  { id: "pl", label: "P&L" },
+  { id: "com", label: "Purchases" },
 ];
+
+// Todas las pestañas validas (incluye las que ya no estan en el bottom nav
+// pero siguen siendo destinos validos via el menu "More" o un link directo).
+export const ALL_TAB_IDS = [...NAV_TABS.map((t) => t.id), "mej", "usr"];
 
 // Memoria de navegacion por pestaña: al salir de una sub-pagina (ej. el perfil
 // de un cliente) hacia otra pestaña, se recuerda donde quedo el usuario para

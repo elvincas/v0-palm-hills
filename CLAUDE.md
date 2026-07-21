@@ -65,8 +65,12 @@ supabase/
 | **Facturas** | Sub-tabs Facturas, Notas de Crédito y Remitos; sin impuestos; detalle con pagos |
 | **Ordenes** | Flujo orden → pick → factura, envíos parciales por almacén |
 | **Calendario** | Fechas de entrega (🚚), visitas, cobros, pedidos; los eventos alimentan el selector de fecha en órdenes/facturas |
-| **Mejoras** | Backlog de tareas internas con prioridad y costo estimado |
-| **Users** | Solo admin — gestión de usuarios en Supabase Auth |
+| **P&L** | Reporte de utilidad por periodo + gestión de gastos operativos pagados |
+| **Purchases** | Ingresado de inventario: facturas de compra a proveedores, actualiza stock y costo |
+| **Mejoras** | Backlog de tareas internas con prioridad y costo estimado — accesible desde el menú "More" (⋯) del header, no en el bottom nav |
+| **Users** | Solo admin — gestión de usuarios en Supabase Auth — accesible desde el menú "More" (⋯) del header |
+
+**Navegación (2026-07-21):** el bottom nav muestra `dash, cal, fact, cli, inv, ord, pl, com` (`components/bottom-nav.tsx` → `NAV_TABS`). Mejoras y Users se movieron a un menú desplegable "More" (botón ⋯ en el header de `app/page.tsx`) porque son de uso poco frecuente — decisión explícita del usuario para no saturar el bottom nav al agregar P&L/Purchases. `ALL_TAB_IDS` (superset que incluye `mej`/`usr`) es lo que valida el parámetro `?tab=` en la URL — si se agregan tabs nuevos que no van en el bottom nav, hay que añadirlos ahí también o el deep-link no los reconoce.
 
 ---
 
@@ -107,6 +111,12 @@ Tabla key/value (RLS authenticated). Keys: `remito_email` (correo fijo de remito
 
 ### `actividad`
 `msg`, `ts` — log de eventos del sistema (todo CRUD escribe aquí)
+
+### `gastos` (2026-07-21)
+`id`, `categoria` (texto, ver `CATEGORIAS_GASTO` en page.tsx), `descripcion`, `monto`, `fecha` (fecha del gasto/vencimiento), `pagado` (bool), `fecha_pago`, `comprobante` (foto base64, opcional). RLS bloquea escritura a rol `visitante` (igual patrón que `mejoras`). Solo los gastos con `pagado = true` cuentan en el P&L, filtrados por `fecha_pago` dentro del periodo — un gasto fijo sin pagar (ej. renta pendiente) NO aparece como gasto todavía (pedido explícito del usuario).
+
+### `compras` (Ingresado de Inventario, 2026-07-21)
+`id`, `num` (auto-incremental, empieza en 1), `proveedor` (texto libre), `num_factura_proveedor` (referencia opcional de la factura del proveedor), `fecha`, `total`, `lineas` (jsonb `LineaCompra[]`: `{prodId, prodNom, sku, qty, costoUnitario, almacen}`), `nota`. RLS bloquea escritura a `visitante`. Al guardar (`addCompra` en el DataContext): suma `qty` al stock de cada producto (solo `palmhills`, `castillo` no lleva stock en vivo — mismo criterio que `ajustarInventario`) y sobrescribe `productos.costo` con el `costoUnitario` más reciente de cada línea. No hay snapshot histórico de costo por compra — el costo del producto es siempre "el más reciente conocido".
 
 ---
 
@@ -181,6 +191,16 @@ Facturas y estimates guardan `precioCatalogo` por línea (precio de catálogo pu
 
 ### Aging Report (2026-07-20)
 Botón junto al buscador de Invoices → `/reportes/facturas-pendientes`: lista facturas Pending/Partially Paid ordenadas por antigüedad (+30 días resaltadas en rojo), con toggle "By age" (plano) / "By client" (agrupado, clientes con la factura pendiente más vieja primero). PDF vía `/api/reportes/facturas-pendientes/pdf?groupBy=flat|client` (mismo patrón @react-pdf; al ser tabla que fluye no necesita la paginación manual de facturas/estimates). Test: `npx tsx scripts/test-reporte-cartera.ts`.
+
+### P&L Report (2026-07-21)
+Tab "P&L" (componente `PLReport` en page.tsx). Selector de periodo (presets This Month/Last Month/This Quarter/This Year + rango custom `desde`/`hasta`). Metodología deliberada, pensada para presentar a un abogado de impuestos (negocio en NJ, apenas arrancando, con AR alto sin cobrar todavía):
+
+- **Revenue = Cash Collected** (base caja): suma de `pagos[].monto` de todas las facturas cuya `fecha` de pago cae en el periodo. Se muestra también **Invoiced** (accrual, referencia) para dar contexto de cuánto se facturó vs. cuánto se cobró realmente.
+- **COGS**: sobre las líneas de las facturas **facturadas** en el periodo (no las cobradas — matching contra Invoiced, no contra Cash), usando el **costo actual** de `productos.costo` (no hay snapshot histórico por venta — igual que el trade-off ya aceptado en `compras`). Resuelve el producto por SKU+almacén o nombre (las líneas de factura no guardan `prodId`).
+- **Gastos**: SOLO cuentan los `gastos` con `pagado = true` y `fecha_pago` dentro del periodo — un gasto fijo (renta, nómina) que aún no se pagó no es un gasto todavía, aunque ya haya vencido. Esto es decisión explícita del usuario, no un estándar contable formal.
+- **Net Cash Flow** = Cash Collected − Paid Expenses (el movimiento de caja real del periodo).
+- **Net Income (accrual)** = Gross Profit (Invoiced − COGS) − Paid Expenses (mezcla accrual/cash a propósito — el objetivo es mostrarle al contador/abogado los números crudos organizados, no un P&L formalmente puro; él decide con qué método presentar impuestos).
+- **Outstanding Receivables**: total pendiente de cobro HOY (no acotado al periodo) — mismo cálculo que el Aging Report, como referencia cruzada.
 
 ### Top Clients (score honesto)
 `calcTopClientes` en page.tsx: score = 60% volumen + 40% pago (pago = %pagado × speedFactor30: COD≤2d=1.0, 3-30d 0.9→0.7, >30d cae a 0.4→0.1). Se muestra en Home, modal en Clientes; `calcTopProductos` alimenta Home + modal en Inventario (1m/3m) + top 25% en perfil de cliente.
