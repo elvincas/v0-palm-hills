@@ -2316,7 +2316,7 @@ const Calendario = () => {
                   diaSeleccionado === fecha
                     ? "bg-primary text-primary-foreground font-bold"
                     : esEntrega
-                      ? "bg-primary/40 text-primary font-bold"
+                      ? "bg-[#22c55e]/30 text-[#15803d] font-bold"
                       : "bg-muted text-card-foreground"
                 } ${esHoy ? "ring-2 ring-inset ring-[#b09060]" : ""}`}
               >
