@@ -154,6 +154,9 @@ Tablas grandes usan `range()` manual (1000 filas por request).
 ### Almacenes
 Dos almacenes: `palmhills` (default) y `castillo`. El campo `almacen` en `productos` y en líneas de factura/orden indica el origen.
 
+### Nombres de producto (2026-07-21)
+Los nombres de producto se muestran SIEMPRE en mayúscula visualmente (clase `uppercase`, o `.toUpperCase()` en el PDF de `lib/pdf/documento-pdf.tsx` porque `@react-pdf/renderer` no soporta `textTransform`) — el dato en `productos.nom` NO se modifica, solo la presentación. Aplica en Inventario, New/Edit Order, pick sheet, New Invoice, Credit Notes, y en los documentos del cliente (factura/estimate, remito, nota de crédito). Nuevos lugares que rendericen `prodNom`/`p.nom` deben seguir esta convención. Además, no se trunca con `truncate`/"…" — se usa `break-words` para mostrar el nombre completo (excepto el badge diminuto sobre la foto del Top 3 en Home, donde el nombre completo ya se ve debajo).
+
 ### Búsqueda avanzada (lib/search.ts)
 - Levenshtein con tolerancia según longitud del token
 - Variantes fonéticas español: z/c→s, qu→k, v→b, h→"", y/ll→i
