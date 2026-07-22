@@ -7950,7 +7950,8 @@ const compressComprobante = (file: File): Promise<string> =>
 const primerDiaMes = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 
 const PLReport = () => {
-  const { facturas, productos, gastos, addGasto, updateGasto, deleteGasto, readOnly } = useData();
+  const { facturas, productos, gastos, compras, addGasto, updateGasto, deleteGasto, readOnly } = useData();
+  const [vista, setVista] = useState<"income" | "cash">("income");
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(today());
   const [showGastoForm, setShowGastoForm] = useState(false);
@@ -8029,6 +8030,27 @@ const PLReport = () => {
     [facturas]
   );
 
+  // --- Income Statement (accrual): gastos cuentan cuando se INCURREN
+  // (fecha), se hayan pagado o no — asi funciona un P&L de verdad (principio
+  // de devengado/matching). Distinto del Cash Flow de abajo a proposito.
+  const gastosIncurridosPeriodo = useMemo(
+    () => gastos.filter((g) => enRango(g.fecha)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [gastos, desde, hasta]
+  );
+  const gastosIncurridosPorCategoria = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const g of gastosIncurridosPeriodo) map.set(g.categoria, (map.get(g.categoria) || 0) + Number(g.monto));
+    return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
+  }, [gastosIncurridosPeriodo]);
+  const totalGastosIncurridos = gastosIncurridosPeriodo.reduce((a, g) => a + Number(g.monto), 0);
+  const netIncomeAccrual = grossProfit - totalGastosIncurridos;
+
+  // --- Cash Flow: solo lo que realmente entro y salio de caja en el
+  // periodo. Los gastos cuentan por fecha_pago (no fecha) y las compras de
+  // inventario a proveedores SI se reflejan aqui (aunque no sean un gasto
+  // del P&L todavia, porque el inventario que compraste no se vendio) —
+  // esto es lo que faltaba: comprar mercancia es salida de caja real.
   const gastosPagadosPeriodo = useMemo(
     () => gastos.filter((g) => g.pagado && g.fecha_pago && enRango(g.fecha_pago)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -8041,8 +8063,15 @@ const PLReport = () => {
   }, [gastosPagadosPeriodo]);
   const totalGastosPagados = gastosPagadosPeriodo.reduce((a, g) => a + Number(g.monto), 0);
 
-  const netCashFlow = cashCollected - totalGastosPagados;
-  const netIncomeAccrual = grossProfit - totalGastosPagados;
+  const comprasPeriodo = useMemo(
+    () => compras.filter((c) => enRango(c.fecha)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [compras, desde, hasta]
+  );
+  const totalCompras = comprasPeriodo.reduce((a, c) => a + Number(c.total), 0);
+
+  const totalCashOut = totalCompras + totalGastosPagados;
+  const netCashFlow = cashCollected - totalCashOut;
 
   const gastosOrdenados = useMemo(
     () =>
@@ -8169,34 +8198,71 @@ const PLReport = () => {
         </Row2>
       </div>
 
-      {/* Resumen financiero */}
-      <div className="bg-card rounded-3xl p-4 border border-border mb-3">
-        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Revenue (Cash Basis)</div>
-        <Linea label="Cash Collected" value={cashCollected} sub="Payments received in this period" bold tint="primary" />
-        <Linea label="Invoiced (reference)" value={invoiced} sub="Total billed in this period, collected or not" />
-        <div className="h-px bg-border my-2" />
-        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Cost of Goods Sold</div>
-        <Linea label="COGS" value={cogs} sub="Based on invoiced lines × current product cost" />
-        <Linea label="Gross Profit (accrual)" value={grossProfit} bold />
-        <div className="h-px bg-border my-2" />
-        <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Operating Expenses</div>
-        <Linea label="Paid Expenses" value={totalGastosPagados} sub="Only expenses actually paid in this period" tint="destructive" />
-        {gastosPorCategoria.length > 0 && (
-          <div className="mt-1 mb-2 pl-2 border-l-2 border-border space-y-0.5">
-            {gastosPorCategoria.map(([cat, monto]) => (
-              <div key={cat} className="flex items-center justify-between text-xs text-muted-foreground">
-                <span>{cat}</span>
-                <span className="tabular-nums">{fmt(monto)}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="h-px bg-border my-2" />
-        <Linea label="Net Cash Flow" value={netCashFlow} sub="Cash Collected − Paid Expenses" bold tint={netCashFlow >= 0 ? "primary" : "destructive"} />
-        <Linea label="Net Income (accrual)" value={netIncomeAccrual} sub="Gross Profit − Paid Expenses" bold tint={netIncomeAccrual >= 0 ? "primary" : "destructive"} />
-        <div className="h-px bg-border my-2" />
-        <Linea label="Outstanding Receivables" value={outstandingReceivables} sub="As of today, all pending invoices — see Aging Report" />
+      {/* Toggle: dos reportes separados, cada uno con su propia logica */}
+      <div className="inline-flex bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
+        <button onClick={() => setVista("income")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vista === "income" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          Income Statement
+        </button>
+        <button onClick={() => setVista("cash")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vista === "cash" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          Cash Flow
+        </button>
       </div>
+
+      {vista === "income" ? (
+        <div className="bg-card rounded-3xl p-4 border border-border mb-3">
+          <p className="text-[11px] text-muted-foreground mb-2 leading-snug">
+            Your regular P&amp;L: what you sold and what it cost, regardless of whether cash has moved yet.
+          </p>
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Revenue</div>
+          <Linea label="Invoiced" value={invoiced} sub="Total billed in this period" bold tint="primary" />
+          <div className="h-px bg-border my-2" />
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Cost of Goods Sold</div>
+          <Linea label="COGS" value={cogs} sub="Invoiced lines × current product cost" />
+          <Linea label="Gross Profit" value={grossProfit} bold tint={grossProfit >= 0 ? "primary" : "destructive"} />
+          <div className="h-px bg-border my-2" />
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Operating Expenses</div>
+          <Linea label="Expenses incurred" value={totalGastosIncurridos} sub="Billed in this period, paid or not" tint="destructive" />
+          {gastosIncurridosPorCategoria.length > 0 && (
+            <div className="mt-1 mb-2 pl-2 border-l-2 border-border space-y-0.5">
+              {gastosIncurridosPorCategoria.map(([cat, monto]) => (
+                <div key={cat} className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{cat}</span>
+                  <span className="tabular-nums">{fmt(monto)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="h-px bg-border my-2" />
+          <Linea label="Net Income" value={netIncomeAccrual} sub="Gross Profit − Expenses incurred" bold tint={netIncomeAccrual >= 0 ? "primary" : "destructive"} />
+        </div>
+      ) : (
+        <div className="bg-card rounded-3xl p-4 border border-border mb-3">
+          <p className="text-[11px] text-muted-foreground mb-2 leading-snug">
+            What actually moved in and out of the bank in this period — including inventory purchases, which are NOT an expense on the Income Statement (that only happens when the stock sells) but ARE real cash out today.
+          </p>
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Cash In</div>
+          <Linea label="Cash Collected" value={cashCollected} sub="Payments received in this period" bold tint="primary" />
+          <div className="h-px bg-border my-2" />
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Cash Out</div>
+          <Linea label="Inventory Purchases" value={totalCompras} sub={`${comprasPeriodo.length} purchase(s) — see Purchases tab`} tint="destructive" />
+          <Linea label="Expenses Paid" value={totalGastosPagados} sub="Only expenses actually paid in this period" tint="destructive" />
+          {gastosPorCategoria.length > 0 && (
+            <div className="mt-1 mb-2 pl-2 border-l-2 border-border space-y-0.5">
+              {gastosPorCategoria.map(([cat, monto]) => (
+                <div key={cat} className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>{cat}</span>
+                  <span className="tabular-nums">{fmt(monto)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          <Linea label="Total Cash Out" value={totalCashOut} />
+          <div className="h-px bg-border my-2" />
+          <Linea label="Net Cash Flow" value={netCashFlow} sub="Cash Collected − Total Cash Out" bold tint={netCashFlow >= 0 ? "primary" : "destructive"} />
+          <div className="h-px bg-border my-2" />
+          <Linea label="Outstanding Receivables" value={outstandingReceivables} sub="Not yet collected, as of today — see Aging Report" />
+        </div>
+      )}
 
       {/* Gastos */}
       <div className="bg-card rounded-3xl p-3.5 border border-border">

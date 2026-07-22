@@ -209,15 +209,22 @@ Botón "📖 Catalog" en Inventario abre un modal (`CatalogoModal`) con 3 opcion
 ### Aging Report (2026-07-20)
 Botón junto al buscador de Invoices → `/reportes/facturas-pendientes`: lista facturas Pending/Partially Paid ordenadas por antigüedad (+30 días resaltadas en rojo), con toggle "By age" (plano) / "By client" (agrupado, clientes con la factura pendiente más vieja primero). PDF vía `/api/reportes/facturas-pendientes/pdf?groupBy=flat|client` (mismo patrón @react-pdf; al ser tabla que fluye no necesita la paginación manual de facturas/estimates). Test: `npx tsx scripts/test-reporte-cartera.ts`.
 
-### P&L Report (2026-07-21)
-Tab "P&L" (componente `PLReport` en page.tsx). Selector de periodo (presets This Month/Last Month/This Quarter/This Year + rango custom `desde`/`hasta`). Metodología deliberada, pensada para presentar a un abogado de impuestos (negocio en NJ, apenas arrancando, con AR alto sin cobrar todavía):
+### P&L Report (2026-07-21, separado en dos reportes 2026-07-22)
+Tab "P&L" (componente `PLReport` en page.tsx). Selector de periodo (presets This Month/Last Month/This Quarter/This Year + rango custom `desde`/`hasta`). El usuario pidió explícitamente separar el reporte mezclado original en dos vistas puras (toggle `vista: "income" | "cash"`) porque las compras de inventario no se veían reflejadas en ningún lado — no sabe de contabilidad y pidió que se optimizara esa parte como lo haría un experto:
 
-- **Revenue = Cash Collected** (base caja): suma de `pagos[].monto` de todas las facturas cuya `fecha` de pago cae en el periodo. Se muestra también **Invoiced** (accrual, referencia) para dar contexto de cuánto se facturó vs. cuánto se cobró realmente.
-- **COGS**: sobre las líneas de las facturas **facturadas** en el periodo (no las cobradas — matching contra Invoiced, no contra Cash), usando el **costo actual** de `productos.costo` (no hay snapshot histórico por venta — igual que el trade-off ya aceptado en `compras`). Resuelve el producto por SKU+almacén o nombre (las líneas de factura no guardan `prodId`).
-- **Gastos**: SOLO cuentan los `gastos` con `pagado = true` y `fecha_pago` dentro del periodo — un gasto fijo (renta, nómina) que aún no se pagó no es un gasto todavía, aunque ya haya vencido. Esto es decisión explícita del usuario, no un estándar contable formal.
-- **Net Cash Flow** = Cash Collected − Paid Expenses (el movimiento de caja real del periodo).
-- **Net Income (accrual)** = Gross Profit (Invoiced − COGS) − Paid Expenses (mezcla accrual/cash a propósito — el objetivo es mostrarle al contador/abogado los números crudos organizados, no un P&L formalmente puro; él decide con qué método presentar impuestos).
-- **Outstanding Receivables**: total pendiente de cobro HOY (no acotado al periodo) — mismo cálculo que el Aging Report, como referencia cruzada.
+**Income Statement (accrual — pestaña "Income Statement")**: el P&L de verdad, principio de devengado/matching.
+- **Revenue = Invoiced**: total facturado en el periodo (`facturas[].total` por `fecha`), cobrado o no.
+- **COGS**: líneas de las facturas facturadas en el periodo × **costo actual** de `productos.costo` (no hay snapshot histórico por venta — mismo trade-off aceptado en `compras`). Resuelve el producto por SKU+almacén o nombre (las líneas de factura no guardan `prodId`).
+- **Gastos**: cuentan por **fecha de incurrido** (`gastos[].fecha`), pagados o no — así funciona un P&L real. Distinto a propósito del Cash Flow de abajo.
+- **Net Income** = Gross Profit (Invoiced − COGS) − Expenses incurred.
+
+**Cash Flow (pestaña "Cash Flow")**: solo lo que realmente entró y salió de caja.
+- **Cash In** = Cash Collected: suma de `pagos[].monto` con fecha de pago en el periodo.
+- **Cash Out** = **Inventory Purchases** (`compras` filtradas por `fecha` en el periodo — esto es lo que faltaba: comprar mercancía es salida de caja real aunque el inventario no se haya vendido y por ende no sea gasto todavía en el Income Statement) + **Expenses Paid** (`gastos` con `pagado = true` y `fecha_pago` en el periodo).
+- **Net Cash Flow** = Cash Collected − Total Cash Out.
+- **Outstanding Receivables**: total pendiente de cobro HOY (no acotado al periodo, mismo cálculo que el Aging Report) — se muestra solo aquí, como contexto de caja futura; en el Income Statement sería redundante porque Revenue ya lo cuenta como facturado.
+
+La gestión de Gastos (alta/edición, filtro All/Pending/Paid, comprobante de pago) es compartida por ambas vistas — no depende del toggle.
 
 ### Top Clients (score honesto)
 `calcTopClientes` en page.tsx: score = 60% volumen + 40% pago (pago = %pagado × speedFactor30: COD≤2d=1.0, 3-30d 0.9→0.7, >30d cae a 0.4→0.1). Se muestra en Home, modal en Clientes; `calcTopProductos` alimenta Home + modal en Inventario (1m/3m) + top 25% en perfil de cliente.
