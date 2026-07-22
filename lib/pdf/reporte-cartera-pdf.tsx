@@ -45,28 +45,28 @@ const RED = "#b91c1c";
 const AMBER = "#b45309";
 
 const s = StyleSheet.create({
-  page: { paddingTop: 30, paddingBottom: 36, paddingHorizontal: 40, fontSize: 9, fontFamily: "Helvetica", color: "#333" },
+  page: { paddingTop: 30, paddingBottom: 36, paddingHorizontal: 40, fontSize: 10, fontFamily: "Helvetica", color: "#333" },
   headerTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", borderBottomWidth: 2, borderBottomColor: PH, paddingBottom: 8, marginBottom: 10 },
-  brand: { fontSize: 11, fontFamily: "Helvetica-Bold", color: INK },
-  brandSub: { fontSize: 7, color: "#777", marginTop: 2 },
-  docTitle: { fontSize: 13, fontFamily: "Helvetica-Bold", color: PH, textAlign: "right" },
-  docSub: { fontSize: 8, color: "#555", textAlign: "right", marginTop: 2 },
+  brand: { fontSize: 12, fontFamily: "Helvetica-Bold", color: INK },
+  brandSub: { fontSize: 8, color: "#777", marginTop: 2 },
+  docTitle: { fontSize: 14, fontFamily: "Helvetica-Bold", color: PH, textAlign: "right" },
+  docSub: { fontSize: 9, color: "#555", textAlign: "right", marginTop: 2 },
   colsRow: { flexDirection: "row", borderBottomWidth: 1.5, borderBottomColor: INK, paddingBottom: 3, marginBottom: 2 },
-  colTh: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: INK, textTransform: "uppercase" },
+  colTh: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: INK, textTransform: "uppercase" },
   cCli: { flex: 1 },
-  cNum: { width: 55 },
-  cFecha: { width: 62 },
-  cDias: { width: 46, textAlign: "right" },
-  cSaldo: { width: 68, textAlign: "right" },
-  row: { flexDirection: "row", paddingVertical: 3.5, alignItems: "center" },
-  grupoHeader: { flexDirection: "row", justifyContent: "space-between", backgroundColor: "#f2f4ee", paddingVertical: 4, paddingHorizontal: 4, marginTop: 6 },
-  grupoCli: { fontSize: 9, fontFamily: "Helvetica-Bold", color: INK },
-  grupoSubtotal: { fontSize: 9, fontFamily: "Helvetica-Bold", color: PH },
+  cNum: { width: 58 },
+  cFecha: { width: 66 },
+  cDias: { width: 48, textAlign: "right" },
+  cSaldo: { width: 72, textAlign: "right" },
+  row: { flexDirection: "row", paddingVertical: 4, alignItems: "center" },
+  grupoHeader: { flexDirection: "row", justifyContent: "space-between", backgroundColor: "#f2f4ee", paddingVertical: 5, paddingHorizontal: 4, marginTop: 6 },
+  grupoCli: { fontSize: 10, fontFamily: "Helvetica-Bold", color: INK },
+  grupoSubtotal: { fontSize: 10, fontFamily: "Helvetica-Bold", color: PH },
   creditosBox: { backgroundColor: "#fffbeb", paddingVertical: 3, paddingHorizontal: 4, marginTop: 1 },
-  creditosLbl: { fontSize: 6.5, fontFamily: "Helvetica-Bold", color: AMBER, textTransform: "uppercase", marginBottom: 1.5 },
+  creditosLbl: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: AMBER, textTransform: "uppercase", marginBottom: 1.5 },
   creditoRow: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 1 },
-  creditoTxt: { fontSize: 7.5, color: AMBER, flex: 1 },
-  creditoMonto: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: AMBER, width: 60, textAlign: "right" },
+  creditoTxt: { fontSize: 8.5, color: AMBER, flex: 1 },
+  creditoMonto: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: AMBER, width: 60, textAlign: "right" },
   totalsBox: { marginTop: 10, alignItems: "flex-end" },
   totalsWidth: { width: 220 },
   totLine: { flexDirection: "row", justifyContent: "space-between", paddingVertical: 2 },
@@ -75,9 +75,9 @@ const s = StyleSheet.create({
 
 const fmt = (n: number) => "$" + Number(n || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-const ColsRow = () => (
+const ColsRow = ({ showCliente = true }: { showCliente?: boolean }) => (
   <View style={s.colsRow}>
-    <Text style={[s.colTh, s.cCli]}>Client</Text>
+    <Text style={[s.colTh, s.cCli]}>{showCliente ? "Client" : ""}</Text>
     <Text style={[s.colTh, s.cNum]}>Invoice</Text>
     <Text style={[s.colTh, s.cFecha]}>Date</Text>
     <Text style={[s.colTh, s.cDias]}>Days</Text>
@@ -146,7 +146,7 @@ export async function renderReporteCarteraPdf(d: DatosReporteCartera): Promise<B
                 <Text style={s.grupoCli}>{g.cliNom}</Text>
                 <Text style={s.grupoSubtotal}>{fmt(g.subtotalNeto)}</Text>
               </View>
-              <ColsRow />
+              <ColsRow showCliente={false} />
               {g.filas.map((f, i) => (
                 <Fila key={i} f={f} showCliente={false} />
               ))}
