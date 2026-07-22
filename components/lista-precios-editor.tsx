@@ -137,7 +137,7 @@ export function ListaPreciosEditorModal({
           className="w-full px-3 py-2.5 rounded-xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25 mb-2 shrink-0"
         />
 
-        <div className="border border-[#e3e7dd] rounded-2xl overflow-y-auto flex-1 min-h-0">
+        <div className="border border-[#e3e7dd] rounded-3xl overflow-y-auto flex-1 min-h-0">
           {loading ? (
             <div className="px-3 py-4 text-xs text-gray-400 text-center">Loading products…</div>
           ) : (

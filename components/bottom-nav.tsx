@@ -110,12 +110,15 @@ export function BottomNav({
   const tabs = NAV_TABS.filter((t) => !hiddenTabs?.includes(t.id));
 
   return (
+    // Barra flotante en una sola caja curva (estilo Apple: cápsula translúcida
+    // con margen del borde, no una barra pegada de borde a borde). El tab
+    // activo lleva su propia caja verde suave adentro.
     <nav
-      className="bg-card border-t border-border fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] z-[5]"
-      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      className="fixed left-1/2 -translate-x-1/2 w-[calc(100%-24px)] max-w-[456px] z-[5] bg-card/90 backdrop-blur-md border border-border rounded-[26px] shadow-[0_6px_20px_rgba(28,31,25,0.12)]"
+      style={{ bottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
     >
       <div
-        className="flex overflow-x-auto no-scrollbar"
+        className="flex overflow-x-auto no-scrollbar gap-0.5 p-1.5"
         style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
       >
         {tabs.map((t) => (
@@ -126,29 +129,22 @@ export function BottomNav({
             }}
             onClick={() => go(t.id)}
             style={{ scrollSnapAlign: "center" }}
-            className={`w-[68px] shrink-0 flex flex-col items-center py-2 px-0.5 cursor-pointer text-[11px] gap-0.5 border-none bg-transparent font-sans ${
-              active === t.id ? "text-secondary-foreground font-bold" : "text-muted-foreground font-normal"
+            className={`w-[58px] shrink-0 flex flex-col items-center py-1.5 px-0.5 cursor-pointer text-[10px] gap-0.5 border-none rounded-2xl transition-colors font-sans ${
+              active === t.id ? "bg-secondary text-secondary-foreground font-bold" : "bg-transparent text-muted-foreground font-normal"
             }`}
           >
-            {/* Pildora activa detras del icono, estilo tab bar de iOS */}
-            <span
-              className={`flex items-center justify-center rounded-full px-3.5 py-1 transition-colors ${
-                active === t.id ? "bg-secondary" : "bg-transparent"
-              }`}
+            <svg
+              width={19}
+              height={19}
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
+              strokeWidth={active === t.id ? 2 : 1.8}
+              strokeLinecap="round"
+              strokeLinejoin="round"
             >
-              <svg
-                width={21}
-                height={21}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
-                strokeWidth={active === t.id ? 2 : 1.8}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d={NAV_ICONS[t.id]} />
-              </svg>
-            </span>
+              <path d={NAV_ICONS[t.id]} />
+            </svg>
             <span className="truncate w-full text-center">{t.label}</span>
           </button>
         ))}

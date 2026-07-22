@@ -1718,15 +1718,6 @@ const Dashboard = () => {
   );
   const pct = meta > 0 ? Math.min(100, Math.round((totalVentas / meta) * 100)) : 0;
 
-  const barColor =
-    pct >= 100
-      ? "bg-gradient-to-r from-primary to-green-500"
-      : pct >= 70
-        ? "bg-gradient-to-r from-amber-500 to-amber-300"
-        : pct >= 40
-          ? "bg-gradient-to-r from-blue-500 to-blue-300"
-          : "bg-gradient-to-r from-slate-400 to-slate-300";
-
   const statusLabel =
     pct >= 100 ? "Goal reached!" : pct >= 70 ? "Almost there!" : pct >= 40 ? "On track" : "Getting started";
 
@@ -1751,21 +1742,21 @@ const Dashboard = () => {
 
   return (
     <div>
-      <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
+      <div className="rounded-3xl p-5 mb-3 text-white shadow-sm bg-gradient-to-br from-[#82a175] via-primary to-[#3c5536]">
         <div className="flex items-center justify-between mb-3">
           <div>
-            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
               Sales goal · {mesActualNombre()}
             </div>
             {meta > 0 && (
-              <div className="text-xs text-muted-foreground mt-0.5">
+              <div className="text-xs text-white/70 mt-0.5">
                 {statusLabel}
               </div>
             )}
           </div>
           {!readOnly && (
             <button
-              className={`rounded-full px-3 py-1.5 text-xs font-bold ${GLASS_BTN}`}
+              className="rounded-full px-3 py-1.5 text-xs font-bold bg-white/20 hover:bg-white/30 transition-colors"
               onClick={() => {
                 setMetaInp(meta ? String(meta) : "");
                 setEditMeta(true);
@@ -1777,58 +1768,50 @@ const Dashboard = () => {
         </div>
         {meta > 0 ? (
           <>
-            <div className="flex justify-between items-baseline mb-2">
+            <div className="flex justify-between items-baseline mb-2.5">
               <div>
-                <span className="text-xl font-bold text-card-foreground">{fmt(totalVentas)}</span>
-                <span className="text-sm text-muted-foreground ml-1">of {fmt(meta)}</span>
+                <span className="text-2xl font-extrabold tracking-tight">{fmt(totalVentas)}</span>
+                <span className="text-sm text-white/70 ml-1">of {fmt(meta)}</span>
               </div>
-              <span
-                className={`text-xl font-extrabold ${pct >= 100 ? "text-primary" : pct >= 70 ? "text-amber-500" : pct >= 40 ? "text-blue-500" : "text-slate-400"}`}
-              >
+              <span className="text-base font-extrabold bg-white/20 px-2.5 py-1 rounded-full">
                 {pct}%
               </span>
             </div>
-            <div className="bg-muted rounded-full h-3.5 overflow-hidden mb-1.5">
+            <div className="bg-white/25 rounded-full h-2.5 overflow-hidden mb-1.5">
               <div
-                className={`h-full rounded-full transition-all duration-500 ${barColor}`}
+                className="h-full rounded-full bg-white transition-all duration-500"
                 style={{ width: `${pct}%`, minWidth: pct > 0 ? 4 : 0 }}
               />
             </div>
             {pct < 100 && (
-              <div className="text-xs text-muted-foreground text-right">
-                Remaining <strong className="text-card-foreground">{fmt(meta - totalVentas)}</strong>
+              <div className="text-xs text-white/75 text-right">
+                Remaining <strong className="text-white">{fmt(meta - totalVentas)}</strong>
               </div>
             )}
           </>
         ) : (
-          <Empty text="Tap '+ Set goal' for your target" />
+          <p className="text-sm text-white/80 text-center py-2">Tap &quot;+ Set goal&quot; for your target</p>
         )}
       </div>
 
-      <div className="grid grid-cols-2 gap-2.5 mb-3.5">
+      <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3.5">
         {[
-          ["Sales this month", fmt(totalVentas), false],
-          ["Invoices", facturas.length, false],
-          ["Clients", clientes.length, false],
-          ["Low stock", lowStock, true],
-        ].map(([label, val, red]) => (
-          <div
-            key={label as string}
-            className="bg-card rounded-xl p-3.5 border border-border"
-          >
-            <div className="text-xs text-muted-foreground mb-1">{label as string}</div>
-            <div
-              className={`text-xl font-bold ${red && (val as number) > 0 ? "text-destructive" : "text-card-foreground"}`}
-            >
-              {val as string | number}
-            </div>
+          { icon: "💵", tint: "bg-primary/15", label: "Sales this month", val: fmt(totalVentas), warn: false },
+          { icon: "🧾", tint: "bg-accent/20", label: "Invoices", val: facturas.length, warn: false },
+          { icon: "👥", tint: "bg-primary/10", label: "Clients", val: clientes.length, warn: false },
+          { icon: "📦", tint: "bg-red-50", label: "Low stock", val: lowStock, warn: lowStock > 0 },
+        ].map((row) => (
+          <div key={row.label} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0">
+            <div className={`w-9 h-9 rounded-xl ${row.tint} flex items-center justify-center text-base shrink-0`}>{row.icon}</div>
+            <div className="flex-1 text-sm font-semibold text-card-foreground">{row.label}</div>
+            <div className={`text-base font-extrabold tabular-nums ${row.warn ? "text-destructive" : "text-card-foreground"}`}>{row.val}</div>
           </div>
         ))}
       </div>
 
 
       {todos.length > 0 && (
-        <div className="bg-card rounded-2xl p-3.5 mb-3 border border-border">
+        <div className="bg-card rounded-3xl p-3.5 mb-3 border border-border">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
             To-do · {todos.length} pending
           </div>
@@ -1850,7 +1833,7 @@ const Dashboard = () => {
       )}
 
       {/* ── TOP PRODUCTS ── */}
-      <div className="bg-card rounded-2xl overflow-hidden mb-3 border border-border">
+      <div className="bg-card rounded-3xl overflow-hidden mb-3 border border-border">
         {/* Header con acento verde del logo */}
         <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
           <div>
@@ -1941,7 +1924,7 @@ const Dashboard = () => {
       </div>
 
       {/* Top clientes: volumen + comportamiento de pago (ver calcTopClientes) */}
-      <div className="bg-card rounded-2xl overflow-hidden mb-3 border border-border">
+      <div className="bg-card rounded-3xl overflow-hidden mb-3 border border-border">
         <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
           <div>
             <div className="text-sm font-bold text-card-foreground">Top Clients</div>
@@ -1954,7 +1937,7 @@ const Dashboard = () => {
         <TopClientesLista facturas={facturas} />
       </div>
 
-      <div className="bg-card rounded-2xl p-3.5 border border-border">
+      <div className="bg-card rounded-3xl p-3.5 border border-border">
         <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
           Recent activity
         </div>
@@ -1977,7 +1960,7 @@ const Dashboard = () => {
       </div>
 
       {/* Remitos pendientes por enviar */}
-      <div className="bg-card rounded-2xl p-3.5 mt-3 border border-border">
+      <div className="bg-card rounded-3xl p-3.5 mt-3 border border-border">
         <div className="mb-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
@@ -2314,21 +2297,21 @@ const Calendario = () => {
 
   return (
     <div>
-      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+      <div className="bg-card rounded-3xl p-3.5 border border-border mb-3">
+        <div className="flex items-center justify-between mb-3.5">
+          <div className="inline-flex items-center gap-1 bg-muted rounded-full p-1">
             <button
               onClick={() => cambiarMes(-1)}
-              className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-card-foreground"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-card-foreground active:bg-card/70"
             >
               ‹
             </button>
-            <span className="text-sm font-bold text-card-foreground min-w-[120px] text-center">
+            <span className="text-base font-extrabold text-card-foreground tracking-tight min-w-[112px] text-center px-1">
               {MESES[mesActual.month]} {mesActual.year}
             </span>
             <button
               onClick={() => cambiarMes(1)}
-              className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-card-foreground"
+              className="w-8 h-8 rounded-full flex items-center justify-center text-card-foreground active:bg-card/70"
             >
               ›
             </button>
@@ -2377,17 +2360,20 @@ const Calendario = () => {
             const ordenesDia = ordenesPorFecha[fecha] || [];
             const numDia = Number(fecha.slice(-2));
             const esHoy = fecha === today();
+            const celdaBase = "aspect-square flex flex-col items-center justify-center relative text-xs transition-colors";
+            const celdaClase =
+              diaSeleccionado === fecha
+                ? `${celdaBase} rounded-2xl bg-primary text-primary-foreground font-bold`
+                : esHoy
+                  ? `${celdaBase} rounded-full bg-primary text-primary-foreground font-extrabold`
+                  : esEntrega
+                    ? `${celdaBase} rounded-2xl bg-[#22c55e]/30 text-[#15803d] font-bold`
+                    : `${celdaBase} rounded-2xl bg-muted text-card-foreground`;
             return (
               <button
                 key={fecha}
                 onClick={() => setDiaSeleccionado(fecha === diaSeleccionado ? null : fecha)}
-                className={`aspect-square rounded-lg flex flex-col items-center justify-center relative text-xs transition-colors ${
-                  diaSeleccionado === fecha
-                    ? "bg-primary text-primary-foreground font-bold"
-                    : esEntrega
-                      ? "bg-[#22c55e]/30 text-[#15803d] font-bold"
-                      : "bg-muted text-card-foreground"
-                } ${esHoy ? "ring-2 ring-inset ring-[#b09060]" : ""}`}
+                className={celdaClase}
               >
                 {numDia}
                 <span className="absolute bottom-0.5 flex gap-0.5">
@@ -2412,7 +2398,7 @@ const Calendario = () => {
         </div>
         <div className="flex items-center gap-3 mt-2.5 px-0.5">
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
-            <span className="w-2 h-2 rounded-full ring-2 ring-inset ring-[#b09060] shrink-0" /> Today
+            <span className="w-2 h-2 rounded-full bg-primary shrink-0" /> Today
           </div>
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
             <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" /> Orders that day
@@ -2424,7 +2410,7 @@ const Calendario = () => {
       </div>
 
       {diaSeleccionado && (
-        <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+        <div className="bg-card rounded-3xl p-3.5 border border-border mb-3">
           <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">
             {fdate(diaSeleccionado)}
           </div>
@@ -2846,7 +2832,7 @@ const Facturas = () => {
           {(() => {
             const ncs = notasCredito.filter(n => !ncQ || n.cli.toLowerCase().includes(ncQ.toLowerCase())).sort((a,b) => b.num - a.num);
             return ncs.length ? (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden mb-3">
+              <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
                 {ncs.map((n, i) => (
                   <div
                     key={n.id}
@@ -2880,7 +2866,7 @@ const Facturas = () => {
                 ))}
               </div>
             ) : (
-              <div className="bg-card rounded-2xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No credit notes.</p></div>
+              <div className="bg-card rounded-3xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No credit notes.</p></div>
             );
           })()}
           {showNcForm && !readOnly && (
@@ -3045,7 +3031,7 @@ const Facturas = () => {
           {(() => {
             const sent = [...remitos].filter(r => r.enviado).sort((a, b) => b.num - a.num);
             return sent.length ? (
-              <div className="bg-card border border-border rounded-2xl overflow-hidden mb-3">
+              <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
                 {sent.map((r, i) => (
                   <button
                     key={r.id}
@@ -3067,7 +3053,7 @@ const Facturas = () => {
                 ))}
               </div>
             ) : (
-              <div className="bg-card rounded-2xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No sent remitos yet.</p></div>
+              <div className="bg-card rounded-3xl p-3.5 border border-border mb-3"><p className="text-sm text-muted-foreground text-center">No sent remitos yet.</p></div>
             );
           })()}
         </div>
@@ -3097,7 +3083,7 @@ const Facturas = () => {
       </div>
       {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New invoice" onClick={() => setShow(true)} />}
       {filtered.length ? (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="bg-card border border-border rounded-3xl overflow-hidden">
           {visibleFacturas.map((f, i) => (
             <div
               key={f.id}
@@ -3123,7 +3109,7 @@ const Facturas = () => {
           ))}
         </div>
       ) : (
-        <div className="bg-card rounded-2xl p-3.5 border border-border">
+        <div className="bg-card rounded-3xl p-3.5 border border-border">
           <Empty text="No invoices. Tap + to create one." />
         </div>
       )}
@@ -3559,7 +3545,7 @@ const Clientes = () => {
               +
             </button>
             {showAddMenu && (
-              <div className="absolute right-0 top-12 z-20 bg-card border border-border rounded-2xl shadow-lg overflow-hidden min-w-[180px]"
+              <div className="absolute right-0 top-12 z-20 bg-card border border-border rounded-3xl shadow-lg overflow-hidden min-w-[180px]"
                 onBlur={() => setShowAddMenu(false)}
               >
                 <button
@@ -3629,7 +3615,7 @@ const Clientes = () => {
           <div className="text-[11px] text-muted-foreground mb-2 -mt-1">
             Last 6 months · 60% volume + 40% payment — COD is best, under 30 days is good, over 30 days hurts the score
           </div>
-          <div className="border border-border rounded-2xl overflow-hidden -mx-1">
+          <div className="border border-border rounded-3xl overflow-hidden -mx-1">
             <TopClientesLista facturas={facturas} />
           </div>
         </Modal>
@@ -3641,7 +3627,7 @@ const Clientes = () => {
               <div
                 key={c.id}
                 onClick={() => router.push(`/clientes/${c.id}`)}
-                className="bg-card border border-border rounded-2xl overflow-hidden cursor-pointer hover:border-primary transition-colors"
+                className="bg-card border border-border rounded-3xl overflow-hidden cursor-pointer hover:border-primary transition-colors"
               >
                 <div className="w-full aspect-square bg-gradient-to-b from-secondary to-secondary-foreground flex items-center justify-center overflow-hidden">
                   {c.foto_local ? (
@@ -3664,7 +3650,7 @@ const Clientes = () => {
         ) : (
           <div className="space-y-2.5">
             {visibleClientes.map((c) => (
-              <div key={c.id} className="bg-card rounded-2xl border border-border overflow-hidden">
+              <div key={c.id} className="bg-card rounded-3xl border border-border overflow-hidden">
                 {/* Banner - clickeable */}
                 <div
                   onClick={() => router.push(`/clientes/${c.id}`)}
@@ -3743,7 +3729,7 @@ const Clientes = () => {
           </div>
         )
       ) : (
-        <div className="bg-card rounded-2xl p-3.5 border border-border">
+        <div className="bg-card rounded-3xl p-3.5 border border-border">
           <Empty text="No clients. Tap + to add one." />
         </div>
       )}
@@ -4272,7 +4258,7 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
             Special prices per client. Assign a list to one or many clients; their orders and invoices use these prices automatically.
           </p>
           {listasPrecios.length > 0 && (
-            <div className="border border-border rounded-2xl overflow-hidden mb-3">
+            <div className="border border-border rounded-3xl overflow-hidden mb-3">
               {listasPrecios.map((l) => (
                 <button
                   key={l.id}
@@ -4347,7 +4333,7 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
                 autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
               />
-              <div className="border border-border rounded-2xl overflow-hidden">
+              <div className="border border-border rounded-3xl overflow-hidden">
                 {prodResultados.map((p) => {
                   const especial = lista.precios[p.id];
                   return (
@@ -4393,7 +4379,7 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
                 autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
               />
-              <div className="border border-border rounded-2xl overflow-hidden">
+              <div className="border border-border rounded-3xl overflow-hidden">
                 {cliResultados.map((c) => {
                   const enEsta = c.lista_precio_id === lista.id;
                   const otraLista = !enEsta && c.lista_precio_id ? listasPrecios.find((l) => l.id === c.lista_precio_id) : null;
@@ -4726,7 +4712,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
             Group products by business type, product type, or anything else — like "Tipo de Negocio" with values Farmacias, Supermercados, Beauty Supply...
           </p>
           {categorias.length > 0 && (
-            <div className="border border-border rounded-2xl overflow-hidden mb-3">
+            <div className="border border-border rounded-3xl overflow-hidden mb-3">
               {categorias.map((c) => (
                 <button
                   key={c.id}
@@ -4826,7 +4812,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
                 autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
               />
-              <div className="border border-border rounded-2xl overflow-hidden">
+              <div className="border border-border rounded-3xl overflow-hidden">
                 {prodResultados.map((p) => {
                   const tiene = (p.categorias?.[categoria.id] || []).includes(valorSel);
                   return (
@@ -5630,7 +5616,7 @@ const Inventario = () => {
             ))}
           </div>
           {topProductosModal.length ? (
-            <div className="border border-border rounded-2xl overflow-hidden">
+            <div className="border border-border rounded-3xl overflow-hidden">
               {topProductosModal.map((p, i) => {
                 const maxMonto = topProductosModal[0]?.monto || 1;
                 return (
@@ -5666,7 +5652,7 @@ const Inventario = () => {
             return (
               <div
                 key={p.id}
-                className="bg-card border border-border rounded-2xl p-3 relative flex flex-col h-full shadow-[0_1px_2px_rgba(28,31,25,0.04)]"
+                className="bg-card border border-border rounded-3xl p-3 relative flex flex-col h-full shadow-[0_1px_2px_rgba(28,31,25,0.04)]"
               >
                 {!readOnly && (
                   <button
@@ -6686,7 +6672,7 @@ const Ordenes = () => {
           ))}
         </div>
       )}
-      <div className="bg-card rounded-2xl p-3.5 border border-border">
+      <div className="bg-card rounded-3xl p-3.5 border border-border">
         {ordenesOrdenadas.length ? (
           ordenesVisibles.map((o) => {
             const cInfo = clienteFor(o.cli);
@@ -6954,7 +6940,7 @@ const Ordenes = () => {
                   return (
                     <div
                       key={p.id}
-                      className={`bg-card border rounded-2xl p-3 flex flex-col h-full ${
+                      className={`bg-card border rounded-3xl p-3 flex flex-col h-full ${
                         qty > 0 ? "border-primary" : "border-border"
                       }`}
                     >
@@ -7134,7 +7120,7 @@ const Ordenes = () => {
                   <div
                     key={i}
                     ref={esUltimoPickeado ? lastPickedRef : undefined}
-                    className={`bg-card border rounded-2xl p-3 flex items-center gap-3 ${item.picked ? "border-primary" : "border-border"} ${esUltimoPickeado ? "ring-2 ring-amber-300" : ""}`}
+                    className={`bg-card border rounded-3xl p-3 flex items-center gap-3 ${item.picked ? "border-primary" : "border-border"} ${esUltimoPickeado ? "ring-2 ring-amber-300" : ""}`}
                   >
                     <button
                       onClick={() => togglePicked(i)}
@@ -7428,7 +7414,7 @@ const Mejoras = () => {
   const card = (m: Mejora) => (
     <div
       key={m.id}
-      className="bg-card border border-border rounded-2xl p-3.5 mb-2.5"
+      className="bg-card border border-border rounded-3xl p-3.5 mb-2.5"
     >
       <div className="flex items-start justify-between gap-3 mb-1.5">
         <div className="flex-1 min-w-0">
@@ -7492,7 +7478,7 @@ const Mejoras = () => {
       {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="Add improvement" onClick={openNew} />}
 
       {mejoras.length === 0 ? (
-        <div className="bg-card rounded-2xl p-3.5 border border-border">
+        <div className="bg-card rounded-3xl p-3.5 border border-border">
           <Empty text="No improvements yet. Tap + to add an idea for the business." />
         </div>
       ) : (
@@ -7731,7 +7717,7 @@ const Compras = () => {
 
   return (
     <div>
-      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+      <div className="bg-card rounded-3xl p-3.5 border border-border mb-3">
         <p className="text-xs text-muted-foreground">
           Record each supplier purchase invoice here: it adds the quantity to inventory and updates the product's cost, feeding the P&L report's cost of goods sold.
         </p>
@@ -7739,7 +7725,7 @@ const Compras = () => {
       {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New purchase" onClick={() => { reset(); setShow(true); }} />}
 
       {comprasOrdenadas.length ? (
-        <div className="bg-card border border-border rounded-2xl overflow-hidden">
+        <div className="bg-card border border-border rounded-3xl overflow-hidden">
           {visible.map((c, i) => (
             <div
               key={c.id}
@@ -7759,7 +7745,7 @@ const Compras = () => {
           ))}
         </div>
       ) : (
-        <div className="bg-card rounded-2xl p-3.5 border border-border">
+        <div className="bg-card rounded-3xl p-3.5 border border-border">
           <Empty text="No purchases recorded yet. Tap + to add one." />
         </div>
       )}
@@ -7804,7 +7790,7 @@ const Compras = () => {
           </Field>
 
           {lineas.length > 0 && (
-            <div className="border border-border rounded-2xl overflow-hidden mb-3">
+            <div className="border border-border rounded-3xl overflow-hidden mb-3">
               {lineas.map((l) => (
                 <div key={l.prodId} className="flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0">
                   <div className="flex-1 min-w-0">
@@ -7881,7 +7867,7 @@ const Compras = () => {
           <div className="text-sm text-card-foreground font-semibold">{detalle.proveedor}</div>
           <div className="text-xs text-muted-foreground mb-1">{fdate(detalle.fecha)}{detalle.num_factura_proveedor ? ` · Ref: ${detalle.num_factura_proveedor}` : ""}</div>
           {detalle.nota && <div className="text-xs text-muted-foreground italic mb-2">"{detalle.nota}"</div>}
-          <div className="border border-border rounded-2xl overflow-hidden mt-2 mb-3">
+          <div className="border border-border rounded-3xl overflow-hidden mt-2 mb-3">
             {detalle.lineas.map((l, i) => (
               <div key={i} className={`flex items-center justify-between px-3 py-2 ${i > 0 ? "border-t border-border" : ""}`}>
                 <div className="min-w-0">
@@ -8160,7 +8146,7 @@ const PLReport = () => {
   return (
     <div>
       {/* Selector de periodo */}
-      <div className="bg-card rounded-2xl p-3.5 border border-border mb-3">
+      <div className="bg-card rounded-3xl p-3.5 border border-border mb-3">
         <div className="flex gap-1.5 mb-3 flex-wrap">
           {[
             { id: "month", label: "This Month" },
@@ -8184,7 +8170,7 @@ const PLReport = () => {
       </div>
 
       {/* Resumen financiero */}
-      <div className="bg-card rounded-2xl p-4 border border-border mb-3">
+      <div className="bg-card rounded-3xl p-4 border border-border mb-3">
         <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Revenue (Cash Basis)</div>
         <Linea label="Cash Collected" value={cashCollected} sub="Payments received in this period" bold tint="primary" />
         <Linea label="Invoiced (reference)" value={invoiced} sub="Total billed in this period, collected or not" />
@@ -8213,7 +8199,7 @@ const PLReport = () => {
       </div>
 
       {/* Gastos */}
-      <div className="bg-card rounded-2xl p-3.5 border border-border">
+      <div className="bg-card rounded-3xl p-3.5 border border-border">
         <div className="flex items-center justify-between mb-2">
           <span className="text-sm font-bold text-card-foreground">Expenses</span>
           {!readOnly && (
@@ -8455,7 +8441,7 @@ const GestionarUsuarios = () => {
       </div>
       <AddPillButton className={ADD_PILL_POS} aria-label="Create user" onClick={() => setShow(true)} />
 
-      <div className="bg-card rounded-2xl p-3.5 border border-border mb-20">
+      <div className="bg-card rounded-3xl p-3.5 border border-border mb-20">
         {users.length === 0 ? (
           <Empty text="No users. Tap the + button to create one." />
         ) : (
@@ -8775,7 +8761,7 @@ function AppContent() {
       )}
       <main
         ref={mainRef}
-        className="flex-1 p-3 pb-20 overflow-y-auto"
+        className="flex-1 p-3 pb-24 overflow-y-auto"
         onScroll={(e) => sessionStorage.setItem(`ph_scroll_${tab}`, String(e.currentTarget.scrollTop))}
         onTouchStart={onPullStart}
         onTouchMove={onPullMove}

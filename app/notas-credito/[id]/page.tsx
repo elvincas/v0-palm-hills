@@ -242,7 +242,7 @@ export default function NotaCreditoPage() {
       {/* Modal: aplicar credito a una factura */}
       {showAplicar && !readOnly && (
         <div className="no-print fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5 max-h-[80vh] overflow-y-auto">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-5 max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-1.5">
               <h2 className="text-base font-bold text-[#1a1a18]">Apply Credit — {fmt(nota.monto)}</h2>
               <button onClick={() => setShowAplicar(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -385,7 +385,7 @@ export default function NotaCreditoPage() {
               </>
             ) : (
               /* Amount box */
-              <div className="flex items-center justify-between bg-[#f0f4ee] border border-[#4a6741]/20 rounded-2xl px-6 py-5 mb-6">
+              <div className="flex items-center justify-between bg-[#f0f4ee] border border-[#4a6741]/20 rounded-3xl px-6 py-5 mb-6">
                 <div>
                   <div className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-1">Credit Amount</div>
                   <div className="text-3xl font-black text-[#4a6741]">{fmt(nota.monto)}</div>

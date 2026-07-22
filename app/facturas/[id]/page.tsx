@@ -771,7 +771,7 @@ export default function FacturaPage() {
       {/* Payment form modal */}
       {showPagoForm && (
         <div className="print:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-5">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold text-[#1a1a18]">{pagoFull ? "Mark as Paid" : "Record Payment"}</h2>
               <button onClick={() => setShowPagoForm(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
@@ -847,7 +847,7 @@ export default function FacturaPage() {
       {/* Payment history (screen only) */}
       {pagos.length > 0 && (
         <div className="print:hidden max-w-3xl mx-auto px-4 sm:px-8 pt-4">
-          <div className="bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="bg-white rounded-3xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-4 py-3 border-b border-gray-100 flex items-center justify-between">
               <div className="text-xs font-bold uppercase tracking-wide text-gray-500">Payment History</div>
               <div className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${isPaid ? "bg-green-100 text-green-700" : "bg-blue-100 text-blue-700"}`}>

@@ -74,12 +74,14 @@ function DeliveryCalendar({ fechas, value, onChange }: { fechas: string[]; value
   const hayEntregasEnMes = celdas.some((f) => f && fechaSet.has(f))
 
   return (
-    <div className="bg-card border border-border rounded-2xl p-3 shadow-sm">
+    <div className="bg-card border border-border rounded-3xl p-3 shadow-sm">
       {/* Header mes */}
       <div className="flex items-center justify-between mb-3">
-        <button onClick={prevMes} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground font-bold text-lg">‹</button>
-        <div className="text-sm font-bold text-card-foreground">{MESES[mes.month]} {mes.year}</div>
-        <button onClick={nextMes} className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-muted text-muted-foreground font-bold text-lg">›</button>
+        <div className="inline-flex items-center gap-1 bg-muted rounded-full p-1 mx-auto">
+          <button onClick={prevMes} className="w-8 h-8 flex items-center justify-center rounded-full text-muted-foreground font-bold text-lg active:bg-card/70">‹</button>
+          <div className="text-sm font-extrabold text-card-foreground tracking-tight px-1 min-w-[100px] text-center">{MESES[mes.month]} {mes.year}</div>
+          <button onClick={nextMes} className="w-8 h-8 flex items-center justify-center rounded-full text-muted-foreground font-bold text-lg active:bg-card/70">›</button>
+        </div>
       </div>
 
       {/* Días de la semana */}
@@ -96,18 +98,20 @@ function DeliveryCalendar({ fechas, value, onChange }: { fechas: string[]; value
           const esEntrega = fechaSet.has(f)
           const seleccionado = f === value
           const esHoy = f === todayStr
+          const celdaBase = 'aspect-square flex items-center justify-center text-xs font-medium transition-all'
+          const celdaClase = seleccionado
+            ? `${celdaBase} rounded-2xl bg-primary text-primary-foreground font-bold shadow-sm`
+            : esHoy
+              ? `${celdaBase} rounded-full bg-primary text-primary-foreground font-extrabold ${esEntrega ? "cursor-pointer" : "cursor-default"}`
+              : esEntrega
+                ? `${celdaBase} rounded-2xl bg-[#22c55e]/30 text-[#15803d] hover:bg-[#22c55e]/40 font-bold cursor-pointer`
+                : `${celdaBase} rounded-2xl text-muted-foreground/40 cursor-default`
           return (
             <button
               key={f}
               disabled={!esEntrega}
               onClick={() => onChange(f)}
-              className={`aspect-square rounded-lg flex items-center justify-center text-xs font-medium transition-all ${
-                seleccionado
-                  ? 'bg-primary text-primary-foreground font-bold shadow-sm'
-                  : esEntrega
-                    ? 'bg-[#22c55e]/30 text-[#15803d] hover:bg-[#22c55e]/40 font-bold cursor-pointer'
-                    : 'text-muted-foreground/40 cursor-default'
-              } ${esHoy ? 'ring-2 ring-inset ring-[#b09060]' : ''}`}
+              className={celdaClase}
             >
               {Number(f.slice(-2))}
             </button>

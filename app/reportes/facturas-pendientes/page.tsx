@@ -219,11 +219,11 @@ export default function ReporteFacturasPendientesPage() {
         ) : error ? (
           <p className="text-sm text-destructive text-center py-8">{error}</p>
         ) : filas.length === 0 ? (
-          <div className="bg-card rounded-2xl p-6 border border-border text-center text-sm text-muted-foreground">
+          <div className="bg-card rounded-3xl p-6 border border-border text-center text-sm text-muted-foreground">
             No pending invoices. 🎉
           </div>
         ) : modo === "flat" ? (
-          <div className="bg-card border border-border rounded-2xl overflow-hidden divide-y divide-border">
+          <div className="bg-card border border-border rounded-3xl overflow-hidden divide-y divide-border">
             {filas.map((f, i) => (
               <FilaRow key={i} f={f} showCliente />
             ))}
@@ -242,7 +242,7 @@ export default function ReporteFacturasPendientesPage() {
         ) : (
           <div className="space-y-3">
             {grupos.map((g, gi) => (
-              <div key={gi} className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div key={gi} className="bg-card border border-border rounded-3xl overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2.5 bg-secondary/40">
                   <span className="text-sm font-bold text-card-foreground">{g.cliNom}</span>
                   <span className="text-sm font-bold text-primary">{fmt(g.subtotalNeto)}</span>

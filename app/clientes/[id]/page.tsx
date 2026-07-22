@@ -494,7 +494,7 @@ export default function ClientePerfilPage() {
             <input
               value={form.nom}
               onChange={(e) => setForm({ ...form, nom: e.target.value })}
-              className="w-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xl font-black uppercase rounded-2xl px-4 py-2.5 outline-none mb-2"
+              className="w-full bg-white/20 backdrop-blur-md border border-white/30 text-white text-xl font-black uppercase rounded-3xl px-4 py-2.5 outline-none mb-2"
             />
           ) : (
             <h1 className="text-[1.65rem] font-black uppercase tracking-wide text-white leading-tight drop-shadow-sm">{cliente.nom}</h1>
@@ -516,14 +516,14 @@ export default function ClientePerfilPage() {
           <div className="flex gap-2.5">
             <button
               onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
-              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-2xl font-bold text-sm text-white shadow-md active:scale-[0.97] transition-all"
+              className="flex-1 flex items-center justify-center gap-2 py-3.5 rounded-3xl font-bold text-sm text-white shadow-md active:scale-[0.97] transition-all"
               style={{ background: `linear-gradient(135deg,#3d5636,${PH})` }}
             >
               <span className="text-base leading-none">+</span> New Order
             </button>
             <button
               onClick={() => router.push(`/clientes/${clienteId}/estado-cuenta`)}
-              className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-2xl font-semibold text-sm bg-white/70 backdrop-blur-xl border border-white/60 shadow-sm active:scale-[0.97] transition-all"
+              className="flex-1 flex items-center justify-center gap-1.5 py-3.5 rounded-3xl font-semibold text-sm bg-white/70 backdrop-blur-xl border border-white/60 shadow-sm active:scale-[0.97] transition-all"
               style={{ color: PH }}
             >
               📄 Statement
@@ -535,7 +535,7 @@ export default function ClientePerfilPage() {
         {hasDraft && (
           <button
             onClick={() => router.push(`/clientes/${clienteId}/nueva-orden`)}
-            className="w-full flex items-center justify-between gap-3 bg-amber-50/90 backdrop-blur-sm border border-amber-200 rounded-2xl px-4 py-3 text-left active:scale-[0.98] transition-all"
+            className="w-full flex items-center justify-between gap-3 bg-amber-50/90 backdrop-blur-sm border border-amber-200 rounded-3xl px-4 py-3 text-left active:scale-[0.98] transition-all"
           >
             <div>
               <div className="text-xs font-bold text-amber-700">Draft in progress</div>
@@ -546,7 +546,7 @@ export default function ClientePerfilPage() {
         )}
 
         {/* ── INFO CARD ── */}
-        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 pt-4 pb-1 space-y-3.5">
 
             <div>
@@ -652,7 +652,7 @@ export default function ClientePerfilPage() {
         </div>
 
         {/* ── CONTACTS ── */}
-        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 py-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>Contacts & Phones</p>
@@ -756,7 +756,7 @@ export default function ClientePerfilPage() {
           const credito = notasCredito.filter(n => !n.aplicada).reduce((acc, n) => acc + n.monto, 0);
           const neto = deuda - credito;
           return (
-            <div className="rounded-2xl shadow-sm overflow-hidden" style={{ background: `linear-gradient(135deg,#2e4029 0%,${PH} 60%,#6b9660 100%)` }}>
+            <div className="rounded-3xl shadow-sm overflow-hidden" style={{ background: `linear-gradient(135deg,#2e4029 0%,${PH} 60%,#6b9660 100%)` }}>
               <div className="px-5 py-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-white/50 mb-3">Account Balance</p>
                 <div className="grid grid-cols-3 gap-2">
@@ -777,7 +777,7 @@ export default function ClientePerfilPage() {
         })()}
 
         {/* ── TO-DO LIST ── */}
-        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 py-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>To-Do List</p>
@@ -848,7 +848,7 @@ export default function ClientePerfilPage() {
         </div>
 
         {/* ── VISIT HISTORY ── */}
-        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 py-4">
             <div className="flex items-center justify-between mb-3">
               <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>Visit History</p>
@@ -881,7 +881,7 @@ export default function ClientePerfilPage() {
         </div>
 
         {/* ── ORDERS ── */}
-        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 py-4">
             <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{ color: `${PH}99` }}>Orders</p>
             {loadingOrdenes ? (
@@ -913,7 +913,7 @@ export default function ClientePerfilPage() {
         </div>
 
         {/* ── INVOICES ── */}
-        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+        <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
           <div className="px-5 py-4">
             <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{ color: `${PH}99` }}>Invoices</p>
             {loadingFacturas ? (
@@ -948,7 +948,7 @@ export default function ClientePerfilPage() {
 
         {/* ── CREDIT NOTES ── */}
         {notasCredito.length > 0 && (
-          <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+          <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
             <div className="px-5 py-4">
               <p className="text-[9px] font-black uppercase tracking-widest mb-3" style={{ color: `${PH}99` }}>Credit Notes</p>
               <div className="divide-y divide-black/5">
@@ -990,7 +990,7 @@ export default function ClientePerfilPage() {
           // Top 25% de los productos que compra (minimo 3 para que se vea)
           const top = arr.slice(0, Math.max(Math.min(arr.length, 3), Math.ceil(arr.length * 0.25)));
           return (
-            <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-2xl shadow-sm overflow-hidden">
+            <div className="bg-white/65 backdrop-blur-xl border border-white/60 rounded-3xl shadow-sm overflow-hidden">
               <div className="px-5 pt-4 pb-1 flex items-baseline justify-between">
                 <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: `${PH}99` }}>Top Products · This Client</p>
                 <p className="text-[9px] text-gray-400">top 25% by amount</p>
@@ -1044,13 +1044,13 @@ export default function ClientePerfilPage() {
               placeholder="What happened during this visit…"
               rows={4}
               autoFocus
-              className="w-full px-3 py-2.5 rounded-2xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25 resize-none mb-4"
+              className="w-full px-3 py-2.5 rounded-3xl border border-black/10 bg-white text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/25 resize-none mb-4"
             />
             <div className="flex gap-2">
-              <button onClick={() => { setShowNota(false); setNotaTexto(""); }} className="flex-1 px-4 py-2.5 rounded-2xl text-sm font-semibold text-gray-500 bg-gray-100 active:scale-[0.98] transition-all">
+              <button onClick={() => { setShowNota(false); setNotaTexto(""); }} className="flex-1 px-4 py-2.5 rounded-3xl text-sm font-semibold text-gray-500 bg-gray-100 active:scale-[0.98] transition-all">
                 Cancel
               </button>
-              <button onClick={handleSaveNota} disabled={savingNota || !notaTexto.trim()} className="flex-1 px-4 py-2.5 rounded-2xl text-sm font-bold text-white disabled:opacity-50 active:scale-[0.98] transition-all" style={{ background: PH }}>
+              <button onClick={handleSaveNota} disabled={savingNota || !notaTexto.trim()} className="flex-1 px-4 py-2.5 rounded-3xl text-sm font-bold text-white disabled:opacity-50 active:scale-[0.98] transition-all" style={{ background: PH }}>
                 {savingNota ? "Saving…" : "Save Note"}
               </button>
             </div>
