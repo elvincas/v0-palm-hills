@@ -30,9 +30,9 @@ export const metadata: Metadata = {
     siteName: 'Palm Hills',
     images: [
       {
-        url: '/logo.png',
-        width: 1080,
-        height: 1080,
+        url: '/og-image.png',
+        width: 1200,
+        height: 1200,
         alt: 'Palm Hills Beauty & Health',
       },
     ],
@@ -43,7 +43,7 @@ export const metadata: Metadata = {
     card: 'summary',
     title: 'Palm Hills - Beauty & Health',
     description: 'Business management system for beauty and health businesses',
-    images: ['/logo.png'],
+    images: ['/og-image.png'],
   },
   icons: {
     icon: [
