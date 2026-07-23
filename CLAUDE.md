@@ -92,7 +92,7 @@ supabase/
 `id`, `num`, `cli`, `fecha`, `monto`, `motivo`, `tipo` (amount|product), `lineas` (LineaNC[]), `aplicada` (bool), `aplicada_en` (texto), `aplicada_fecha`, `aplicada_factura_id`. Al aplicar a una factura se registra como pago (metodo "Credit") en ella; aplicada NO resta del balance global del cliente.
 
 ### `remitos`
-`id`, `num` (empieza en 5001), `orden_id`, `orden_num`, `cli`, `fecha`, `lineas`, `enviado` (bool), `fecha_envio`. Se generan al completar pick de órdenes Castillo.
+`id`, `num` (empieza en 5001), `orden_id`, `orden_num`, `cli`, `fecha`, `lineas`, `enviado` (bool), `fecha_envio`. Se generan al completar pick de órdenes Castillo. **RLS estaba deshabilitado por completo (0 policies) hasta el 2026-07-23** — era la única tabla operativa del proyecto sin row level security, cualquiera con la anon key podía leer/escribir sin autenticarse. Se habilitó con policies select/insert/update/delete para `authenticated`, mismo patrón permisivo que `facturas` (sin bloqueo por rol, ya que remitos se generan en el mismo flujo de `completePick`). Si se crea una tabla nueva, verificar SIEMPRE `alter table ... enable row level security` + las 4 policies — ver también el caso de `eventos_calendario` arriba (le faltaba la de UPDATE).
 
 ### `todos`
 `id`, `texto`, `cliente_id`, `cliente_nom`, `fecha_limite`, `completado`, `created_at` — to-dos del dashboard y perfil de cliente.
