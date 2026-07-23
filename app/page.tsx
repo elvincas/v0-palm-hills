@@ -566,6 +566,7 @@ interface DataContextType {
   updateCategoria: (id: string, c: Omit<Categoria, "id">) => Promise<void>;
   deleteCategoria: (id: string) => Promise<void>;
   setProductoCategoriaValor: (prodId: string, categoriaId: string, valor: string, activo: boolean) => Promise<void>;
+  setProductoFabricante: (prodId: string, fabricante: string) => Promise<void>;
   refreshLogs: () => void;
   refreshAll: () => Promise<void>;
   todos: Todo[];
@@ -1482,6 +1483,16 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     setProductos((prev) => prev.map((x) => (x.id === prodId ? { ...x, categorias: categoriasNuevas } : x)));
   };
 
+  // Asigna (o quita, con "") la marca de UN producto sin tocar el resto —
+  // mismo espiritu que setProductoCategoriaValor, para el picker bidireccional
+  // de Brands (escribir la marca una vez, marcar productos, en vez de entrar
+  // al edit de cada uno).
+  const setProductoFabricante = async (prodId: string, fabricante: string) => {
+    const { error } = await supabase.from("productos").update({ fabricante }).eq("id", prodId);
+    if (error) throw new Error(error.message);
+    setProductos((prev) => prev.map((x) => (x.id === prodId ? { ...x, fabricante } : x)));
+  };
+
   // --- Vendedores (comision por venta y/o por cobro) ---
   const addVendedor = async (v: Omit<Vendedor, "id">) => {
     const { data, error } = await supabase.from("vendedores").insert(v).select().single();
@@ -1572,6 +1583,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     updateCategoria,
     deleteCategoria,
     setProductoCategoriaValor,
+    setProductoFabricante,
     refreshLogs,
     refreshAll: loadAll,
     todos,
@@ -4714,6 +4726,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
   const [valorInput, setValorInput] = useState("");
   const [valorSel, setValorSel] = useState<string | null>(null);
   const [prodSearch, setProdSearch] = useState("");
+  const [almacenFiltro, setAlmacenFiltro] = useState<"todos" | "palmhills" | "castillo">("todos");
   const [saving, setSaving] = useState(false);
 
   const categoria = categorias.find((c) => c.id === selId) || null;
@@ -4783,18 +4796,19 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
 
   const prodResultadosTodos = useMemo(() => {
     if (!categoria || !valorSel) return [];
+    const porAlmacen = almacenFiltro === "todos" ? productos : productos.filter((p) => (p.almacen || "palmhills") === almacenFiltro);
     return prodSearch.trim()
-      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
-      : [...productos].sort((a, b) => {
+      ? flexibleSearch(porAlmacen, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
+      : [...porAlmacen].sort((a, b) => {
           const aIn = (a.categorias?.[categoria.id] || []).includes(valorSel) ? 0 : 1;
           const bIn = (b.categorias?.[categoria.id] || []).includes(valorSel) ? 0 : 1;
           if (aIn !== bIn) return aIn - bIn;
           return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
         });
-  }, [categoria, valorSel, prodSearch, productos]);
+  }, [categoria, valorSel, prodSearch, productos, almacenFiltro]);
   const { visible: prodResultados, hasMore: prodHasMore, remaining: prodRemaining, loadMore: prodLoadMore } = usePagedList(
     prodResultadosTodos,
-    [categoria?.id, valorSel, prodSearch]
+    [categoria?.id, valorSel, prodSearch, almacenFiltro]
   );
 
   return (
@@ -4897,6 +4911,21 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
             <>
               <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
                 Products in "{valorSel}"
+              </div>
+              <div className="inline-flex bg-muted rounded-full p-1 shadow-sm gap-0.5 mb-2">
+                {([
+                  { id: "todos", label: "All" },
+                  { id: "palmhills", label: "🌴 Palm Hills" },
+                  { id: "castillo", label: "🏰 Castillo" },
+                ] as const).map((a) => (
+                  <button
+                    key={a.id}
+                    onClick={() => setAlmacenFiltro(a.id)}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${almacenFiltro === a.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+                  >
+                    {a.label}
+                  </button>
+                ))}
               </div>
               <input
                 value={prodSearch}
@@ -5208,12 +5237,200 @@ const VendedoresModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+// Brands: mismo esquema bidireccional que Categories (escribir el nombre una
+// vez, despues marcar productos) pero opera directo sobre productos.fabricante
+// (string simple, un solo valor por producto) en vez del jsonb de categorias
+// multi-valor — asi no hay que abrir el "edit" de cada producto para
+// asignarle una marca.
+const MarcasModal = ({ onClose }: { onClose: () => void }) => {
+  const { productos, setProductoFabricante, readOnly } = useData();
+  const [marcaSel, setMarcaSel] = useState<string | null>(null);
+  const [nuevaMarca, setNuevaMarca] = useState("");
+  const [prodSearch, setProdSearch] = useState("");
+  const [almacenFiltro, setAlmacenFiltro] = useState<"todos" | "palmhills" | "castillo">("todos");
+
+  const marcas = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const p of productos) {
+      const m = (p.fabricante || "").trim();
+      if (!m) continue;
+      map.set(m, (map.get(m) || 0) + 1);
+    }
+    return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0], "en"));
+  }, [productos]);
+
+  const seleccionarOCrear = () => {
+    const nombre = nuevaMarca.trim();
+    if (!nombre) return;
+    setMarcaSel(nombre);
+    setNuevaMarca("");
+    setProdSearch("");
+  };
+
+  const toggleProducto = async (prodId: string, tiene: boolean) => {
+    if (!marcaSel) return;
+    try {
+      await setProductoFabricante(prodId, tiene ? "" : marcaSel);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const eliminarMarca = async () => {
+    if (!marcaSel) return;
+    if (!confirm(`Remove "${marcaSel}" from all its products? This cannot be undone.`)) return;
+    try {
+      await Promise.all(
+        productos.filter((p) => p.fabricante === marcaSel).map((p) => setProductoFabricante(p.id, ""))
+      );
+      setMarcaSel(null);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const prodResultadosTodos = useMemo(() => {
+    if (!marcaSel) return [];
+    const porAlmacen = almacenFiltro === "todos" ? productos : productos.filter((p) => (p.almacen || "palmhills") === almacenFiltro);
+    return prodSearch.trim()
+      ? flexibleSearch(porAlmacen, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
+      : [...porAlmacen].sort((a, b) => {
+          const aIn = a.fabricante === marcaSel ? 0 : 1;
+          const bIn = b.fabricante === marcaSel ? 0 : 1;
+          if (aIn !== bIn) return aIn - bIn;
+          return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
+        });
+  }, [marcaSel, prodSearch, productos, almacenFiltro]);
+  const { visible: prodResultados, hasMore: prodHasMore, remaining: prodRemaining, loadMore: prodLoadMore } = usePagedList(
+    prodResultadosTodos,
+    [marcaSel, prodSearch, almacenFiltro]
+  );
+
+  return (
+    <Modal title={marcaSel || "Brands"} onClose={onClose}>
+      {!marcaSel ? (
+        <>
+          <p className="text-xs text-muted-foreground mb-3">
+            Type a brand name once, then mark which products belong to it — no need to open each product's edit form.
+          </p>
+          {marcas.length > 0 && (
+            <div className="border border-border rounded-3xl overflow-hidden mb-3">
+              {marcas.map(([nombre, count]) => (
+                <button
+                  key={nombre}
+                  onClick={() => { setMarcaSel(nombre); setProdSearch(""); }}
+                  className="w-full flex items-center justify-between px-4 py-3 border-b border-border last:border-b-0 bg-card text-left hover:bg-muted"
+                >
+                  <span className="text-sm font-semibold text-card-foreground">{nombre}</span>
+                  <span className="text-xs text-muted-foreground">{count} product{count === 1 ? "" : "s"}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {marcas.length === 0 && <Empty text="No brands assigned yet." />}
+          {!readOnly && (
+            <div className="flex gap-2">
+              <input
+                value={nuevaMarca}
+                onChange={(e) => setNuevaMarca(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") seleccionarOCrear(); }}
+                placeholder="New brand name (e.g. Karseell)…"
+                autoComplete="off"
+                className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button
+                onClick={seleccionarOCrear}
+                disabled={!nuevaMarca.trim()}
+                className={`shrink-0 px-4 py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+              >
+                Add
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex items-center justify-between mb-3">
+            <button
+              onClick={() => setMarcaSel(null)}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg bg-card border border-border text-[13px] font-medium text-primary"
+            >
+              ‹ Brands
+            </button>
+            {!readOnly && (
+              <button onClick={eliminarMarca} className="text-xs font-bold text-destructive underline">
+                Delete brand
+              </button>
+            )}
+          </div>
+          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+            Products in "{marcaSel}"
+          </div>
+          <div className="inline-flex bg-muted rounded-full p-1 shadow-sm gap-0.5 mb-2">
+            {([
+              { id: "todos", label: "All" },
+              { id: "palmhills", label: "🌴 Palm Hills" },
+              { id: "castillo", label: "🏰 Castillo" },
+            ] as const).map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setAlmacenFiltro(a.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${almacenFiltro === a.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}
+              >
+                {a.label}
+              </button>
+            ))}
+          </div>
+          <input
+            value={prodSearch}
+            onChange={(e) => setProdSearch(e.target.value)}
+            placeholder="Search product by name, SKU or brand…"
+            autoComplete="off"
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
+          />
+          <div className="border border-border rounded-3xl overflow-hidden">
+            {prodResultados.map((p) => {
+              const tiene = p.fabricante === marcaSel;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => !readOnly && toggleProducto(p.id, tiene)}
+                  className="w-full flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 bg-card text-left"
+                >
+                  <span
+                    className={`w-5 h-5 shrink-0 rounded-md border flex items-center justify-center text-[11px] font-bold ${
+                      tiene ? "bg-primary border-primary text-primary-foreground" : "border-border bg-background text-transparent"
+                    }`}
+                  >
+                    ✓
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-card-foreground truncate uppercase leading-tight">{p.nom}</div>
+                    <div className="text-[10px] font-mono text-muted-foreground">
+                      {p.sku}
+                      {p.fabricante && p.fabricante !== marcaSel ? ` · currently "${p.fabricante}"` : ""}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+            {prodResultados.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No products found</div>}
+          </div>
+          <LoadMoreButton hasMore={prodHasMore} remaining={prodRemaining} onClick={prodLoadMore} />
+          <p className="text-[11px] text-muted-foreground mt-2">Tap a product to assign or remove this brand. A product can only have one brand.</p>
+        </>
+      )}
+    </Modal>
+  );
+};
+
 const Inventario = () => {
   const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, categorias, setProductoCategoriaValor, readOnly } = useData();
   const [showTopProductos, setShowTopProductos] = useState(false);
   const [showListasPrecios, setShowListasPrecios] = useState(false);
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCategorias, setShowCategorias] = useState(false);
+  const [showMarcas, setShowMarcas] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
   const topProductosModal = useMemo(() => {
     const d = new Date();
@@ -5960,10 +6177,17 @@ const Inventario = () => {
         >
           🗂️ Categories
         </button>
+        <button
+          onClick={() => setShowMarcas(true)}
+          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
+        >
+          🏭 Brands
+        </button>
       </div>
       {showListasPrecios && <ListasPreciosModal onClose={() => setShowListasPrecios(false)} />}
       {showCatalogo && <CatalogoModal onClose={() => setShowCatalogo(false)} />}
       {showCategorias && <CategoriasModal onClose={() => setShowCategorias(false)} />}
+      {showMarcas && <MarcasModal onClose={() => setShowMarcas(false)} />}
       {showTopProductos && (
         <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
           <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
