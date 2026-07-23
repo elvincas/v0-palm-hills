@@ -289,6 +289,24 @@ interface Compra {
   created_at?: string;
 }
 
+// Registro de venta perdida: se crea automaticamente en completePick por
+// cada linea que quedo en "missing" (qtyEnviada = 0, sin stock para
+// enviarla) — no hay UI para crearlo a mano, solo el reporte para leerlo.
+interface Faltante {
+  id: string;
+  fecha: string;
+  orden_id?: string | null;
+  orden_num?: number | null;
+  cli: string;
+  prod_id?: string | null;
+  prod_nom: string;
+  sku?: string;
+  almacen?: "palmhills" | "castillo";
+  qty: number;
+  precio: number;
+  monto: number;
+}
+
 type TipoEvento = "delivery" | "visit" | "collect_money" | "order_request";
 
 interface EventoCalendario {
@@ -583,6 +601,8 @@ interface DataContextType {
   addVendedor: (v: Omit<Vendedor, "id">) => Promise<Vendedor>;
   updateVendedor: (id: string, v: Omit<Vendedor, "id">) => Promise<void>;
   deleteVendedor: (id: string) => Promise<void>;
+  faltantes: Faltante[];
+  addFaltantesBulk: (rows: Omit<Faltante, "id">[]) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -652,6 +672,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [listasPrecios, setListasPrecios] = useState<ListaPrecio[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
+  const [faltantes, setFaltantes] = useState<Faltante[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -778,7 +799,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -792,6 +813,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Compra>("compras", "*", "num", false),
         selectAll<Categoria>("categorias", "*", "created_at", true),
         selectAll<Vendedor>("vendedores", "*", "created_at", true),
+        selectAll<Faltante>("faltantes", "*", "fecha", false),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
@@ -806,6 +828,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setCategorias(cat.map((row) => ({ ...row, valores: row.valores || [] })));
       setCompras(co.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setVendedores(ven);
+      setFaltantes(falt);
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1521,6 +1544,15 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Salesperson deleted: ${nombre}`);
   };
 
+  // Ventas perdidas por falta de stock: se registran solas en completePick,
+  // una fila por linea que quedo en 0 (missing) al cerrar el pick.
+  const addFaltantesBulk = async (rows: Omit<Faltante, "id">[]) => {
+    if (!rows.length) return;
+    const { data, error } = await supabase.from("faltantes").insert(rows).select();
+    if (error) throw new Error(error.message);
+    setFaltantes((prev) => [...(data as Faltante[]), ...prev]);
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1600,6 +1632,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addVendedor,
     updateVendedor,
     deleteVendedor,
+    faltantes,
+    addFaltantesBulk,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -6823,6 +6857,129 @@ const Inventario = () => {
   );
 };
 
+// Reporte de ventas perdidas por falta de stock (tabla `faltantes`, poblada
+// sola en completePick). Mismo patron de period-preset que P&L/Vendedores.
+const primerDiaMesFalt = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+const FaltantesModal = ({ onClose }: { onClose: () => void }) => {
+  const { faltantes } = useData();
+  const [desde, setDesde] = useState(primerDiaMesFalt());
+  const [hasta, setHasta] = useState(today());
+  const [modo, setModo] = useState<"fecha" | "producto">("fecha");
+
+  const aplicarPreset = (p: "month" | "lastMonth" | "quarter" | "year") => {
+    const now = new Date();
+    if (p === "month") { setDesde(primerDiaMesFalt(now)); setHasta(today()); }
+    else if (p === "lastMonth") {
+      const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDesde(primerDiaMesFalt(lm));
+      setHasta(`${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`);
+    } else if (p === "quarter") {
+      const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+      setDesde(primerDiaMesFalt(new Date(now.getFullYear(), qStartMonth, 1)));
+      setHasta(today());
+    } else {
+      setDesde(`${now.getFullYear()}-01-01`);
+      setHasta(today());
+    }
+  };
+
+  const enPeriodo = useMemo(
+    () => faltantes.filter((f) => f.fecha >= desde && f.fecha <= hasta).sort((a, b) => b.fecha.localeCompare(a.fecha)),
+    [faltantes, desde, hasta]
+  );
+
+  const total = enPeriodo.reduce((acc, f) => acc + Number(f.monto), 0);
+
+  const porProducto = useMemo(() => {
+    const map = new Map<string, { prodNom: string; sku?: string; qty: number; monto: number; veces: number }>();
+    for (const f of enPeriodo) {
+      const key = f.prod_id || f.prod_nom;
+      const prev = map.get(key) || { prodNom: f.prod_nom, sku: f.sku, qty: 0, monto: 0, veces: 0 };
+      prev.qty += Number(f.qty);
+      prev.monto += Number(f.monto);
+      prev.veces += 1;
+      map.set(key, prev);
+    }
+    return Array.from(map.values()).sort((a, b) => b.monto - a.monto);
+  }, [enPeriodo]);
+
+  return (
+    <Modal title="Missing Stock Report" onClose={onClose}>
+      <p className="text-xs text-muted-foreground mb-3">
+        Products removed from an order at pick time for having no stock ("Missing"). This is revenue you didn't invoice because you couldn't ship it.
+      </p>
+      <div className="flex gap-1.5 mb-3 flex-wrap">
+        {[
+          { id: "month", label: "This Month" },
+          { id: "lastMonth", label: "Last Month" },
+          { id: "quarter", label: "This Quarter" },
+          { id: "year", label: "This Year" },
+        ].map((p) => (
+          <button key={p.id} onClick={() => aplicarPreset(p.id as "month" | "lastMonth" | "quarter" | "year")} className="px-3 py-1.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <Row2>
+        <Field label="From">
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+        </Field>
+        <Field label="To">
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+        </Field>
+      </Row2>
+
+      <div className="bg-muted rounded-2xl p-3.5 my-3 flex items-center justify-between">
+        <span className="text-sm font-bold text-card-foreground">Lost sales</span>
+        <span className="text-lg font-black text-destructive">{fmt(total)}</span>
+      </div>
+
+      <div className="inline-flex bg-muted rounded-full p-1 shadow-sm gap-0.5 mb-3">
+        <button onClick={() => setModo("fecha")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${modo === "fecha" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          By date
+        </button>
+        <button onClick={() => setModo("producto")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${modo === "producto" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          By product
+        </button>
+      </div>
+
+      {enPeriodo.length === 0 ? (
+        <Empty text="No missing products in this period. 🎉" />
+      ) : modo === "fecha" ? (
+        <div className="border border-border rounded-3xl overflow-hidden divide-y divide-border">
+          {enPeriodo.map((f) => (
+            <div key={f.id} className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-card-foreground truncate uppercase">{f.prod_nom}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {fdate(f.fecha)} · {f.cli}{f.orden_num ? ` · Order #${f.orden_num}` : ""} · Qty {f.qty}
+                </div>
+              </div>
+              <div className="text-sm font-bold text-destructive shrink-0">{fmt(f.monto)}</div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="border border-border rounded-3xl overflow-hidden divide-y divide-border">
+          {porProducto.map((p) => (
+            <div key={p.prodNom + (p.sku || "")} className="flex items-center justify-between gap-2 px-3.5 py-2.5">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-card-foreground truncate uppercase">{p.prodNom}</div>
+                <div className="text-[11px] text-muted-foreground">
+                  {p.sku ? `${p.sku} · ` : ""}Missing {p.veces} time{p.veces === 1 ? "" : "s"} · Qty {p.qty}
+                </div>
+              </div>
+              <div className="text-sm font-bold text-destructive shrink-0">{fmt(p.monto)}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+};
+
 // ------------------------------
 // Ordenes
 // ------------------------------
@@ -6840,6 +6997,7 @@ const Ordenes = () => {
     ajustarInventario,
     readOnly,
     listasPrecios,
+    addFaltantesBulk,
   } = useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de estimate para que el primer tap abra rapido.
@@ -6848,6 +7006,7 @@ const Ordenes = () => {
     if (ordenes[0]) router.prefetch(`/ordenes/${ordenes[0].id}/estimado`);
   }, [ordenes.length > 0]);
   const [showClientPicker, setShowClientPicker] = useState(false);
+  const [showFaltantes, setShowFaltantes] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -6979,6 +7138,28 @@ const Ordenes = () => {
         lineas: facturaLineas,
         orden_id: picking.id,
       });
+
+      // Venta perdida: una fila por cada linea que quedo en 0 (missing, sin
+      // stock para enviarla) -- para el reporte mensual de "cuanto he perdido".
+      const faltantesLineas = pickItems
+        .filter((it) => (it.qtyEnviada ?? it.qty) === 0)
+        .map((it) => {
+          const precio = it.precioFinal ?? it.precio;
+          return {
+            fecha: today(),
+            orden_id: picking.id,
+            orden_num: picking.num,
+            cli: cInfo?.nom || picking.cli,
+            prod_id: it.prodId,
+            prod_nom: it.prodNom,
+            sku: it.sku,
+            almacen: it.almacen || "palmhills",
+            qty: it.qty,
+            precio,
+            monto: +(it.qty * precio).toFixed(2),
+          };
+        });
+      if (faltantesLineas.length) await addFaltantesBulk(faltantesLineas);
 
       // Genera remito SOLO para productos de Castillo (constancia de retiro)
       const lineasCastillo = pickItems.filter((it) => it.almacen === "castillo" && (it.qtyEnviada ?? it.qty) > 0);
@@ -7234,6 +7415,13 @@ const Ordenes = () => {
   return (
     <div>
       {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New order" onClick={() => { setShowClientPicker(true); setPickerSearch(""); }} />}
+      <button
+        onClick={() => setShowFaltantes(true)}
+        className="w-full mb-3 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
+      >
+        📉 Missing Stock Report
+      </button>
+      {showFaltantes && <FaltantesModal onClose={() => setShowFaltantes(false)} />}
       {draftOrdenes.length > 0 && (
         <div className="mb-3 space-y-2">
           {draftOrdenes.map((d) => (
