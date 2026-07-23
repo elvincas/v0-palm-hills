@@ -228,13 +228,15 @@ Tab "P&L" (componente `PLReport` en page.tsx). Selector de periodo (presets This
 - **Revenue = Invoiced**: total facturado en el periodo (`facturas[].total` por `fecha`), cobrado o no.
 - **COGS**: líneas de las facturas facturadas en el periodo × **costo actual** de `productos.costo` (no hay snapshot histórico por venta — mismo trade-off aceptado en `compras`). Resuelve el producto por SKU+almacén o nombre (las líneas de factura no guardan `prodId`).
 - **Gastos**: cuentan por **fecha de incurrido** (`gastos[].fecha`), pagados o no — así funciona un P&L real. Distinto a propósito del Cash Flow de abajo.
-- **Net Income** = Gross Profit (Invoiced − COGS) − Expenses incurred.
+- **Sales commissions** (2026-07-23): suma, por cada `vendedor` con `base_comision` en `venta`/`ambas`, de la venta facturada en el periodo de sus clientes (por nombre, vía `clientes.vendedor_id`) × `comision_venta_pct`. Se resta del Net Income con el mismo criterio que "Expenses incurred" — es una comisión ya devengada este periodo, se le haya pagado o no al vendedor todavía.
+- **Net Income** = Gross Profit (Invoiced − COGS) − Expenses incurred − Sales commissions.
 
 **Cash Flow (pestaña "Cash Flow")**: solo lo que realmente entró y salió de caja.
 - **Cash In** = Cash Collected: suma de `pagos[].monto` con fecha de pago en el periodo.
 - **Cash Out** = **Inventory Purchases** (`compras` filtradas por `fecha` en el periodo — esto es lo que faltaba: comprar mercancía es salida de caja real aunque el inventario no se haya vendido y por ende no sea gasto todavía en el Income Statement) + **Expenses Paid** (`gastos` con `pagado = true` y `fecha_pago` en el periodo).
 - **Net Cash Flow** = Cash Collected − Total Cash Out.
 - **Outstanding Receivables**: total pendiente de cobro HOY (no acotado al periodo, mismo cálculo que el Aging Report) — se muestra solo aquí, como contexto de caja futura; en el Income Statement sería redundante porque Revenue ya lo cuenta como facturado.
+- **Commissions owed (on collections)** (2026-07-23): mismo cálculo que arriba pero sobre `comision_cobro_pct` × cobros del periodo, para vendedores con `base_comision` en `cobros`/`ambas`. Se muestra solo como referencia — a propósito NO se resta del Net Cash Flow, porque la app no sabe si esa comisión ya se le pagó de verdad al vendedor. El pago real se registra como un `Gasto` normal (categoría comisión) cuando ocurre, y ese sí cuenta como salida de caja vía el mecanismo existente de Expenses Paid.
 
 La gestión de Gastos (alta/edición, filtro All/Pending/Paid, comprobante de pago) es compartida por ambas vistas — no depende del toggle.
 
