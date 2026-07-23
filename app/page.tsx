@@ -8293,7 +8293,7 @@ const compressComprobante = (file: File): Promise<string> =>
 const primerDiaMes = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 
 const PLReport = () => {
-  const { facturas, productos, gastos, compras, addGasto, updateGasto, deleteGasto, readOnly } = useData();
+  const { facturas, productos, gastos, compras, clientes, vendedores, addGasto, updateGasto, deleteGasto, readOnly } = useData();
   const [vista, setVista] = useState<"income" | "cash">("income");
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(today());
@@ -8373,6 +8373,43 @@ const PLReport = () => {
     [facturas]
   );
 
+  // Clientes (por nombre, asi es como se guardan en facturas.cli) de cada vendedor
+  const nombresPorVendedorPL = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const c of clientes) {
+      if (!c.vendedor_id) continue;
+      if (!m.has(c.vendedor_id)) m.set(c.vendedor_id, new Set());
+      m.get(c.vendedor_id)!.add(c.nom);
+    }
+    return m;
+  }, [clientes]);
+
+  // Comision de vendedores: se resta en el Income Statement (accrual, sobre
+  // venta facturada) porque es un gasto ya incurrido este periodo, se le haya
+  // pagado o no al vendedor todavia -- mismo criterio que "Expenses incurred".
+  // En Cash Flow NO se resta automaticamente (no sabemos si ya se le pago al
+  // vendedor); se muestra solo como referencia, igual que Outstanding
+  // Receivables. El pago real al vendedor se registra como Gasto normal
+  // cuando ocurre, y ahi si cuenta como salida de caja.
+  const comisiones = useMemo(() => {
+    let venta = 0, cobro = 0;
+    for (const v of vendedores) {
+      const nombres = nombresPorVendedorPL.get(v.id) || new Set<string>();
+      let ventaVendedor = 0, cobroVendedor = 0;
+      for (const f of facturas) {
+        if (!nombres.has(f.cli)) continue;
+        if (enRango(f.fecha)) ventaVendedor += Number(f.total) || 0;
+        for (const p of f.pagos || []) {
+          if (enRango(p.fecha)) cobroVendedor += Number(p.monto) || 0;
+        }
+      }
+      if (v.base_comision === "venta" || v.base_comision === "ambas") venta += ventaVendedor * (v.comision_venta_pct / 100);
+      if (v.base_comision === "cobros" || v.base_comision === "ambas") cobro += cobroVendedor * (v.comision_cobro_pct / 100);
+    }
+    return { venta, cobro };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [vendedores, nombresPorVendedorPL, facturas, desde, hasta]);
+
   // --- Income Statement (accrual): gastos cuentan cuando se INCURREN
   // (fecha), se hayan pagado o no — asi funciona un P&L de verdad (principio
   // de devengado/matching). Distinto del Cash Flow de abajo a proposito.
@@ -8387,7 +8424,7 @@ const PLReport = () => {
     return Array.from(map.entries()).sort((a, b) => b[1] - a[1]);
   }, [gastosIncurridosPeriodo]);
   const totalGastosIncurridos = gastosIncurridosPeriodo.reduce((a, g) => a + Number(g.monto), 0);
-  const netIncomeAccrual = grossProfit - totalGastosIncurridos;
+  const netIncomeAccrual = grossProfit - totalGastosIncurridos - comisiones.venta;
 
   // --- Cash Flow: solo lo que realmente entro y salio de caja en el
   // periodo. Los gastos cuentan por fecha_pago (no fecha) y las compras de
@@ -8575,8 +8612,9 @@ const PLReport = () => {
               ))}
             </div>
           )}
+          <Linea label="Sales commissions" value={comisiones.venta} sub="Earned on invoiced sales this period — see Salespeople" tint="destructive" />
           <div className="h-px bg-border my-2" />
-          <Linea label="Net Income" value={netIncomeAccrual} sub="Gross Profit − Expenses incurred" bold tint={netIncomeAccrual >= 0 ? "primary" : "destructive"} />
+          <Linea label="Net Income" value={netIncomeAccrual} sub="Gross Profit − Expenses incurred − Sales commissions" bold tint={netIncomeAccrual >= 0 ? "primary" : "destructive"} />
         </div>
       ) : (
         <div className="bg-card rounded-3xl p-4 border border-border mb-3">
@@ -8604,6 +8642,7 @@ const PLReport = () => {
           <Linea label="Net Cash Flow" value={netCashFlow} sub="Cash Collected − Total Cash Out" bold tint={netCashFlow >= 0 ? "primary" : "destructive"} />
           <div className="h-px bg-border my-2" />
           <Linea label="Outstanding Receivables" value={outstandingReceivables} sub="Not yet collected, as of today — see Aging Report" />
+          <Linea label="Commissions owed (on collections)" value={comisiones.cobro} sub="Not deducted above — record it as a paid Expense once you actually pay the salesperson" />
         </div>
       )}
 
