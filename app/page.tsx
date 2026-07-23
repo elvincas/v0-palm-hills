@@ -70,6 +70,22 @@ interface Cliente {
   fax?: string;
   notas_visita?: NotaVisita[];
   lista_precio_id?: string | null;
+  vendedor_id?: string | null;
+}
+
+// Vendedor: comision configurable por venta facturada y/o por cobro real
+// (pedido explicito del usuario, ambos porcentajes son independientes). El
+// prefijo de 2 digitos es el mismo que ya usaba codigo_cliente (antes fijo
+// en "01" para todos) — ahora cada vendedor tiene el suyo y los clientes
+// nuevos se numeran por separado dentro del prefijo de su vendedor.
+interface Vendedor {
+  id: string;
+  nombre: string;
+  prefijo: string;
+  comision_venta_pct: number;
+  comision_cobro_pct: number;
+  base_comision: "venta" | "cobros" | "ambas";
+  activo: boolean;
 }
 
 // Lista de precios por cliente: precios especiales por producto (prodId -> precio).
@@ -561,6 +577,10 @@ interface DataContextType {
   compras: Compra[];
   addCompra: (c: Omit<Compra, "id" | "num">) => Promise<void>;
   deleteCompra: (id: string) => Promise<void>;
+  vendedores: Vendedor[];
+  addVendedor: (v: Omit<Vendedor, "id">) => Promise<Vendedor>;
+  updateVendedor: (id: string, v: Omit<Vendedor, "id">) => Promise<void>;
+  deleteVendedor: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -629,6 +649,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [eventosCalendario, setEventosCalendario] = useState<EventoCalendario[]>([]);
   const [listasPrecios, setListasPrecios] = useState<ListaPrecio[]>([]);
   const [categorias, setCategorias] = useState<Categoria[]>([]);
+  const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -657,7 +678,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // Columnas livianas: las fotos (base64) se cargan despues, en segundo plano,
   // para que la app no tenga que esperar varios MB de imagenes antes de mostrar nada.
   const CLIENTE_COLS =
-    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, lista_precio_id, foto_local_v, created_at";
+    "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, lista_precio_id, vendedor_id, foto_local_v, created_at";
   const PRODUCTO_COLS =
     "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, categorias, created_at";
 
@@ -755,7 +776,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -768,6 +789,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Gasto>("gastos", "*", "fecha", false),
         selectAll<Compra>("compras", "*", "num", false),
         selectAll<Categoria>("categorias", "*", "created_at", true),
+        selectAll<Vendedor>("vendedores", "*", "created_at", true),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
@@ -781,6 +803,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setGastos(ga);
       setCategorias(cat.map((row) => ({ ...row, valores: row.valores || [] })));
       setCompras(co.map((row) => ({ ...row, lineas: row.lineas || [] })));
+      setVendedores(ven);
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1458,6 +1481,34 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     setProductos((prev) => prev.map((x) => (x.id === prodId ? { ...x, categorias: categoriasNuevas } : x)));
   };
 
+  // --- Vendedores (comision por venta y/o por cobro) ---
+  const addVendedor = async (v: Omit<Vendedor, "id">) => {
+    const { data, error } = await supabase.from("vendedores").insert(v).select().single();
+    if (error) throw new Error(error.message);
+    const vend = data as Vendedor;
+    setVendedores((prev) => [...prev, vend]);
+    await logAct(`Salesperson created: ${v.nombre}`);
+    return vend;
+  };
+
+  const updateVendedor = async (id: string, v: Omit<Vendedor, "id">) => {
+    const { data, error } = await supabase.from("vendedores").update(v).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setVendedores((prev) => prev.map((x) => (x.id === id ? (data as Vendedor) : x)));
+  };
+
+  const deleteVendedor = async (id: string) => {
+    const nombre = vendedores.find((x) => x.id === id)?.nombre || "";
+    // Desasignar de los clientes que lo tenian antes de borrarlo
+    const { error: eCli } = await supabase.from("clientes").update({ vendedor_id: null }).eq("vendedor_id", id);
+    if (eCli) throw new Error(eCli.message);
+    const { error } = await supabase.from("vendedores").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setVendedores((prev) => prev.filter((x) => x.id !== id));
+    setClientes((prev) => prev.map((c) => (c.vendedor_id === id ? { ...c, vendedor_id: null } : c)));
+    await logAct(`Salesperson deleted: ${nombre}`);
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1532,6 +1583,10 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     compras,
     addCompra,
     deleteCompra,
+    vendedores,
+    addVendedor,
+    updateVendedor,
+    deleteVendedor,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -3301,7 +3356,8 @@ const Facturas = () => {
 // Clientes
 const Clientes = () => {
   const router = useRouter();
-  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, facturas, notasCredito, readOnly } = useData();
+  const { clientes, addCliente, addClientesBulk, deleteCliente, updateCliente, facturas, notasCredito, vendedores, readOnly } = useData();
+  const [showVendedores, setShowVendedores] = useState(false);
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"codigo_cliente" | "nom">("codigo_cliente");
   const [cliColumnas, setCliColumnas] = useState<1 | 3>(1);
@@ -3334,25 +3390,24 @@ const Clientes = () => {
     foto_local: "",
     telefonos: [] as TelefonoContacto[],
     fax: "",
+    vendedor_id: "" as string,
   });
 
-  const nextCodigoCliente = useMemo(() => {
-    let prefix = "01";
+  // Siguiente numero de cliente DENTRO del prefijo de un vendedor especifico
+  // (cada vendedor numera sus clientes por separado, ej. 02-0001 aunque el
+  // vendedor 01 ya tenga cientos de clientes).
+  const nextCodigoClienteFor = (prefijo: string) => {
     let maxNum = 0;
     let width = 4;
     clientes.forEach((c) => {
       const m = (c.codigo_cliente || "").match(/^(\d+)-(\d+)$/);
-      if (m) {
+      if (m && m[1] === prefijo) {
         const num = parseInt(m[2], 10);
-        if (num > maxNum) {
-          maxNum = num;
-          prefix = m[1];
-          width = m[2].length;
-        }
+        if (num > maxNum) { maxNum = num; width = m[2].length; }
       }
     });
-    return `${prefix}-${String(maxNum + 1).padStart(width, "0")}`;
-  }, [clientes]);
+    return `${prefijo}-${String(maxNum + 1).padStart(width, "0")}`;
+  };
 
   const balanceCliente = (nom: string) => {
     const deuda = facturas
@@ -3456,7 +3511,7 @@ const Clientes = () => {
   };
 
   const reset = () => {
-    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Active", abierto_sabados: false, foto_local: "", telefonos: [], fax: "" });
+    setForm({ nom: "", codigo_cliente: "", tel: "", email: "", dir: "", ciudad: "", estado_dir: "", contacto: "", estado: "Active", abierto_sabados: false, foto_local: "", telefonos: [], fax: "", vendedor_id: "" });
     setFotoLocal("");
     setEditId(null);
     setShowCropModal(false);
@@ -3475,6 +3530,16 @@ const Clientes = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, [showAddMenu]);
 
+  // Al cambiar el vendedor de un cliente NUEVO (nunca uno existente, para no
+  // renumerar su codigo ya asignado), el numero de cliente se recalcula con
+  // el prefijo del vendedor seleccionado.
+  useEffect(() => {
+    if (editId || !show) return;
+    const v = vendedores.find((x) => x.id === form.vendedor_id);
+    setForm((f) => ({ ...f, codigo_cliente: nextCodigoClienteFor(v?.prefijo || "01") }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.vendedor_id]);
+
   const openEdit = (c: Cliente) => {
     setEditId(c.id);
     setForm({
@@ -3491,6 +3556,7 @@ const Clientes = () => {
       foto_local: c.foto_local || "",
       telefonos: c.telefonos || [],
       fax: c.fax || "",
+      vendedor_id: c.vendedor_id || "",
     });
     setFotoLocal(c.foto_local || "");
     setShow(true);
@@ -3506,10 +3572,11 @@ const Clientes = () => {
       return;
     }
     try {
+      const payload = { ...form, vendedor_id: form.vendedor_id || null };
       if (editId) {
-        await updateCliente(editId, form);
+        await updateCliente(editId, payload);
       } else {
-        await addCliente(form);
+        await addCliente(payload);
       }
       reset();
       setShow(false);
@@ -3550,7 +3617,12 @@ const Clientes = () => {
                   onClick={() => {
                     setShowAddMenu(false);
                     reset();
-                    setForm((f) => ({ ...f, codigo_cliente: nextCodigoCliente }));
+                    const defaultVendedor = vendedores.find((v) => v.activo) || null;
+                    setForm((f) => ({
+                      ...f,
+                      vendedor_id: defaultVendedor?.id || "",
+                      codigo_cliente: nextCodigoClienteFor(defaultVendedor?.prefijo || "01"),
+                    }));
                     setShow(true);
                   }}
                 >
@@ -3601,12 +3673,21 @@ const Clientes = () => {
         </div>
         <span className="text-xs text-muted-foreground shrink-0">{filtered.length} cli.</span>
       </div>
-      <button
-        onClick={() => setShowTopClientes(true)}
-        className="w-full mb-3 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
-      >
-        ⭐ Top 10 Clients
-      </button>
+      <div className="flex gap-2 mb-3">
+        <button
+          onClick={() => setShowTopClientes(true)}
+          className="flex-1 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
+        >
+          ⭐ Top 10 Clients
+        </button>
+        <button
+          onClick={() => setShowVendedores(true)}
+          className="flex-1 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
+        >
+          🧑‍💼 Salespeople
+        </button>
+      </div>
+      {showVendedores && <VendedoresModal onClose={() => setShowVendedores(false)} />}
       {showTopClientes && (
         <Modal title="Top 10 Clients" onClose={() => setShowTopClientes(false)}>
           <div className="text-[11px] text-muted-foreground mb-2 -mt-1">
@@ -3772,6 +3853,19 @@ const Clientes = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
+          {!editId && vendedores.length > 0 && (
+            <Field label="Salesperson">
+              <select
+                value={form.vendedor_id}
+                onChange={(e) => setForm({ ...form, vendedor_id: e.target.value })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              >
+                {vendedores.filter((v) => v.activo).map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre} ({v.prefijo})</option>
+                ))}
+              </select>
+            </Field>
+          )}
           <Row2>
             <Field label="Client Number *">
               <input
@@ -4840,6 +4934,272 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
             <p className="text-xs text-muted-foreground text-center py-4">Pick a value above to see/assign its products.</p>
           )}
         </>
+      )}
+    </Modal>
+  );
+};
+
+// Vendedores: alta de vendedores con comision por venta facturada y/o por
+// cobro real (dos porcentajes independientes, pedido explicito del usuario),
+// y el reporte de comision ganada en un periodo. El prefijo de 2 digitos es
+// el mismo que usa codigo_cliente — cada vendedor numera sus clientes por
+// separado dentro de su propio prefijo (ver nextCodigoClienteFor en Clientes).
+const primerDiaMesVend = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+const VendedoresModal = ({ onClose }: { onClose: () => void }) => {
+  const { vendedores, clientes, facturas, addVendedor, updateVendedor, deleteVendedor, readOnly } = useData();
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    nombre: "",
+    prefijo: "",
+    comision_venta_pct: "",
+    comision_cobro_pct: "",
+    base_comision: "ambas" as "venta" | "cobros" | "ambas",
+    activo: true,
+  });
+  const [saving, setSaving] = useState(false);
+  const [desde, setDesde] = useState(primerDiaMesVend());
+  const [hasta, setHasta] = useState(today());
+
+  const aplicarPreset = (p: "month" | "lastMonth" | "quarter" | "year") => {
+    const now = new Date();
+    if (p === "month") { setDesde(primerDiaMesVend(now)); setHasta(today()); }
+    else if (p === "lastMonth") {
+      const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const lastDay = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDesde(primerDiaMesVend(lm));
+      setHasta(`${lastDay.getFullYear()}-${String(lastDay.getMonth() + 1).padStart(2, "0")}-${String(lastDay.getDate()).padStart(2, "0")}`);
+    } else if (p === "quarter") {
+      const qStartMonth = Math.floor(now.getMonth() / 3) * 3;
+      setDesde(primerDiaMesVend(new Date(now.getFullYear(), qStartMonth, 1)));
+      setHasta(today());
+    } else {
+      setDesde(`${now.getFullYear()}-01-01`);
+      setHasta(today());
+    }
+  };
+
+  const nextPrefijo = useMemo(() => {
+    let max = 0;
+    vendedores.forEach((v) => { const n = parseInt(v.prefijo, 10); if (!isNaN(n) && n > max) max = n; });
+    return String(max + 1).padStart(2, "0");
+  }, [vendedores]);
+
+  // Clientes (por nombre, asi es como se guardan en facturas.cli) de cada vendedor
+  const nombresPorVendedor = useMemo(() => {
+    const m = new Map<string, Set<string>>();
+    for (const c of clientes) {
+      if (!c.vendedor_id) continue;
+      if (!m.has(c.vendedor_id)) m.set(c.vendedor_id, new Set());
+      m.get(c.vendedor_id)!.add(c.nom);
+    }
+    return m;
+  }, [clientes]);
+
+  const comisionDe = (vendedorId: string) => {
+    const nombres = nombresPorVendedor.get(vendedorId) || new Set<string>();
+    let venta = 0, cobro = 0;
+    for (const f of facturas) {
+      if (!nombres.has(f.cli)) continue;
+      if (f.fecha >= desde && f.fecha <= hasta) venta += Number(f.total) || 0;
+      for (const p of f.pagos || []) {
+        if (p.fecha >= desde && p.fecha <= hasta) cobro += Number(p.monto) || 0;
+      }
+    }
+    return { venta, cobro, nClientes: nombres.size };
+  };
+
+  const openNew = () => {
+    setEditId(null);
+    setForm({ nombre: "", prefijo: nextPrefijo, comision_venta_pct: "", comision_cobro_pct: "", base_comision: "ambas", activo: true });
+    setShowForm(true);
+  };
+
+  const openEdit = (v: Vendedor) => {
+    setEditId(v.id);
+    setForm({
+      nombre: v.nombre,
+      prefijo: v.prefijo,
+      comision_venta_pct: String(v.comision_venta_pct),
+      comision_cobro_pct: String(v.comision_cobro_pct),
+      base_comision: v.base_comision,
+      activo: v.activo,
+    });
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre.trim()) { alert("Enter the salesperson's name"); return; }
+    if (!/^\d{2}$/.test(form.prefijo.trim())) { alert("The prefix must be 2 digits (e.g. 02)"); return; }
+    setSaving(true);
+    try {
+      const payload = {
+        nombre: form.nombre.trim(),
+        prefijo: form.prefijo.trim(),
+        comision_venta_pct: Number(form.comision_venta_pct) || 0,
+        comision_cobro_pct: Number(form.comision_cobro_pct) || 0,
+        base_comision: form.base_comision,
+        activo: form.activo,
+      };
+      if (editId) await updateVendedor(editId, payload);
+      else await addVendedor(payload);
+      setShowForm(false);
+    } catch (err) {
+      alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editId) return;
+    if (!confirm("Delete this salesperson? Their clients keep their client number but stay unassigned.")) return;
+    try {
+      await deleteVendedor(editId);
+      setShowForm(false);
+    } catch (err) {
+      alert(`Could not delete: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  return (
+    <Modal title="Salespeople" onClose={onClose}>
+      <div className="flex gap-1.5 mb-3 flex-wrap">
+        {[
+          { id: "month", label: "This Month" },
+          { id: "lastMonth", label: "Last Month" },
+          { id: "quarter", label: "This Quarter" },
+          { id: "year", label: "This Year" },
+        ].map((p) => (
+          <button key={p.id} onClick={() => aplicarPreset(p.id as "month" | "lastMonth" | "quarter" | "year")} className="px-3 py-1.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">
+            {p.label}
+          </button>
+        ))}
+      </div>
+      <Row2>
+        <Field label="From">
+          <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+        </Field>
+        <Field label="To">
+          <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+        </Field>
+      </Row2>
+
+      {vendedores.length === 0 ? (
+        <Empty text="No salespeople yet." />
+      ) : (
+        <div className="space-y-2.5 mt-3">
+          {vendedores.map((v) => {
+            const { venta, cobro, nClientes } = comisionDe(v.id);
+            const comVenta = venta * (v.comision_venta_pct / 100);
+            const comCobro = cobro * (v.comision_cobro_pct / 100);
+            return (
+              <div key={v.id} className="bg-background border border-border rounded-2xl p-3">
+                <div className="flex items-center justify-between gap-2 mb-1">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold text-card-foreground truncate">{v.nombre}</div>
+                    <div className="text-[11px] font-mono text-muted-foreground">Prefix {v.prefijo} · {nClientes} client(s){!v.activo ? " · Inactive" : ""}</div>
+                  </div>
+                  {!readOnly && (
+                    <button onClick={() => openEdit(v)} className="shrink-0 px-2.5 py-1 rounded-lg bg-card border border-border text-xs font-bold text-primary">
+                      Edit
+                    </button>
+                  )}
+                </div>
+                <div className="h-px bg-border my-2" />
+                {(v.base_comision === "venta" || v.base_comision === "ambas") && (
+                  <div className="flex items-center justify-between text-xs py-0.5">
+                    <span className="text-muted-foreground">Sales ({v.comision_venta_pct}%) · {fmt(venta)}</span>
+                    <span className="font-bold text-primary">{fmt(comVenta)}</span>
+                  </div>
+                )}
+                {(v.base_comision === "cobros" || v.base_comision === "ambas") && (
+                  <div className="flex items-center justify-between text-xs py-0.5">
+                    <span className="text-muted-foreground">Collected ({v.comision_cobro_pct}%) · {fmt(cobro)}</span>
+                    <span className="font-bold text-primary">{fmt(comCobro)}</span>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {!readOnly && (
+        <button onClick={openNew} className={`w-full mt-3 py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY}`}>
+          + Add salesperson
+        </button>
+      )}
+
+      {showForm && (
+        <Modal title={editId ? "Edit Salesperson" : "New Salesperson"} onClose={() => setShowForm(false)}>
+          <Field label="Name *">
+            <input
+              value={form.nombre}
+              onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+              autoComplete="off"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+            />
+          </Field>
+          <Field label="Prefix (2 digits) *">
+            <input
+              value={form.prefijo}
+              onChange={(e) => setForm({ ...form, prefijo: e.target.value.replace(/\D/g, "").slice(0, 2) })}
+              placeholder="E.g. 02"
+              autoComplete="off"
+              className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base font-mono outline-none focus:ring-2 focus:ring-ring"
+            />
+            <p className="text-[11px] text-muted-foreground mt-1">Used as the client number prefix (e.g. {form.prefijo || "02"}-0001) for clients assigned to this salesperson.</p>
+          </Field>
+          <Row2>
+            <Field label="Commission on sales (%)">
+              <MoneyInput
+                value={Number(form.comision_venta_pct) || 0}
+                onChange={(n) => setForm({ ...form, comision_venta_pct: String(n) })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="Commission on collections (%)">
+              <MoneyInput
+                value={Number(form.comision_cobro_pct) || 0}
+                onChange={(n) => setForm({ ...form, comision_cobro_pct: String(n) })}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+          </Row2>
+          <Field label="What counts as commission">
+            <div className="flex gap-1.5">
+              {(["venta", "cobros", "ambas"] as const).map((b) => (
+                <button
+                  key={b}
+                  type="button"
+                  onClick={() => setForm({ ...form, base_comision: b })}
+                  className={`flex-1 py-2 rounded-xl text-xs font-bold border ${form.base_comision === b ? "bg-primary text-primary-foreground border-primary" : "bg-muted text-muted-foreground border-transparent"}`}
+                >
+                  {b === "venta" ? "Sales" : b === "cobros" ? "Collections" : "Both"}
+                </button>
+              ))}
+            </div>
+          </Field>
+          <label className="flex items-center gap-2.5 py-2 cursor-pointer">
+            <input type="checkbox" checked={form.activo} onChange={(e) => setForm({ ...form, activo: e.target.checked })} className="w-4 h-4 accent-primary" />
+            <span className="text-sm text-card-foreground">Active (selectable for new clients)</span>
+          </label>
+          <div className="flex gap-2.5 mt-2">
+            {editId && (
+              <button onClick={handleDelete} className={`px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_DESTRUCTIVE}`}>
+                Delete
+              </button>
+            )}
+            <button onClick={() => setShowForm(false)} className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}>
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving} className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </Modal>
       )}
     </Modal>
   );
@@ -8612,6 +8972,7 @@ function AppContent() {
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showVendedoresGlobal, setShowVendedoresGlobal] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -8723,6 +9084,7 @@ function AppContent() {
 
   const MORE_ITEMS = [
     { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
+    { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
     ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
   ];
 
@@ -8777,7 +9139,11 @@ function AppContent() {
                   {MORE_ITEMS.map((it) => (
                     <button
                       key={it.id}
-                      onClick={() => { setTab(it.id); setShowMoreMenu(false); }}
+                      onClick={() => {
+                        setShowMoreMenu(false);
+                        if (it.id === "ven") setShowVendedoresGlobal(true);
+                        else setTab(it.id);
+                      }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
                     >
                       <svg width={16} height={16} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
@@ -8880,6 +9246,7 @@ function AppContent() {
         {panels[tab]}
       </main>
       <BottomNav active={tab} onSelect={setTab} hiddenTabs={role === "visitante" ? ["usr"] : []} />
+      {showVendedoresGlobal && <VendedoresModal onClose={() => setShowVendedoresGlobal(false)} />}
     </div>
   );
 }

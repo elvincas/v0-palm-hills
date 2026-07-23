@@ -56,6 +56,7 @@ interface Cliente {
   fax?: string;
   notas_visita?: NotaVisita[];
   lista_precio_id?: string | null;
+  vendedor_id?: string | null;
 }
 
 interface Factura {
@@ -169,6 +170,8 @@ export default function ClientePerfilPage() {
   const [listasPrecios, setListasPrecios] = useState<{ id: string; nombre: string }[]>([]);
   const [savingLista, setSavingLista] = useState(false);
   const [editandoLista, setEditandoLista] = useState<string | null>(null);
+  const [vendedores, setVendedores] = useState<{ id: string; nombre: string; prefijo: string }[]>([]);
+  const [savingVendedor, setSavingVendedor] = useState(false);
   const [showTodo, setShowTodo] = useState(false);
   const [todoTexto, setTodoTexto] = useState("");
   const [todoFecha, setTodoFecha] = useState("");
@@ -205,11 +208,31 @@ export default function ClientePerfilPage() {
     cargarOrdenes(clienteId, (data as Cliente).nom);
     cargarTodos(clienteId);
     cargarListasPrecios();
+    cargarVendedores();
   };
 
   const cargarListasPrecios = async () => {
     const { data } = await supabase.from("listas_precios").select("id, nombre").order("nombre");
     setListasPrecios((data as { id: string; nombre: string }[]) || []);
+  };
+
+  const cargarVendedores = async () => {
+    const { data } = await supabase.from("vendedores").select("id, nombre, prefijo").eq("activo", true).order("nombre");
+    setVendedores((data as { id: string; nombre: string; prefijo: string }[]) || []);
+  };
+
+  // Reasignar vendedor NO renumera el codigo_cliente ya asignado — solo cambia
+  // a quien se le acredita la comision de ahi en adelante.
+  const handleVendedor = async (vendedorId: string) => {
+    if (!cliente || savingVendedor) return;
+    setSavingVendedor(true);
+    const val = vendedorId || null;
+    const { error: e } = await supabase.from("clientes").update({ vendedor_id: val }).eq("id", clienteId);
+    if (!e) {
+      setCliente({ ...cliente, vendedor_id: val });
+      if (form) setForm({ ...form, vendedor_id: val });
+    }
+    setSavingVendedor(false);
   };
 
   // Asigna (o quita, con "") la lista de precios del cliente — guarda al instante
@@ -613,6 +636,23 @@ export default function ClientePerfilPage() {
                   </button>
                 </div>
               )}
+            </div>
+
+            <div className="border-t border-black/5" />
+
+            <div>
+              <p className="text-[9px] font-black uppercase tracking-widest mb-0.5" style={{ color: `${PH}99` }}>Salesperson</p>
+              <select
+                value={cliente.vendedor_id || ""}
+                disabled={readOnly || savingVendedor}
+                onChange={(e) => handleVendedor(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-black/10 bg-white/80 text-sm text-gray-700 outline-none focus:ring-2 focus:ring-[#4a6741]/25"
+              >
+                <option value="">Unassigned</option>
+                {vendedores.map((v) => (
+                  <option key={v.id} value={v.id}>{v.nombre} ({v.prefijo})</option>
+                ))}
+              </select>
             </div>
 
             <div className="border-t border-black/5" />
