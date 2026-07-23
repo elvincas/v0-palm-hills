@@ -7084,15 +7084,12 @@ const Ordenes = () => {
             </div>
           </div>
           <div className="flex-1 overflow-y-auto p-4 pt-0">
-            <div className="space-y-2.5">
+            <div className="flex flex-col gap-2.5">
               {pickItems
                 .map((item, i) => ({ item, i }))
                 .filter(
                   ({ item }) => pickAlmacen === "todos" || (item.almacen || "palmhills") === pickAlmacen
                 )
-                // Los ya pickeados bajan al fondo (orden estable) para poder
-                // seguir pickeando el proximo disponible sin scrollear tanto.
-                .sort((a, b) => Number(a.item.picked) - Number(b.item.picked))
                 .map(({ item, i }) => {
                 const prod = productos.find((p) => p.id === item.prodId);
                 const qtyEnviada = item.qtyEnviada ?? item.qty;
@@ -7103,6 +7100,12 @@ const Ordenes = () => {
                   <div
                     key={i}
                     ref={esUltimoPickeado ? lastPickedRef : undefined}
+                    // Los ya pickeados bajan al fondo con CSS `order` (no
+                    // reordenando el DOM via key/posicion) — reordenar nodos
+                    // reales dentro de un contenedor con scroll activo es un
+                    // disparador conocido del freeze de iOS donde la barra de
+                    // scroll se mueve pero la pantalla no repinta.
+                    style={{ order: item.picked ? 1 : 0 }}
                     className={`bg-card border rounded-3xl p-3 flex items-center gap-3 ${item.picked ? "border-primary" : "border-border"} ${esUltimoPickeado ? "ring-2 ring-amber-300" : ""}`}
                   >
                     <button
