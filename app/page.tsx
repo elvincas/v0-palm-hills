@@ -10,6 +10,7 @@ import JSZip from "jszip";
 import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom-nav";
 import { proximaFechaEntrega } from "@/lib/delivery";
+import { MoneyInput } from "@/components/ui/money-input";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -2067,14 +2068,10 @@ const Dashboard = () => {
       {editMeta && (
         <Modal title={`Sales goal · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
           <Field label="Target amount ($)">
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9]*[.,]?[0-9]*"
-              value={metaInp}
-              onChange={(e) => setMetaInp(e.target.value)}
+            <MoneyInput
+              value={Number(metaInp) || 0}
+              onChange={(n) => setMetaInp(String(n))}
               onKeyDown={(e) => e.key === "Enter" && saveMeta()}
-              placeholder="100000"
               autoFocus
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-lg font-semibold outline-none focus:ring-2 focus:ring-ring"
             />
@@ -2909,7 +2906,7 @@ const Facturas = () => {
               {ncTipo === "amount" ? (
                 <>
                   <Field label="Amount ($)">
-                    <input type="number" min="0" step="0.01" value={ncForm.monto} onChange={(e) => setNcForm(f => ({ ...f, monto: e.target.value }))} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+                    <MoneyInput value={Number(ncForm.monto) || 0} onChange={(n) => setNcForm(f => ({ ...f, monto: String(n) }))} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
                   </Field>
                   <Field label="Reason / Notes">
                     <input type="text" value={ncForm.motivo} onChange={(e) => setNcForm(f => ({ ...f, motivo: e.target.value }))} placeholder="Reason for credit..." className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
@@ -2971,7 +2968,7 @@ const Facturas = () => {
                             </div>
                             <div>
                               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Unit Price ($)</label>
-                              <input type="number" min="0" step="0.01" value={ln.precio} onChange={(e) => setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, precio: e.target.value } : l))} placeholder="0.00" className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                              <MoneyInput value={Number(ln.precio) || 0} onChange={(n) => setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, precio: String(n) } : l))} className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
                             </div>
                           </div>
                           {ln.prodId && <div className="text-right text-xs font-bold text-primary">Line total: {fmt(lineTotal)}</div>}
@@ -5552,7 +5549,7 @@ const Inventario = () => {
           <AddPillButton aria-label="Add product" active={menuOpen} onClick={() => setMenuOpen((o) => !o)} />
         </div>
       )}
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex items-center gap-2 mb-2">
         <label
           htmlFor="sortBy"
           className="text-xs text-muted-foreground shrink-0"
@@ -5571,6 +5568,11 @@ const Inventario = () => {
             </option>
           ))}
         </select>
+        <span className="text-xs text-muted-foreground shrink-0">
+          {filtered.length} prod.
+        </span>
+      </div>
+      <div className="flex flex-wrap gap-2 mb-3">
         <button
           onClick={() => setShowTopProductos(true)}
           className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
@@ -5595,9 +5597,6 @@ const Inventario = () => {
         >
           🗂️ Categories
         </button>
-        <span className="text-xs text-muted-foreground shrink-0">
-          {filtered.length} prod.
-        </span>
       </div>
       {showListasPrecios && <ListasPreciosModal onClose={() => setShowListasPrecios(false)} />}
       {showCatalogo && <CatalogoModal onClose={() => setShowCatalogo(false)} />}
@@ -6119,24 +6118,16 @@ const Inventario = () => {
           )}
           <Row2>
             <Field label="Price ($)">
-              <input
-                type="text"
-                inputMode="decimal"
-                pattern="[0-9]*[.,]?[0-9]*"
-                value={form.precio}
-                onChange={(e) => setForm({ ...form, precio: e.target.value })}
-                autoComplete="off"
+              <MoneyInput
+                value={Number(form.precio) || 0}
+                onChange={(n) => setForm({ ...form, precio: String(n) })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
             <Field label="Cost ($)">
-              <input
-                type="text"
-                inputMode="decimal"
-                pattern="[0-9]*[.,]?[0-9]*"
-                value={form.costo}
-                onChange={(e) => setForm({ ...form, costo: e.target.value })}
-                autoComplete="off"
+              <MoneyInput
+                value={Number(form.costo) || 0}
+                onChange={(n) => setForm({ ...form, costo: String(n) })}
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
               />
             </Field>
@@ -6973,23 +6964,12 @@ const Ordenes = () => {
                       {editandoDescuentoId === p.id ? (
                         <div className="mt-1.5">
                           <label className="text-[10px] text-muted-foreground block mb-1">Price for this order</label>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            pattern="[0-9]*[.,]?[0-9]*"
-                            autoComplete="off"
-                            defaultValue={editPrecios[p.id] ?? editPrecioBase(p)}
+                          <MoneyInput
+                            value={editPrecios[p.id] ?? editPrecioBase(p)}
+                            onChange={(n) => setEditPrecio(p.id, n)}
                             autoFocus
-                            onBlur={(e) => {
-                              setEditPrecio(p.id, Number(e.target.value));
-                              setEditandoDescuentoId(null);
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === "Enter") {
-                                setEditPrecio(p.id, Number((e.target as HTMLInputElement).value));
-                                setEditandoDescuentoId(null);
-                              }
-                            }}
+                            onBlur={() => setEditandoDescuentoId(null)}
+                            onKeyDown={(e) => { if (e.key === "Enter") setEditandoDescuentoId(null); }}
                             className="w-full px-2 py-1.5 rounded-lg border border-input bg-background text-card-foreground text-sm text-center font-bold"
                           />
                         </div>
@@ -7110,6 +7090,9 @@ const Ordenes = () => {
                 .filter(
                   ({ item }) => pickAlmacen === "todos" || (item.almacen || "palmhills") === pickAlmacen
                 )
+                // Los ya pickeados bajan al fondo (orden estable) para poder
+                // seguir pickeando el proximo disponible sin scrollear tanto.
+                .sort((a, b) => Number(a.item.picked) - Number(b.item.picked))
                 .map(({ item, i }) => {
                 const prod = productos.find((p) => p.id === item.prodId);
                 const qtyEnviada = item.qtyEnviada ?? item.qty;
@@ -7531,13 +7514,9 @@ const Mejoras = () => {
             />
           </Field>
           <Field label="Estimated cost ($)">
-            <input
-              type="text"
-              inputMode="decimal"
-              pattern="[0-9]*[.,]?[0-9]*"
-              autoComplete="off"
-              value={form.costo}
-              onChange={(e) => setForm({ ...form, costo: e.target.value })}
+            <MoneyInput
+              value={Number(form.costo) || 0}
+              onChange={(n) => setForm({ ...form, costo: String(n) })}
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
@@ -7803,7 +7782,7 @@ const Compras = () => {
                   </div>
                   <div className="w-20 shrink-0">
                     <label className="text-[9px] font-bold uppercase text-muted-foreground">Cost</label>
-                    <input type="number" min="0" step="0.01" value={l.costoUnitario} onChange={(e) => setLineaCosto(l.prodId, parseFloat(e.target.value) || 0)} className="w-full px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                    <MoneyInput value={l.costoUnitario} onChange={(n) => setLineaCosto(l.prodId, n)} className="w-full px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
                   </div>
                   <button onClick={() => quitarLinea(l.prodId)} className="text-muted-foreground hover:text-destructive text-lg leading-none px-1 shrink-0">×</button>
                 </div>
@@ -8319,7 +8298,7 @@ const PLReport = () => {
           </Field>
           <Row2>
             <Field label="Amount ($)">
-              <input type="number" min="0" step="0.01" value={gMonto} onChange={(e) => setGMonto(e.target.value)} placeholder="0.00" className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              <MoneyInput value={Number(gMonto) || 0} onChange={(n) => setGMonto(String(n))} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
             </Field>
             <Field label="Date">
               <input type="date" value={gFecha} onChange={(e) => setGFecha(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />

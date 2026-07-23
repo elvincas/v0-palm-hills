@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BackButton } from "@/components/back-button";
 import { Switch } from "@/components/ui/switch";
+import { MoneyInput } from "@/components/ui/money-input";
 
 interface LineaFactura {
   prodNom: string;
@@ -800,13 +801,9 @@ export default function FacturaPage() {
               </div>
               <div>
                 <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Amount ($)</label>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={pagoMonto}
-                  onChange={e => setPagoMonto(e.target.value)}
-                  placeholder={fmt(saldo).replace("$", "")}
+                <MoneyInput
+                  value={Number(pagoMonto) || 0}
+                  onChange={(n) => setPagoMonto(String(n))}
                   className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
                 />
               </div>

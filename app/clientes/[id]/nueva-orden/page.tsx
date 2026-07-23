@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { flexibleSearch } from '@/lib/search'
 import { BackButton } from '@/components/back-button'
+import { MoneyInput } from '@/components/ui/money-input'
 
 interface Cliente {
   id: string
@@ -709,23 +710,12 @@ export default function NuevaOrdenPage() {
                     <div className="mt-2 pt-2 border-t border-border">
                       <label className="text-[10px] text-muted-foreground block mb-1">Price for this order</label>
                       <div className="flex gap-1">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          pattern="[0-9]*[.,]?[0-9]*"
-                          autoComplete="off"
-                          defaultValue={descuentos[p.id] ?? precioBase(p)}
+                        <MoneyInput
+                          value={descuentos[p.id] ?? precioBase(p)}
+                          onChange={(n) => setDescuento(p.id, n)}
                           autoFocus
-                          onBlur={(e) => {
-                            setDescuento(p.id, Number(e.target.value))
-                            setEditandoDescuento(null)
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
-                              setDescuento(p.id, Number((e.target as HTMLInputElement).value))
-                              setEditandoDescuento(null)
-                            }
-                          }}
+                          onBlur={() => setEditandoDescuento(null)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') setEditandoDescuento(null) }}
                           className="flex-1 px-2 py-1.5 rounded-lg border border-input bg-background text-card-foreground text-sm text-center font-bold"
                         />
                       </div>
