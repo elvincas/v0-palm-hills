@@ -4314,22 +4314,25 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
   };
 
   // Productos: los que ya tienen precio especial primero; busqueda flexible
-  const prodResultados = useMemo(() => {
+  const prodResultadosTodos = useMemo(() => {
     if (!lista) return [];
-    const base = prodSearch.trim()
-      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom)
+    return prodSearch.trim()
+      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
       : [...productos].sort((a, b) => {
           const aIn = lista.precios[a.id] !== undefined ? 0 : 1;
           const bIn = lista.precios[b.id] !== undefined ? 0 : 1;
           if (aIn !== bIn) return aIn - bIn;
           return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
         });
-    return base.slice(0, 40);
   }, [lista, prodSearch, productos]);
+  const { visible: prodResultados, hasMore: prodHasMore, remaining: prodRemaining, loadMore: prodLoadMore } = usePagedList(
+    prodResultadosTodos,
+    [lista?.id, prodSearch]
+  );
 
   // Clientes: los asignados a ESTA lista primero
-  const cliResultados = useMemo(() => {
-    const base = cliSearch.trim()
+  const cliResultadosTodos = useMemo(() => {
+    return cliSearch.trim()
       ? clientes.filter((c) => normTag(`${c.nom} ${c.codigo_cliente || ""} ${c.ciudad || ""}`).includes(normTag(cliSearch)))
       : lista
         ? [...clientes].sort((a, b) => {
@@ -4339,8 +4342,11 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
             return a.nom.localeCompare(b.nom, "en");
           })
         : clientes;
-    return base.slice(0, 40);
   }, [clientes, cliSearch, lista]);
+  const { visible: cliResultados, hasMore: cliHasMore, remaining: cliRemaining, loadMore: cliLoadMore } = usePagedList(
+    cliResultadosTodos,
+    [lista?.id, cliSearch]
+  );
 
   return (
     <Modal title={lista ? lista.nombre : "Price Lists"} onClose={onClose}>
@@ -4458,6 +4464,7 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
                   <div className="px-3 py-3 text-xs text-muted-foreground">No products found</div>
                 )}
               </div>
+              <LoadMoreButton hasMore={prodHasMore} remaining={prodRemaining} onClick={prodLoadMore} />
               <p className="text-[11px] text-muted-foreground mt-2">
                 Leave a price empty to use the base price. Prices in gold are on this list.
               </p>
@@ -4502,6 +4509,7 @@ const ListasPreciosModal = ({ onClose }: { onClose: () => void }) => {
                   <div className="px-3 py-3 text-xs text-muted-foreground">No clients found</div>
                 )}
               </div>
+              <LoadMoreButton hasMore={cliHasMore} remaining={cliRemaining} onClick={cliLoadMore} />
               <p className="text-[11px] text-muted-foreground mt-2">
                 Tap to assign or remove clients. A client can be on one list at a time.
               </p>
@@ -4551,7 +4559,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "nom", label: "A-Z Description" },
   { key: "precio", label: "Price" },
   { key: "stock", label: "Current Stock" },
-  { key: "fabricante", label: "Manufacturer" },
+  { key: "fabricante", label: "Brand" },
   { key: "barcode", label: "Barcode" },
   { key: "sku", label: "SKU" },
 ];
@@ -4773,18 +4781,21 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
     }
   };
 
-  const prodResultados = useMemo(() => {
+  const prodResultadosTodos = useMemo(() => {
     if (!categoria || !valorSel) return [];
-    const base = prodSearch.trim()
-      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom)
+    return prodSearch.trim()
+      ? flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
       : [...productos].sort((a, b) => {
           const aIn = (a.categorias?.[categoria.id] || []).includes(valorSel) ? 0 : 1;
           const bIn = (b.categorias?.[categoria.id] || []).includes(valorSel) ? 0 : 1;
           if (aIn !== bIn) return aIn - bIn;
           return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
         });
-    return base.slice(0, 40);
   }, [categoria, valorSel, prodSearch, productos]);
+  const { visible: prodResultados, hasMore: prodHasMore, remaining: prodRemaining, loadMore: prodLoadMore } = usePagedList(
+    prodResultadosTodos,
+    [categoria?.id, valorSel, prodSearch]
+  );
 
   return (
     <Modal title={categoria ? categoria.nombre : "Categories"} onClose={onClose}>
@@ -4890,7 +4901,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
               <input
                 value={prodSearch}
                 onChange={(e) => setProdSearch(e.target.value)}
-                placeholder="Search product by name, SKU…"
+                placeholder="Search product by name, SKU or brand…"
                 autoComplete="off"
                 className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring mb-2"
               />
@@ -4919,6 +4930,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
                 })}
                 {prodResultados.length === 0 && <div className="px-3 py-3 text-xs text-muted-foreground">No products found</div>}
               </div>
+              <LoadMoreButton hasMore={prodHasMore} remaining={prodRemaining} onClick={prodLoadMore} />
               <p className="text-[11px] text-muted-foreground mt-2">Tap a product to add or remove this tag.</p>
             </>
           ) : (
@@ -6141,7 +6153,7 @@ const Inventario = () => {
           <div className="text-sm text-muted-foreground mb-3 leading-relaxed">
             Upload an Excel file (.xlsx) with these columns:{" "}
             <span className="font-medium text-card-foreground">
-              SKU, Description, Manufacturer, Current Stock, Units per box, Barcode, Price, Cost, Minimum stock
+              SKU, Description, Brand, Current Stock, Units per box, Barcode, Price, Cost, Minimum stock
             </span>
             .
           </div>
@@ -6386,10 +6398,11 @@ const Inventario = () => {
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
           </Field>
-          <Field label="Manufacturer">
+          <Field label="Brand">
             <input
               value={form.fabricante}
               onChange={(e) => setForm({ ...form, fabricante: e.target.value })}
+              placeholder="E.g. Karseell, Hair Plus, Olaplex..."
               autoComplete="off"
               className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
             />
@@ -7946,7 +7959,7 @@ const Compras = () => {
 
   const sugeridos = useMemo(() => {
     if (!prodSearch.trim()) return [];
-    return flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom).slice(0, 20);
+    return flexibleSearch(productos, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom).slice(0, 20);
   }, [productos, prodSearch]);
 
   const reset = () => {
