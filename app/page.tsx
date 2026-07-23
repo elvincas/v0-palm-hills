@@ -11,6 +11,7 @@ import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom-nav";
 import { proximaFechaEntrega } from "@/lib/delivery";
 import { MoneyInput } from "@/components/ui/money-input";
+import { Switch } from "@/components/ui/switch";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -4676,12 +4677,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
 
       <div className="flex items-center justify-between bg-muted rounded-xl px-3.5 py-2.5 mb-3">
         <div className="text-sm font-semibold text-card-foreground">Show prices</div>
-        <button
-          onClick={() => setConPrecio((v) => !v)}
-          className={`w-11 h-6 rounded-full relative transition-colors ${conPrecio ? "bg-primary" : "bg-border"}`}
-        >
-          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${conPrecio ? "translate-x-[22px]" : "translate-x-0.5"}`} />
-        </button>
+        <Switch checked={conPrecio} onCheckedChange={setConPrecio} />
       </div>
 
       <div className="flex items-center justify-between bg-muted rounded-xl px-3.5 py-2.5 mb-4">
@@ -4689,12 +4685,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
           <div className="text-sm font-semibold text-card-foreground">Include photos</div>
           <div className="text-[11px] text-muted-foreground">Bigger file, takes longer to generate</div>
         </div>
-        <button
-          onClick={() => setConFotos((v) => !v)}
-          className={`w-11 h-6 rounded-full relative transition-colors ${conFotos ? "bg-primary" : "bg-border"}`}
-        >
-          <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${conFotos ? "translate-x-[22px]" : "translate-x-0.5"}`} />
-        </button>
+        <Switch checked={conFotos} onCheckedChange={setConFotos} />
       </div>
 
       <button
@@ -8716,12 +8707,7 @@ const PLReport = () => {
               <div className="text-sm font-semibold text-card-foreground">Already paid</div>
               <div className="text-[11px] text-muted-foreground">Only paid expenses count in the P&L</div>
             </div>
-            <button
-              onClick={() => setGPagado((v) => !v)}
-              className={`w-11 h-6 rounded-full relative transition-colors ${gPagado ? "bg-primary" : "bg-border"}`}
-            >
-              <span className={`absolute top-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${gPagado ? "translate-x-[22px]" : "translate-x-0.5"}`} />
-            </button>
+            <Switch checked={gPagado} onCheckedChange={setGPagado} />
           </div>
 
           {gPagado && (
