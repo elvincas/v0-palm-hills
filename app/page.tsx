@@ -7186,7 +7186,10 @@ const Ordenes = () => {
               })}
             </div>
           </div>
-          <div className="backdrop-blur-xl bg-card/90 border-t border-border px-4 pt-3 pb-2 shrink-0">
+          <div
+            className="backdrop-blur-xl bg-card/90 border-t border-border px-4 pt-3 shrink-0"
+            style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+          >
             {!pickItems.every((i) => i.picked) && (
               <p className="text-[11px] text-amber-600 font-medium text-center mb-2">
                 {puedeGuardarParcial
@@ -7227,8 +7230,6 @@ const Ordenes = () => {
               {completing ? "Processing..." : "Complete order"}
             </button>
           </div>
-          <div className="h-20 shrink-0" />
-          <BottomNav active="ord" />
         </div>
       )}
     </div>
