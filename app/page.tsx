@@ -11,6 +11,7 @@ import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom-nav";
 import { proximaFechaEntrega } from "@/lib/delivery";
 import { MoneyInput } from "@/components/ui/money-input";
+import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
 import { Switch } from "@/components/ui/switch";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
@@ -124,7 +125,7 @@ interface Producto {
   icon?: string;
   foto?: string | null;
   foto_v?: number;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
   categorias?: Record<string, string[]>;
 }
 
@@ -138,7 +139,7 @@ interface LineaFactura {
   // Precio de catalogo puro (sin lista de precios ni ajuste manual), guardado
   // solo para poder mostrar el descuento de lista como opcional en la factura.
   precioCatalogo?: number;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
 }
 
 interface Factura {
@@ -201,7 +202,7 @@ interface LineaOrden {
   qty: number;
   qtyEnviada?: number;
   picked?: boolean;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
 }
 
 interface Orden {
@@ -270,7 +271,7 @@ interface LineaCompra {
   sku?: string;
   qty: number;
   costoUnitario: number;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
 }
 
 interface Compra {
@@ -301,11 +302,15 @@ interface Faltante {
   prod_id?: string | null;
   prod_nom: string;
   sku?: string;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
   qty: number;
   precio: number;
   monto: number;
 }
+
+// Almacen: genérico, configurable (2026-07-23) — reemplaza el enum fijo
+// "palmhills"|"castillo". Definido en lib/almacenes.ts (compartido con las
+// paginas standalone que no usan el DataContext, ej. nueva-orden, facturas/[id]).
 
 type TipoEvento = "delivery" | "visit" | "collect_money" | "order_request";
 
@@ -603,6 +608,10 @@ interface DataContextType {
   deleteVendedor: (id: string) => Promise<void>;
   faltantes: Faltante[];
   addFaltantesBulk: (rows: Omit<Faltante, "id">[]) => Promise<void>;
+  almacenes: Almacen[];
+  addAlmacen: (a: Almacen) => Promise<void>;
+  updateAlmacen: (id: string, a: Omit<Almacen, "id">) => Promise<void>;
+  deleteAlmacen: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -673,6 +682,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [categorias, setCategorias] = useState<Categoria[]>([]);
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [faltantes, setFaltantes] = useState<Faltante[]>([]);
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -799,7 +809,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -814,6 +824,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Categoria>("categorias", "*", "created_at", true),
         selectAll<Vendedor>("vendedores", "*", "created_at", true),
         selectAll<Faltante>("faltantes", "*", "fecha", false),
+        selectAll<Almacen>("almacenes", "*", "orden", true),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
@@ -829,6 +840,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setCompras(co.map((row) => ({ ...row, lineas: row.lineas || [] })));
       setVendedores(ven);
       setFaltantes(falt);
+      setAlmacenes(alm);
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -922,7 +934,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     const updates: { id: string; stock: number; reservado: number }[] = [];
     for (const c of efectivos) {
       const row = porId.get(c.prodId);
-      if (!row || (row.almacen || "palmhills") === "castillo") continue;
+      if (!row || !almacenInfo(almacenes, row.almacen || almacenPrincipal(almacenes)).lleva_stock) continue;
       updates.push({
         id: row.id,
         stock: Math.max(0, Number(row.stock || 0) + (c.deltaStock || 0)),
@@ -1348,8 +1360,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Expense deleted`);
   };
 
-  // --- Compras (ingresado de inventario): suma stock (solo palmhills, igual
-  // que ajustarInventario) y actualiza el costo del producto al mas reciente.
+  // --- Compras (ingresado de inventario): suma stock solo en almacenes con
+  // lleva_stock=true (ver ajustarInventario) y actualiza el costo del
+  // producto al mas reciente.
   const addCompra = async (c: Omit<Compra, "id" | "num">) => {
     const { data: maxRow } = await supabase.from("compras").select("num").order("num", { ascending: false }).limit(1);
     const num = (maxRow && maxRow.length ? Number(maxRow[0].num) || 0 : 0) + 1;
@@ -1361,7 +1374,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     if (error) throw new Error(error.message);
     setCompras((prev) => [data as Compra, ...prev]);
 
-    // Actualizar costo de cada producto y sumar stock (palmhills en vivo; castillo no lleva stock)
+    // Actualizar costo de cada producto y sumar stock (solo en almacenes con lleva_stock=true)
     await Promise.all(
       c.lineas.map((l) => supabase.from("productos").update({ costo: l.costoUnitario }).eq("id", l.prodId))
     );
@@ -1553,6 +1566,28 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     setFaltantes((prev) => [...(data as Faltante[]), ...prev]);
   };
 
+  // --- Almacenes (genericos, configurables) ---
+  const addAlmacen = async (a: Almacen) => {
+    const { data, error } = await supabase.from("almacenes").insert(a).select().single();
+    if (error) throw new Error(error.message);
+    setAlmacenes((prev) => [...prev, data as Almacen].sort((x, y) => x.orden - y.orden));
+    await logAct(`Warehouse created: ${a.nombre}`);
+  };
+
+  const updateAlmacen = async (id: string, a: Omit<Almacen, "id">) => {
+    const { data, error } = await supabase.from("almacenes").update(a).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setAlmacenes((prev) => prev.map((x) => (x.id === id ? (data as Almacen) : x)).sort((x, y) => x.orden - y.orden));
+  };
+
+  const deleteAlmacen = async (id: string) => {
+    const nombre = almacenes.find((x) => x.id === id)?.nombre || "";
+    const { error } = await supabase.from("almacenes").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setAlmacenes((prev) => prev.filter((x) => x.id !== id));
+    await logAct(`Warehouse deleted: ${nombre}`);
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1634,6 +1669,10 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     deleteVendedor,
     faltantes,
     addFaltantesBulk,
+    almacenes,
+    addAlmacen,
+    updateAlmacen,
+    deleteAlmacen,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -1752,7 +1791,7 @@ const mesActualNombre = () => {
 };
 
 const Dashboard = () => {
-  const { facturas, clientes, productos, logs, readOnly, remitos, marcarRemitoEnviado, todos, toggleTodo } = useData();
+  const { facturas, clientes, productos, logs, readOnly, remitos, marcarRemitoEnviado, todos, toggleTodo, almacenes } = useData();
   const supabase = useMemo(() => createClient(), []);
   const [meta, setMeta] = useState(() => {
     if (typeof window === "undefined") return 0;
@@ -1815,9 +1854,9 @@ const Dashboard = () => {
     [facturasDelMes]
   );
   const lowStock = useMemo(
-    // Castillo no lleva inventario vivo: solo cuenta el stock de Palm Hills
-    () => productos.filter((p) => (p.almacen || "palmhills") === "palmhills" && Number(p.stock) <= Number(p.min || 5)).length,
-    [productos]
+    // Solo cuentan los almacenes que trackean stock en vivo (lleva_stock)
+    () => productos.filter((p) => almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes)).lleva_stock && Number(p.stock) <= Number(p.min || 5)).length,
+    [productos, almacenes]
   );
   const pct = meta > 0 ? Math.min(100, Math.round((totalVentas / meta) * 100)) : 0;
 
@@ -2758,7 +2797,7 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly, listasPrecios } =
+  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly, listasPrecios, almacenes } =
     useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de detalle: sin esto, el primer tap a una
@@ -2774,7 +2813,7 @@ const Facturas = () => {
   const [clienteSeleccionado, setClienteSeleccionado] = useState("");
   const [fecha, setFecha] = useState("");
   const [estado, setEstado] = useState("Pending");
-  const [invAlmacen, setInvAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
+  const [invAlmacen, setInvAlmacen] = useState<string>("all");
   const [invSearches, setInvSearches] = useState<string[]>([""]);
   const [invFocus, setInvFocus] = useState<number | null>(null);
   // Credit notes form
@@ -2808,11 +2847,10 @@ const Facturas = () => {
     () =>
       productosPorSku.filter((p) => {
         if (invAlmacen === "all") return true;
-        const alm = p.almacen ?? null;
-        if (invAlmacen === "palmhills") return alm === "palmhills" || alm === null;
+        const alm = p.almacen || almacenPrincipal(almacenes);
         return alm === invAlmacen;
       }),
-    [productosPorSku, invAlmacen]
+    [productosPorSku, invAlmacen, almacenes]
   );
 
   const getInvSugeridos = (search: string) => {
@@ -2874,7 +2912,7 @@ const Facturas = () => {
         precio: precioCliente(p),
         precioOriginal: precioCliente(p),
         precioCatalogo: Number(p.precio),
-        almacen: p.almacen || "palmhills",
+        almacen: p.almacen || almacenPrincipal(almacenes),
       };
     });
     setSaving(true);
@@ -3266,13 +3304,13 @@ const Facturas = () => {
           <div className="flex items-center justify-between mb-2">
             <div className="text-sm font-semibold text-muted-foreground">Products</div>
             <div className="flex gap-1">
-              {(["all", "palmhills", "castillo"] as const).map((a) => (
+              {["all", ...almacenes.filter((a) => a.activo).map((a) => a.id)].map((a) => (
                 <button
                   key={a}
                   onClick={() => { setInvAlmacen(a); setInvSearches(lineas.map(() => "")); }}
                   className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${invAlmacen === a ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"}`}
                 >
-                  {a === "all" ? "All" : a === "palmhills" ? "Palm Hills" : "Castillo"}
+                  {a === "all" ? "All" : almacenInfo(almacenes, a).nombre}
                 </button>
               ))}
             </div>
@@ -4639,10 +4677,10 @@ const compressCatalogPhoto = (dataUrl: string): Promise<string> =>
   });
 
 const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
-  const { productos } = useData();
+  const { productos, almacenes } = useData();
   const [conPrecio, setConPrecio] = useState(true);
   const [conFotos, setConFotos] = useState(true);
-  const [almacenCat, setAlmacenCat] = useState<"all" | "palmhills" | "castillo">("all");
+  const [almacenCat, setAlmacenCat] = useState<string>("all");
   const [generando, setGenerando] = useState(false);
   const [progreso, setProgreso] = useState({ hecho: 0, total: 0 });
 
@@ -4650,11 +4688,9 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
     () =>
       productos.filter((p) => {
         if (almacenCat === "all") return true;
-        const a = p.almacen ?? null;
-        if (almacenCat === "palmhills") return a === "palmhills" || a === null;
-        return a === almacenCat;
+        return (p.almacen || almacenPrincipal(almacenes)) === almacenCat;
       }),
-    [productos, almacenCat]
+    [productos, almacenCat, almacenes]
   );
 
   const generar = async () => {
@@ -4684,7 +4720,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
         setProgreso((s) => ({ ...s, hecho: s.hecho + 1 }));
       }
 
-      const almacenLabel = almacenCat === "all" ? "Both Warehouses" : almacenCat === "palmhills" ? "Palm Hills" : "Castillo";
+      const almacenLabel = almacenCat === "all" ? "All Warehouses" : almacenInfo(almacenes, almacenCat).nombre;
       const res = await fetch("/api/reportes/catalogo/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -4712,11 +4748,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
     <Modal title="Generate Catalog" onClose={onClose}>
       <Field label="Warehouse">
         <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
-          {([
-            { id: "all", label: "Both" },
-            { id: "palmhills", label: "🌴 Palm Hills" },
-            { id: "castillo", label: "🏰 Castillo" },
-          ] as const).map((o) => (
+          {[{ id: "all", label: "All" }, ...almacenes.filter((a) => a.activo).map((a) => ({ id: a.id, label: `${a.icono} ${a.nombre}` }))].map((o) => (
             <button
               key={o.id}
               onClick={() => setAlmacenCat(o.id)}
@@ -4754,13 +4786,13 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
 };
 
 const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
-  const { categorias, addCategoria, updateCategoria, deleteCategoria, setProductoCategoriaValor, productos, readOnly } = useData();
+  const { categorias, addCategoria, updateCategoria, deleteCategoria, setProductoCategoriaValor, productos, almacenes, readOnly } = useData();
   const [selId, setSelId] = useState<string | null>(null);
   const [nuevoNombre, setNuevoNombre] = useState("");
   const [valorInput, setValorInput] = useState("");
   const [valorSel, setValorSel] = useState<string | null>(null);
   const [prodSearch, setProdSearch] = useState("");
-  const [almacenFiltro, setAlmacenFiltro] = useState<"todos" | "palmhills" | "castillo">("todos");
+  const [almacenFiltro, setAlmacenFiltro] = useState<string>("todos");
   const [saving, setSaving] = useState(false);
 
   const categoria = categorias.find((c) => c.id === selId) || null;
@@ -4830,7 +4862,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
 
   const prodResultadosTodos = useMemo(() => {
     if (!categoria || !valorSel) return [];
-    const porAlmacen = almacenFiltro === "todos" ? productos : productos.filter((p) => (p.almacen || "palmhills") === almacenFiltro);
+    const porAlmacen = almacenFiltro === "todos" ? productos : productos.filter((p) => (p.almacen || almacenPrincipal(almacenes)) === almacenFiltro);
     return prodSearch.trim()
       ? flexibleSearch(porAlmacen, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
       : [...porAlmacen].sort((a, b) => {
@@ -4839,7 +4871,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
           if (aIn !== bIn) return aIn - bIn;
           return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
         });
-  }, [categoria, valorSel, prodSearch, productos, almacenFiltro]);
+  }, [categoria, valorSel, prodSearch, productos, almacenFiltro, almacenes]);
   const { visible: prodResultados, hasMore: prodHasMore, remaining: prodRemaining, loadMore: prodLoadMore } = usePagedList(
     prodResultadosTodos,
     [categoria?.id, valorSel, prodSearch, almacenFiltro]
@@ -4947,11 +4979,7 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
                 Products in "{valorSel}"
               </div>
               <div className="inline-flex bg-muted rounded-full p-1 shadow-sm gap-0.5 mb-2">
-                {([
-                  { id: "todos", label: "All" },
-                  { id: "palmhills", label: "🌴 Palm Hills" },
-                  { id: "castillo", label: "🏰 Castillo" },
-                ] as const).map((a) => (
+                {[{ id: "todos", label: "All" }, ...almacenes.filter((x) => x.activo).map((x) => ({ id: x.id, label: `${x.icono} ${x.nombre}` }))].map((a) => (
                   <button
                     key={a.id}
                     onClick={() => setAlmacenFiltro(a.id)}
@@ -5000,6 +5028,148 @@ const CategoriasModal = ({ onClose }: { onClose: () => void }) => {
             <p className="text-xs text-muted-foreground text-center py-4">Pick a value above to see/assign its products.</p>
           )}
         </>
+      )}
+    </Modal>
+  );
+};
+
+const slugify = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "")
+    .slice(0, 24);
+
+// Almacenes: reemplaza el enum fijo palmhills/castillo por una lista
+// configurable — asi cualquier negocio define cuantos almacenes tiene, como
+// se llaman, y si cada uno trackea stock en vivo o es de paso/consignacion
+// (genera remito al pickear en vez de descontar stock, como Castillo hoy).
+const AlmacenesModal = ({ onClose }: { onClose: () => void }) => {
+  const { almacenes, addAlmacen, updateAlmacen, deleteAlmacen, readOnly } = useData();
+  const [editId, setEditId] = useState<string | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({ id: "", nombre: "", icono: "🏬", lleva_stock: true, orden: 0, activo: true });
+  const [saving, setSaving] = useState(false);
+
+  const openNew = () => {
+    setEditId(null);
+    setForm({ id: "", nombre: "", icono: "🏬", lleva_stock: true, orden: (almacenes.length ? Math.max(...almacenes.map((a) => a.orden)) : 0) + 1, activo: true });
+    setShowForm(true);
+  };
+
+  const openEdit = (a: Almacen) => {
+    setEditId(a.id);
+    setForm({ id: a.id, nombre: a.nombre, icono: a.icono, lleva_stock: a.lleva_stock, orden: a.orden, activo: a.activo });
+    setShowForm(true);
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre.trim()) { alert("Enter the warehouse name"); return; }
+    setSaving(true);
+    try {
+      if (editId) {
+        await updateAlmacen(editId, { nombre: form.nombre.trim(), icono: form.icono.trim() || "🏬", lleva_stock: form.lleva_stock, orden: form.orden, activo: form.activo });
+      } else {
+        const id = slugify(form.nombre);
+        if (!id) { alert("Enter a valid name"); setSaving(false); return; }
+        if (almacenes.some((a) => a.id === id)) { alert("A warehouse with a similar name already exists"); setSaving(false); return; }
+        await addAlmacen({ id, nombre: form.nombre.trim(), icono: form.icono.trim() || "🏬", lleva_stock: form.lleva_stock, orden: form.orden, activo: form.activo });
+      }
+      setShowForm(false);
+    } catch (err) {
+      alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!editId) return;
+    if (!confirm("Delete this warehouse? Products already assigned to it keep the reference, but it won't show up as an option anymore.")) return;
+    try {
+      await deleteAlmacen(editId);
+      setShowForm(false);
+    } catch (err) {
+      alert(`Could not delete: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  return (
+    <Modal title="Warehouses" onClose={onClose}>
+      <p className="text-xs text-muted-foreground mb-3">
+        Define your warehouses. "Tracks live stock" means inventory counts update automatically here (like a main warehouse); turn it off for a pass-through/consignment location — those generate a packing slip when you pick an order instead of discounting stock.
+      </p>
+      {almacenes.length === 0 ? (
+        <Empty text="No warehouses yet." />
+      ) : (
+        <div className="border border-border rounded-3xl overflow-hidden divide-y divide-border mb-3">
+          {[...almacenes].sort((a, b) => a.orden - b.orden).map((a) => (
+            <button
+              key={a.id}
+              onClick={() => openEdit(a)}
+              className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-card text-left hover:bg-muted"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <span className="text-xl shrink-0" aria-hidden="true">{a.icono}</span>
+                <div className="min-w-0">
+                  <div className="text-sm font-semibold text-card-foreground truncate">{a.nombre}{!a.activo ? " · Inactive" : ""}</div>
+                  <div className="text-[11px] text-muted-foreground">{a.lleva_stock ? "Tracks live stock" : "Pass-through · generates packing slip"}</div>
+                </div>
+              </div>
+              <span className="text-xs font-bold text-primary shrink-0">Edit</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {!readOnly && (
+        <button onClick={openNew} className={`w-full py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY}`}>
+          + Add warehouse
+        </button>
+      )}
+
+      {showForm && (
+        <Modal title={editId ? "Edit Warehouse" : "New Warehouse"} onClose={() => setShowForm(false)}>
+          <Row2>
+            <Field label="Icon (emoji)">
+              <input
+                value={form.icono}
+                onChange={(e) => setForm({ ...form, icono: e.target.value })}
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-lg text-center outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+            <Field label="Name *">
+              <input
+                value={form.nombre}
+                onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+                autoComplete="off"
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+            </Field>
+          </Row2>
+          <label className="flex items-center justify-between gap-2.5 py-2.5 px-1 cursor-pointer">
+            <span className="text-sm text-card-foreground">Tracks live stock</span>
+            <Switch checked={form.lleva_stock} onCheckedChange={(v) => setForm({ ...form, lleva_stock: v })} />
+          </label>
+          <label className="flex items-center justify-between gap-2.5 py-2.5 px-1 cursor-pointer">
+            <span className="text-sm text-card-foreground">Active (selectable)</span>
+            <Switch checked={form.activo} onCheckedChange={(v) => setForm({ ...form, activo: v })} />
+          </label>
+          <div className="flex gap-2.5 mt-2">
+            {editId && (
+              <button onClick={handleDelete} className={`px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_DESTRUCTIVE}`}>
+                Delete
+              </button>
+            )}
+            <button onClick={() => setShowForm(false)} className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}>
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving} className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+              {saving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </Modal>
       )}
     </Modal>
   );
@@ -5277,11 +5447,11 @@ const VendedoresModal = ({ onClose }: { onClose: () => void }) => {
 // multi-valor — asi no hay que abrir el "edit" de cada producto para
 // asignarle una marca.
 const MarcasModal = ({ onClose }: { onClose: () => void }) => {
-  const { productos, setProductoFabricante, readOnly } = useData();
+  const { productos, setProductoFabricante, almacenes, readOnly } = useData();
   const [marcaSel, setMarcaSel] = useState<string | null>(null);
   const [nuevaMarca, setNuevaMarca] = useState("");
   const [prodSearch, setProdSearch] = useState("");
-  const [almacenFiltro, setAlmacenFiltro] = useState<"todos" | "palmhills" | "castillo">("todos");
+  const [almacenFiltro, setAlmacenFiltro] = useState<string>("todos");
   const [renombrando, setRenombrando] = useState(false);
   const [nombreEditado, setNombreEditado] = useState("");
   const [saving, setSaving] = useState(false);
@@ -5350,7 +5520,7 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
 
   const prodResultadosTodos = useMemo(() => {
     if (!marcaSel) return [];
-    const porAlmacen = almacenFiltro === "todos" ? productos : productos.filter((p) => (p.almacen || "palmhills") === almacenFiltro);
+    const porAlmacen = almacenFiltro === "todos" ? productos : productos.filter((p) => (p.almacen || almacenPrincipal(almacenes)) === almacenFiltro);
     return prodSearch.trim()
       ? flexibleSearch(porAlmacen, prodSearch, (p) => [p.nom, p.sku, p.barcode, p.fabricante].filter(Boolean).join(" "), (p) => p.nom)
       : [...porAlmacen].sort((a, b) => {
@@ -5359,7 +5529,7 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
           if (aIn !== bIn) return aIn - bIn;
           return (a.sku || "").localeCompare(b.sku || "", "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
         });
-  }, [marcaSel, prodSearch, productos, almacenFiltro]);
+  }, [marcaSel, prodSearch, productos, almacenFiltro, almacenes]);
   const { visible: prodResultados, hasMore: prodHasMore, remaining: prodRemaining, loadMore: prodLoadMore } = usePagedList(
     prodResultadosTodos,
     [marcaSel, prodSearch, almacenFiltro]
@@ -5450,11 +5620,7 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
             </div>
           )}
           <div className="inline-flex bg-muted rounded-full p-1 shadow-sm gap-0.5 mb-2">
-            {([
-              { id: "todos", label: "All" },
-              { id: "palmhills", label: "🌴 Palm Hills" },
-              { id: "castillo", label: "🏰 Castillo" },
-            ] as const).map((a) => (
+            {[{ id: "todos", label: "All" }, ...almacenes.filter((x) => x.activo).map((x) => ({ id: x.id, label: `${x.icono} ${x.nombre}` }))].map((a) => (
               <button
                 key={a.id}
                 onClick={() => setAlmacenFiltro(a.id)}
@@ -5508,7 +5674,7 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
 };
 
 const Inventario = () => {
-  const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, categorias, setProductoCategoriaValor, readOnly } = useData();
+  const { productos, facturas, addProducto, addProductosBulk, updateProducto, updateProductoFoto, deleteProducto, categorias, setProductoCategoriaValor, almacenes, readOnly } = useData();
   const [showTopProductos, setShowTopProductos] = useState(false);
   const [showListasPrecios, setShowListasPrecios] = useState(false);
   const [showCatalogo, setShowCatalogo] = useState(false);
@@ -5539,8 +5705,8 @@ const Inventario = () => {
   const [tagFilter, setTagFilter] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState<SortKey>("sku");
   const [invColumnas, setInvColumnas] = useState<2 | 3>(3);
-  const [almacen, setAlmacen] = useState<"palmhills" | "castillo">("palmhills");
-  const [formAlmacen, setFormAlmacen] = useState<"palmhills" | "castillo">("palmhills");
+  const [almacen, setAlmacen] = useState<string>(() => almacenPrincipal(almacenes));
+  const [formAlmacen, setFormAlmacen] = useState<string>(() => almacenPrincipal(almacenes));
   const [form, setForm] = useState({
     nom: "",
     sku: "",
@@ -5556,12 +5722,8 @@ const Inventario = () => {
 
   const productosAlmacen = useMemo(
     () =>
-      productos.filter((p) => {
-        const a = p.almacen ?? null;
-        if (almacen === "palmhills") return a === "palmhills" || a === null;
-        return a === almacen;
-      }),
-    [productos, almacen]
+      productos.filter((p) => (p.almacen || almacenPrincipal(almacenes)) === almacen),
+    [productos, almacen, almacenes]
   );
 
   // All unique tags across products, for the filter row
@@ -5700,7 +5862,7 @@ const Inventario = () => {
     setEditId(p.id);
     setFoto(p.foto || null);
     setEtqInput("");
-    setFormAlmacen(p.almacen || "palmhills");
+    setFormAlmacen(p.almacen || almacenPrincipal(almacenes));
     setForm({
       nom: p.nom || "",
       sku: p.sku || "",
@@ -5727,7 +5889,7 @@ const Inventario = () => {
     const skuNuevo = form.sku.trim().toLowerCase();
     const nomNuevo = normTag(form.nom);
     const otrosDelAlmacen = productos.filter(
-      (p) => p.id !== editId && (p.almacen || "palmhills") === formAlmacen
+      (p) => p.id !== editId && (p.almacen || almacenPrincipal(almacenes)) === formAlmacen
     );
     if (skuNuevo) {
       const skuDup = otrosDelAlmacen.find((p) => (p.sku || "").trim().toLowerCase() === skuNuevo);
@@ -5757,8 +5919,8 @@ const Inventario = () => {
       precio: Number(form.precio),
       costo: Number(form.costo),
       cajas: Number(form.cajas),
-      stock: formAlmacen === "castillo" ? 0 : Number(form.stock),
-      min: formAlmacen === "castillo" ? 0 : Number(form.min),
+      stock: almacenInfo(almacenes, formAlmacen).lleva_stock ? Number(form.stock) : 0,
+      min: almacenInfo(almacenes, formAlmacen).lleva_stock ? Number(form.min) : 0,
       barcode: form.barcode,
       foto,
       almacen: formAlmacen,
@@ -6128,22 +6290,17 @@ const Inventario = () => {
     <div>
       <div className="flex items-center justify-between mb-2.5">
         <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
-          <button
-            onClick={() => setAlmacen("palmhills")}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-              almacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            🌴 Palm Hills
-          </button>
-          <button
-            onClick={() => setAlmacen("castillo")}
-            className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-              almacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-            }`}
-          >
-            🏰 Castillo
-          </button>
+          {almacenes.filter((a) => a.activo).map((a) => (
+            <button
+              key={a.id}
+              onClick={() => setAlmacen(a.id)}
+              className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                almacen === a.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+              }`}
+            >
+              {a.icono} {a.nombre}
+            </button>
+          ))}
         </div>
         <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
           <button
@@ -6362,15 +6519,15 @@ const Inventario = () => {
                     <div className="text-base font-extrabold text-card-foreground tabular-nums tracking-tight">
                       {fmt(p.precio)}
                     </div>
-                    {almacen === "castillo" ? (
+                    {!almacenInfo(almacenes, almacen).lleva_stock ? (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-bold inline-flex bg-[#f5eee2] text-[#a3814e]">
-                        🏰 CASTILLO
+                        {almacenInfo(almacenes, almacen).icono} {almacenInfo(almacenes, almacen).nombre.toUpperCase()}
                       </span>
                     ) : (
                       <Badge e={estado} />
                     )}
                   </div>
-                  {almacen !== "castillo" && (
+                  {almacenInfo(almacenes, almacen).lleva_stock && (
                     <div className="text-xs text-muted-foreground mt-1">
                       Stock: {stock} units
                     </div>
@@ -6619,24 +6776,18 @@ const Inventario = () => {
         >
           <Field label="Warehouse">
             <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
-              <button
-                type="button"
-                onClick={() => setFormAlmacen("palmhills")}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  formAlmacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-                }`}
-              >
-                🌴 Palm Hills
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormAlmacen("castillo")}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  formAlmacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-                }`}
-              >
-                🏰 Castillo
-              </button>
+              {almacenes.filter((a) => a.activo).map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => setFormAlmacen(a.id)}
+                  className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    formAlmacen === a.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                >
+                  {a.icono} {a.nombre}
+                </button>
+              ))}
             </div>
           </Field>
           <Field label="Photo">
@@ -6811,7 +6962,7 @@ const Inventario = () => {
               </span>
             </div>
           )}
-          {formAlmacen !== "castillo" && (
+          {almacenInfo(almacenes, formAlmacen).lleva_stock && (
             <>
               <Row2>
                 <Field label="Stock (current)">
@@ -7047,6 +7198,7 @@ const Ordenes = () => {
     readOnly,
     listasPrecios,
     addFaltantesBulk,
+    almacenes,
   } = useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de estimate para que el primer tap abra rapido.
@@ -7059,7 +7211,7 @@ const Ordenes = () => {
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
   const [completing, setCompleting] = useState(false);
-  const [pickAlmacen, setPickAlmacen] = useState<"todos" | "palmhills" | "castillo">("todos");
+  const [pickAlmacen, setPickAlmacen] = useState<string>("todos");
   const [pickItems, setPickItems] = useState<(LineaOrden & { picked: boolean })[]>(
     []
   );
@@ -7079,7 +7231,7 @@ const Ordenes = () => {
   const [editandoDescuentoId, setEditandoDescuentoId] = useState<string | null>(null);
   const [editProductOrder, setEditProductOrder] = useState<string[]>([]);
   const [editSearch, setEditSearch] = useState("");
-  const [editAlmacen, setEditAlmacen] = useState<"palmhills" | "castillo" | "all">("all");
+  const [editAlmacen, setEditAlmacen] = useState<string>("all");
   const [editForm, setEditForm] = useState({ fecha: today(), estado: "Pending" });
 
   const clienteFor = (cli: string) =>
@@ -7175,7 +7327,7 @@ const Ordenes = () => {
           // factura ofrezca mostrar el descuento de lista como opcional.
           // Ordenes viejas sin el campo caen al precio actual del producto.
           precioCatalogo: it.precioCatalogo ?? productos.find((p) => p.id === it.prodId)?.precio,
-          almacen: it.almacen || "palmhills",
+          almacen: it.almacen || almacenPrincipal(almacenes),
         }));
       const facturaTotal = facturaLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
       const cInfo = clienteFor(picking.cli);
@@ -7202,7 +7354,7 @@ const Ordenes = () => {
             prod_id: it.prodId,
             prod_nom: it.prodNom,
             sku: it.sku,
-            almacen: it.almacen || "palmhills",
+            almacen: it.almacen || almacenPrincipal(almacenes),
             qty: it.qty,
             precio,
             monto: +(it.qty * precio).toFixed(2),
@@ -7210,10 +7362,19 @@ const Ordenes = () => {
         });
       if (faltantesLineas.length) await addFaltantesBulk(faltantesLineas);
 
-      // Genera remito SOLO para productos de Castillo (constancia de retiro)
-      const lineasCastillo = pickItems.filter((it) => it.almacen === "castillo" && (it.qtyEnviada ?? it.qty) > 0);
-      if (lineasCastillo.length > 0) {
-        const remitoCastilloLineas = lineasCastillo.map((it) => ({
+      // Genera un remito por cada almacen SIN stock en vivo presente en el pick
+      // (constancia de retiro) — antes hardcodeado solo para "castillo"; ahora
+      // cualquier almacen con lleva_stock=false genera el suyo.
+      const almacenesSinStockEnPick = Array.from(
+        new Set(
+          pickItems
+            .filter((it) => (it.qtyEnviada ?? it.qty) > 0 && !almacenInfo(almacenes, it.almacen || almacenPrincipal(almacenes)).lleva_stock)
+            .map((it) => it.almacen || almacenPrincipal(almacenes))
+        )
+      );
+      for (const almId of almacenesSinStockEnPick) {
+        const lineasAlm = pickItems.filter((it) => (it.almacen || almacenPrincipal(almacenes)) === almId && (it.qtyEnviada ?? it.qty) > 0);
+        const remitoLineas = lineasAlm.map((it) => ({
           prodId: it.prodId,
           prodNom: it.prodNom,
           barcode: it.barcode,
@@ -7223,17 +7384,17 @@ const Ordenes = () => {
           qty: it.qtyEnviada ?? it.qty,
           qtyEnviada: it.qtyEnviada ?? it.qty,
           picked: true,
-          almacen: "castillo" as const,
+          almacen: almId,
         }));
-        const remitoCastilloTotal = remitoCastilloLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
+        const remitoTotal = remitoLineas.reduce((acc, l) => acc + l.qty * l.precio, 0);
         await addRemito({
           orden_id: picking.id,
           orden_num: picking.num,
           cli: cInfo?.nom || picking.cli,
           fecha: today(),
-          lineas: remitoCastilloLineas,
+          lineas: remitoLineas,
           enviado: false,
-          total: +remitoCastilloTotal.toFixed(2),
+          total: +remitoTotal.toFixed(2),
         });
       }
 
@@ -7249,12 +7410,12 @@ const Ordenes = () => {
   };
 
   // Cuanto de cada almacen ya esta totalmente cotejado, para habilitar "Sacada parcialmente"
-  const pickAlmacenCompleto = (almacen: "palmhills" | "castillo") => {
-    const items = pickItems.filter((i) => (i.almacen || "palmhills") === almacen);
+  const pickAlmacenCompleto = (almacen: string) => {
+    const items = pickItems.filter((i) => (i.almacen || almacenPrincipal(almacenes)) === almacen);
     return items.length > 0 && items.every((i) => i.picked);
   };
 
-  const puedeGuardarParcial = pickAlmacenCompleto("palmhills") || pickAlmacenCompleto("castillo");
+  const puedeGuardarParcial = almacenes.some((a) => pickAlmacenCompleto(a.id));
 
   const guardarParcial = async () => {
     if (!picking || !puedeGuardarParcial) return;
@@ -7290,8 +7451,8 @@ const Ordenes = () => {
     setEditSearch("");
     // Arrancar en el almacen de la orden: si el toggle queda en un almacen
     // que no es el de las lineas, la busqueda "no encuentra" los productos.
-    const almacenes = new Set((ord.lineas || []).map((l) => (l.almacen === "castillo" ? "castillo" : "palmhills") as const));
-    setEditAlmacen(almacenes.size === 1 ? [...almacenes][0] : almacenes.size > 1 ? "all" : "palmhills");
+    const almacenesOrden = new Set((ord.lineas || []).map((l) => l.almacen || almacenPrincipal(almacenes)));
+    setEditAlmacen(almacenesOrden.size === 1 ? [...almacenesOrden][0] : almacenesOrden.size > 1 ? "all" : almacenPrincipal(almacenes));
     setEditandoDescuentoId(null);
     const initialQtys: Record<string, number> = {};
     const initialPrecios: Record<string, number> = {};
@@ -7353,7 +7514,7 @@ const Ordenes = () => {
     .filter((p): p is Producto => !!p);
 
   const editProductosFiltrados = (() => {
-    const porAlmacen = editAlmacen === "all" ? editProductosOrdenados : editProductosOrdenados.filter((p) => (p.almacen || "palmhills") === editAlmacen);
+    const porAlmacen = editAlmacen === "all" ? editProductosOrdenados : editProductosOrdenados.filter((p) => (p.almacen || almacenPrincipal(almacenes)) === editAlmacen);
     if (!editSearch.trim()) return porAlmacen;
     return flexibleSearch(
       porAlmacen,
@@ -7403,7 +7564,7 @@ const Ordenes = () => {
         qty,
         qtyEnviada: lineaExistente ? Math.min(lineaExistente.qtyEnviada ?? lineaExistente.qty, qty) : qty,
         picked: lineaExistente?.picked ?? false,
-        almacen: p.almacen || "palmhills",
+        almacen: p.almacen || almacenPrincipal(almacenes),
       };
     }).filter((l): l is NonNullable<typeof l> => l !== null);
     
@@ -7717,22 +7878,17 @@ const Ordenes = () => {
               >
                 All
               </button>
-              <button
-                onClick={() => setEditAlmacen("palmhills")}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  editAlmacen === "palmhills" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-                }`}
-              >
-                🌴 Palm Hills
-              </button>
-              <button
-                onClick={() => setEditAlmacen("castillo")}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                  editAlmacen === "castillo" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
-                }`}
-              >
-                🏰 Castillo
-              </button>
+              {almacenes.filter((a) => a.activo).map((a) => (
+                <button
+                  key={a.id}
+                  onClick={() => setEditAlmacen(a.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                    editAlmacen === a.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                  }`}
+                >
+                  {a.icono} {a.nombre}
+                </button>
+              ))}
             </div>
             <div className="relative mb-3">
               <input
@@ -7895,15 +8051,15 @@ const Ordenes = () => {
           </div>
           <div className="px-4 pb-2 shrink-0 flex justify-center">
             <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
-              {(["todos", "palmhills", "castillo"] as const).map((a) => (
+              {[{ id: "todos", label: "All" }, ...almacenes.filter((a) => a.activo).map((a) => ({ id: a.id, label: `${a.icono} ${a.nombre}` }))].map((a) => (
                 <button
-                  key={a}
-                  onClick={() => setPickAlmacen(a)}
+                  key={a.id}
+                  onClick={() => setPickAlmacen(a.id)}
                   className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                    pickAlmacen === a ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
+                    pickAlmacen === a.id ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"
                   }`}
                 >
-                  {a === "todos" ? "All" : a === "palmhills" ? "🌴 Palm Hills" : "🏰 Castillo"}
+                  {a.label}
                 </button>
               ))}
             </div>
@@ -7913,7 +8069,7 @@ const Ordenes = () => {
               {pickItems
                 .map((item, i) => ({ item, i }))
                 .filter(
-                  ({ item }) => pickAlmacen === "todos" || (item.almacen || "palmhills") === pickAlmacen
+                  ({ item }) => pickAlmacen === "todos" || (item.almacen || almacenPrincipal(almacenes)) === pickAlmacen
                 )
                 .map(({ item, i }) => {
                 const prod = productos.find((p) => p.id === item.prodId);
@@ -8400,7 +8556,7 @@ const Mejoras = () => {
 // Compras (Ingresado de Inventario)
 // ------------------------------
 const Compras = () => {
-  const { compras, productos, addCompra, deleteCompra, readOnly } = useData();
+  const { compras, productos, addCompra, deleteCompra, almacenes, readOnly } = useData();
   const [show, setShow] = useState(false);
   const [detalle, setDetalle] = useState<Compra | null>(null);
   const [saving, setSaving] = useState(false);
@@ -8473,7 +8629,7 @@ const Compras = () => {
     }
     setLineas((prev) => [
       ...prev,
-      { prodId: p.id, prodNom: p.nom, sku: p.sku, qty: 1, costoUnitario: Number(p.costo) || 0, almacen: p.almacen || "palmhills" },
+      { prodId: p.id, prodNom: p.nom, sku: p.sku, qty: 1, costoUnitario: Number(p.costo) || 0, almacen: p.almacen || almacenPrincipal(almacenes) },
     ]);
     setProdSearch("");
     setProdOpen(false);
@@ -9472,6 +9628,7 @@ function AppContent() {
   const [email, setEmail] = useState("");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showVendedoresGlobal, setShowVendedoresGlobal] = useState(false);
+  const [showAlmacenesGlobal, setShowAlmacenesGlobal] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -9584,6 +9741,7 @@ function AppContent() {
   const MORE_ITEMS = [
     { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
     { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
+    { id: "alm", label: "Warehouses", icon: NAV_ICONS.alm },
     ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
   ];
 
@@ -9641,6 +9799,7 @@ function AppContent() {
                       onClick={() => {
                         setShowMoreMenu(false);
                         if (it.id === "ven") setShowVendedoresGlobal(true);
+                        else if (it.id === "alm") setShowAlmacenesGlobal(true);
                         else setTab(it.id);
                       }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
@@ -9746,6 +9905,7 @@ function AppContent() {
       </main>
       <BottomNav active={tab} onSelect={setTab} hiddenTabs={role === "visitante" ? ["usr"] : []} />
       {showVendedoresGlobal && <VendedoresModal onClose={() => setShowVendedoresGlobal(false)} />}
+      {showAlmacenesGlobal && <AlmacenesModal onClose={() => setShowAlmacenesGlobal(false)} />}
     </div>
   );
 }

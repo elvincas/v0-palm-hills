@@ -15,6 +15,7 @@ export const NAV_ICONS: Record<string, string> = {
   pl: "M3 3v18h18 M7 15l4-6 3 4 5-8",
   com: "M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96 12 12l8.73-5.04 M12 22V12 M12 2v5 M9.5 3.5l5 3",
   ven: "M19 5L5 19 M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
+  alm: "M3 21h18 M5 21V9l7-5 7 5v12 M9 21v-6h6v6",
 };
 
 // Tabs visibles en el bottom nav. Mejoras y Users se movieron al menu "More"

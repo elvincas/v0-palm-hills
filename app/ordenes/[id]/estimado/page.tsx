@@ -15,7 +15,7 @@ interface LineaOrden {
   precio: number;
   precioFinal?: number;
   precioCatalogo?: number;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
 }
 
 interface Orden {

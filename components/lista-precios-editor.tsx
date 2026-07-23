@@ -15,7 +15,7 @@ interface ProductoLite {
   sku?: string
   barcode?: string
   precio: number
-  almacen?: "palmhills" | "castillo"
+  almacen?: string
 }
 
 const fmt = (n: number) =>

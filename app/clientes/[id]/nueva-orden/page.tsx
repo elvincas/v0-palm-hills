@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { flexibleSearch } from '@/lib/search'
 import { BackButton } from '@/components/back-button'
 import { MoneyInput } from '@/components/ui/money-input'
+import { type Almacen, almacenInfo, almacenPrincipal } from '@/lib/almacenes'
 
 interface Cliente {
   id: string
@@ -26,7 +27,7 @@ interface Producto {
   reservado?: number
   icon?: string
   foto?: string | null
-  almacen?: 'palmhills' | 'castillo'
+  almacen?: string
 }
 
 const today = () => {
@@ -162,7 +163,8 @@ export default function NuevaOrdenPage() {
     if (typeof window === 'undefined') return 2
     return (Number(localStorage.getItem('ph_columnas_orden')) as 2 | 3) || 2
   })
-  const [almacen, setAlmacen] = useState<'palmhills' | 'castillo' | 'all'>('all')
+  const [almacen, setAlmacen] = useState<string>('all')
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([])
   const [sortMode, setSortMode] = useState<'sku' | 'nom'>('sku')
   const [readOnly, setReadOnly] = useState(false)
 
@@ -249,6 +251,8 @@ export default function NuevaOrdenPage() {
           )
         )
         setFechasEntrega(fechas)
+        const { data: alm } = await supabase.from('almacenes').select('*').order('orden')
+        if (alm) setAlmacenes(alm as Almacen[])
         // Datos livianos primero (sin foto) para no esperar varios MB de imagenes.
         // Supabase/PostgREST limita cada respuesta (db-max-rows, normalmente 1000),
         // por lo que paginamos con .range() para traer TODOS los productos.
@@ -317,7 +321,7 @@ export default function NuevaOrdenPage() {
 
   const filtered = useMemo(() => {
     let list = productos.filter((p) => {
-      const matchAlmacen = almacen === 'all' || (p.almacen || 'palmhills') === almacen
+      const matchAlmacen = almacen === 'all' || (p.almacen || almacenPrincipal(almacenes)) === almacen
       const matchTag = !tagFilter || (p.etiquetas || []).includes(tagFilter)
       return matchAlmacen && matchTag
     })
@@ -342,7 +346,7 @@ export default function NuevaOrdenPage() {
       if (skuA && !skuB) return -1
       return skuA.localeCompare(skuB, 'en', { numeric: true }) || a.nom.localeCompare(b.nom, 'en')
     })
-  }, [productos, search, tagFilter, almacen, sortMode])
+  }, [productos, search, tagFilter, almacen, sortMode, almacenes])
 
   const disponible = (p: Producto) => Number(p.stock || 0) - Number(p.reservado || 0)
 
@@ -417,7 +421,7 @@ export default function NuevaOrdenPage() {
         precioCatalogo: Number(p.precio),
         qty,
         qtyEnviada: qty,
-        almacen: p.almacen || 'palmhills',
+        almacen: p.almacen || almacenPrincipal(almacenes),
       }))
 
       // Siguiente número de orden global (consulta solo el máximo, no toda la tabla)
@@ -444,9 +448,9 @@ export default function NuevaOrdenPage() {
 
       if (ordenError) throw ordenError
 
-      // Reservar inventario: reservado += qty para cada producto (Castillo no lleva stock en vivo)
+      // Reservar inventario: reservado += qty para cada producto (solo en almacenes con lleva_stock=true)
       for (const { p, qty } of seleccionados) {
-        if ((p.almacen || 'palmhills') === 'castillo') continue
+        if (!almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes)).lleva_stock) continue
         const nuevoReservado = Number(p.reservado || 0) + qty
         await supabase.from('productos').update({ reservado: nuevoReservado }).eq('id', p.id)
       }
@@ -612,8 +616,9 @@ export default function NuevaOrdenPage() {
             <div className="flex items-center justify-between gap-1.5 mb-2.5 overflow-x-auto no-scrollbar">
               <div className={grupo}>
                 <button onClick={() => setAlmacen('all')} className={seg(almacen === 'all')}>All</button>
-                <button onClick={() => setAlmacen('palmhills')} className={seg(almacen === 'palmhills')}>🌴 Palm Hills</button>
-                <button onClick={() => setAlmacen('castillo')} className={seg(almacen === 'castillo')}>🏰 Castillo</button>
+                {almacenes.filter((a) => a.activo).map((a) => (
+                  <button key={a.id} onClick={() => setAlmacen(a.id)} className={seg(almacen === a.id)}>{a.icono} {a.nombre}</button>
+                ))}
               </div>
               <div className={grupo}>
                 <button onClick={() => setSortMode('sku')} aria-label="Sort by SKU" className={seg(sortMode === 'sku')}>SKU</button>
@@ -629,7 +634,8 @@ export default function NuevaOrdenPage() {
         <div className={`grid gap-2.5 ${columnas === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
           {filtered.length ? (
             filtered.map((p) => {
-              const esCastillo = (p.almacen || 'palmhills') === 'castillo'
+              const almInfo = almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes))
+              const esCastillo = !almInfo.lleva_stock
               const disp = disponible(p)
               const qty = cantidades[p.id] || 0
               const excede = !esCastillo && qty > disp
@@ -684,7 +690,7 @@ export default function NuevaOrdenPage() {
                       esCastillo ? 'bg-[#f5eee2] text-[#a3814e]' : estadoColor
                     }`}
                   >
-                    {esCastillo ? '🏰 CASTILLO' : stockEstado}
+                    {esCastillo ? `${almInfo.icono} ${almInfo.nombre.toUpperCase()}` : stockEstado}
                   </span>
                   <div className="flex items-center gap-1.5 mt-1">
                     {descuentos[p.id] !== undefined && descuentos[p.id] !== precioBase(p) ? (
@@ -810,7 +816,7 @@ export default function NuevaOrdenPage() {
 
               <div className="space-y-2 mb-4">
                 {seleccionados.map(({ p, qty }) => {
-                  const esCastillo = (p.almacen || 'palmhills') === 'castillo'
+                  const esCastillo = !almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes)).lleva_stock
                   const disp = disponible(p)
                   const excede = !esCastillo && qty > disp
                   return (

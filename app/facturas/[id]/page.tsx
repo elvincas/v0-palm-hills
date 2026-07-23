@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { BackButton } from "@/components/back-button";
 import { Switch } from "@/components/ui/switch";
 import { MoneyInput } from "@/components/ui/money-input";
+import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
 
 interface LineaFactura {
   prodNom: string;
@@ -15,7 +16,7 @@ interface LineaFactura {
   precio: number;
   precioOriginal?: number;
   precioCatalogo?: number;
-  almacen?: "palmhills" | "castillo";
+  almacen?: string;
 }
 
 interface Pago {
@@ -317,11 +318,13 @@ export default function FacturaPage() {
   // por linea: se completa buscando el producto por SKU+almacen (o nombre).
   const [catalogoPorSku, setCatalogoPorSku] = useState<Record<string, number>>({});
   const [catalogoPorNom, setCatalogoPorNom] = useState<Record<string, number>>({});
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setReadOnly(data.user?.user_metadata?.role === "visitante");
     });
+    supabase.from("almacenes").select("*").order("orden").then(({ data }) => { if (data) setAlmacenes(data as Almacen[]); });
     const load = async () => {
       const { data: f, error: fErr } = await supabase
         .from("facturas")
@@ -396,7 +399,7 @@ export default function FacturaPage() {
     await Promise.all(
       efectivos.flatMap((c) => {
         const row = porId.get(c.prodId);
-        if (!row || (row.almacen || "palmhills") === "castillo") return [];
+        if (!row || !almacenInfo(almacenes, row.almacen || almacenPrincipal(almacenes)).lleva_stock) return [];
         return [
           supabase
             .from("productos")
@@ -475,7 +478,7 @@ export default function FacturaPage() {
             (p) =>
               l.sku &&
               (p.sku || "").trim().toLowerCase() === l.sku.trim().toLowerCase() &&
-              (p.almacen || "palmhills") === (l.almacen || "palmhills")
+              (p.almacen || almacenPrincipal(almacenes)) === (l.almacen || almacenPrincipal(almacenes))
           ) || prods.find((p) => p.nom === l.prodNom);
         const lineasOrden: LineaOrdenRev[] = [];
         let omitidas = 0;
@@ -493,7 +496,7 @@ export default function FacturaPage() {
             qty: l.qty,
             qtyEnviada: l.qty,
             picked: true,
-            almacen: l.almacen || p.almacen || "palmhills",
+            almacen: l.almacen || p.almacen || almacenPrincipal(almacenes),
           });
         }
         if (!lineasOrden.length) throw new Error("None of the invoice products exist in inventory anymore.");
