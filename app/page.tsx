@@ -5282,6 +5282,9 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
   const [nuevaMarca, setNuevaMarca] = useState("");
   const [prodSearch, setProdSearch] = useState("");
   const [almacenFiltro, setAlmacenFiltro] = useState<"todos" | "palmhills" | "castillo">("todos");
+  const [renombrando, setRenombrando] = useState(false);
+  const [nombreEditado, setNombreEditado] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const marcas = useMemo(() => {
     const map = new Map<string, number>();
@@ -5320,6 +5323,28 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
       setMarcaSel(null);
     } catch (err) {
       alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  const abrirRenombrar = () => {
+    setNombreEditado(marcaSel || "");
+    setRenombrando(true);
+  };
+
+  const guardarRenombre = async () => {
+    const nuevo = nombreEditado.trim();
+    if (!marcaSel || !nuevo || nuevo === marcaSel || saving) { setRenombrando(false); return; }
+    setSaving(true);
+    try {
+      await Promise.all(
+        productos.filter((p) => p.fabricante === marcaSel).map((p) => setProductoFabricante(p.id, nuevo))
+      );
+      setMarcaSel(nuevo);
+      setRenombrando(false);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -5392,14 +5417,38 @@ const MarcasModal = ({ onClose }: { onClose: () => void }) => {
               ‹ Brands
             </button>
             {!readOnly && (
-              <button onClick={eliminarMarca} className="text-xs font-bold text-destructive underline">
-                Delete brand
-              </button>
+              <div className="flex items-center gap-3">
+                <button onClick={abrirRenombrar} className="text-xs font-bold text-primary underline">
+                  Rename
+                </button>
+                <button onClick={eliminarMarca} className="text-xs font-bold text-destructive underline">
+                  Delete brand
+                </button>
+              </div>
             )}
           </div>
-          <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
-            Products in "{marcaSel}"
-          </div>
+          {renombrando ? (
+            <div className="flex gap-2 mb-3">
+              <input
+                value={nombreEditado}
+                onChange={(e) => setNombreEditado(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") guardarRenombre(); if (e.key === "Escape") setRenombrando(false); }}
+                autoFocus
+                autoComplete="off"
+                className="flex-1 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              />
+              <button onClick={() => setRenombrando(false)} className={`shrink-0 px-3 py-2 rounded-xl font-bold text-sm ${GLASS_BTN}`}>
+                Cancel
+              </button>
+              <button onClick={guardarRenombre} disabled={saving || !nombreEditado.trim()} className={`shrink-0 px-4 py-2 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+                {saving ? "..." : "Save"}
+              </button>
+            </div>
+          ) : (
+            <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1.5">
+              Products in "{marcaSel}"
+            </div>
+          )}
           <div className="inline-flex bg-muted rounded-full p-1 shadow-sm gap-0.5 mb-2">
             {([
               { id: "todos", label: "All" },
