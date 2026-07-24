@@ -7,6 +7,14 @@
 // de pagina en cada hoja de productos, tarjetas con marca/SKU como "pill" y
 // precio como badge — antes era una tabla/grid plana sin portada ni
 // informacion de la empresa (el usuario lo describio como "generico y pobre").
+//
+// Agrupado por marca (2026-07-24, mismo dia): el usuario pidio agrupar por
+// marca en vez de una lista plana — cada `fabricante` distinto es ahora una
+// seccion con su propio encabezado (banda de color + cantidad de items),
+// tanto en el grid con fotos como en la tabla. Como la marca ya se anuncia en
+// el encabezado de seccion, se quito la columna/subtitulo de marca por
+// producto (quedaba redundante). Productos sin `fabricante` caen en el grupo
+// "Other Products" al final.
 import React from "react";
 import { Document, Page, Text, View, Image, StyleSheet, renderToBuffer, Svg, Circle } from "@react-pdf/renderer";
 
@@ -14,8 +22,12 @@ export interface ProductoCatalogo {
   nom: string;
   sku?: string;
   precio: number;
-  fabricante?: string;
   foto?: string | null; // data URL base64, ya viene del campo productos.foto
+}
+
+export interface GrupoCatalogo {
+  marca: string; // "Other Products" para los que no tienen fabricante
+  productos: ProductoCatalogo[];
 }
 
 export interface DatosCatalogo {
@@ -23,7 +35,7 @@ export interface DatosCatalogo {
   almacenLabel: string; // "All Warehouses" | nombre del almacen
   conPrecio: boolean;
   conFotos: boolean;
-  productos: ProductoCatalogo[];
+  grupos: GrupoCatalogo[];
   empresaNombre?: string;
   empresaContacto?: string; // "telefono  ·  email", ver lib/empresa.ts
   logo?: Buffer | Uint8Array;
@@ -35,6 +47,8 @@ const INK = "#1a1a18";
 const LIGHT = "#eef5e6";
 const BORDER = "#e3e7dd";
 const MUTED = "#8a8f80";
+
+const totalProductos = (d: DatosCatalogo) => d.grupos.reduce((acc, g) => acc + g.productos.length, 0);
 
 const s = StyleSheet.create({
   page: { paddingTop: 28, paddingBottom: 42, paddingHorizontal: 34, fontSize: 9, fontFamily: "Helvetica", color: "#333" },
@@ -103,8 +117,24 @@ const s = StyleSheet.create({
   },
   footerText: { fontSize: 7, color: "#999" },
 
+  // ---- encabezado de seccion (marca) ----
+  sectionHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-end",
+    backgroundColor: LIGHT,
+    borderLeftWidth: 3,
+    borderLeftColor: PH,
+    paddingVertical: 6,
+    paddingHorizontal: 8,
+    marginTop: 4,
+    marginBottom: 8,
+  },
+  sectionHeaderText: { fontSize: 10.5, fontFamily: "Helvetica-Bold", color: PH, textTransform: "uppercase", letterSpacing: 0.4 },
+  sectionCount: { fontSize: 7.5, color: MUTED },
+
   // ---- tarjetas del grid (con fotos) ----
-  grid: { flexDirection: "row", flexWrap: "wrap" },
+  grid: { flexDirection: "row", flexWrap: "wrap", marginBottom: 6 },
   card: {
     width: "31.8%",
     marginRight: "2.3%",
@@ -137,7 +167,6 @@ const s = StyleSheet.create({
   },
   skuPillTxt: { fontSize: 6, fontFamily: "Courier-Bold", color: PH },
   cardNom: { fontSize: 7.8, fontFamily: "Helvetica-Bold", color: INK, textTransform: "uppercase", lineHeight: 1.25 },
-  cardFabricante: { fontSize: 6.5, color: MUTED, fontFamily: "Helvetica-Oblique", marginTop: 2 },
   priceRow: { flexDirection: "row", justifyContent: "flex-end", marginTop: 6 },
   pricePill: { backgroundColor: PH, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 },
   pricePillTxt: { fontSize: 8.5, fontFamily: "Helvetica-Bold", color: "#ffffff" },
@@ -147,7 +176,6 @@ const s = StyleSheet.create({
   colTh: { fontSize: 7.5, fontFamily: "Helvetica-Bold", color: "#ffffff", textTransform: "uppercase" },
   cSku: { width: 75, fontFamily: "Courier-Bold", fontSize: 7.5 },
   cDesc: { flex: 1, paddingRight: 6 },
-  cFabricante: { width: 105, paddingRight: 6 },
   cPrecio: { width: 60, textAlign: "right" },
   row: { flexDirection: "row", paddingVertical: 5.5, paddingHorizontal: 7, alignItems: "center", borderBottomWidth: 0.5, borderBottomColor: BORDER },
 });
@@ -168,37 +196,40 @@ const RingMark = ({ color, opacity, size = 220 }: { color: string; opacity: numb
   </Svg>
 );
 
-const CoverPage = ({ d }: { d: DatosCatalogo }) => (
-  <Page size="LETTER" style={s.coverPage}>
-    <View style={s.coverTop}>
-      <View style={{ position: "absolute", bottom: -60, right: -60 }}>
-        <RingMark color="#ffffff" opacity={0.14} size={220} />
-      </View>
-      {d.logo ? (
-        <View style={s.coverLogoCard}>
-          <Image src={{ data: Buffer.from(d.logo), format: "png" }} style={s.coverLogoImg} />
+const CoverPage = ({ d }: { d: DatosCatalogo }) => {
+  const total = totalProductos(d);
+  return (
+    <Page size="LETTER" style={s.coverPage}>
+      <View style={s.coverTop}>
+        <View style={{ position: "absolute", bottom: -60, right: -60 }}>
+          <RingMark color="#ffffff" opacity={0.14} size={220} />
         </View>
-      ) : (
-        <Text style={s.coverBrandNoLogo}>{(d.empresaNombre || "Palm Hills").slice(0, 2).toUpperCase()}</Text>
-      )}
-      <Text style={s.coverBrand}>{(d.empresaNombre || "Palm Hills").toUpperCase()}</Text>
-      <View style={s.coverGoldRule} />
-    </View>
-    <View style={s.coverBottom}>
-      <Text style={s.coverTitle}>PRODUCT CATALOG</Text>
-      <Text style={s.coverSubtitle}>
-        {d.almacenLabel} · {d.productos.length} product{d.productos.length === 1 ? "" : "s"} · {d.fechaGeneracion}
-      </Text>
-    </View>
-    {d.empresaContacto ? (
-      <View style={s.coverFooter}>
-        {d.empresaContacto.split("·").map((part, i) => (
-          <Text key={i} style={s.coverFooterItem}>{part.trim()}</Text>
-        ))}
+        {d.logo ? (
+          <View style={s.coverLogoCard}>
+            <Image src={{ data: Buffer.from(d.logo), format: "png" }} style={s.coverLogoImg} />
+          </View>
+        ) : (
+          <Text style={s.coverBrandNoLogo}>{(d.empresaNombre || "Palm Hills").slice(0, 2).toUpperCase()}</Text>
+        )}
+        <Text style={s.coverBrand}>{(d.empresaNombre || "Palm Hills").toUpperCase()}</Text>
+        <View style={s.coverGoldRule} />
       </View>
-    ) : null}
-  </Page>
-);
+      <View style={s.coverBottom}>
+        <Text style={s.coverTitle}>PRODUCT CATALOG</Text>
+        <Text style={s.coverSubtitle}>
+          {d.almacenLabel} · {total} product{total === 1 ? "" : "s"} · {d.fechaGeneracion}
+        </Text>
+      </View>
+      {d.empresaContacto ? (
+        <View style={s.coverFooter}>
+          {d.empresaContacto.split("·").map((part, i) => (
+            <Text key={i} style={s.coverFooterItem}>{part.trim()}</Text>
+          ))}
+        </View>
+      ) : null}
+    </Page>
+  );
+};
 
 const Header = ({ d }: { d: DatosCatalogo }) => (
   <View style={s.headerTop} fixed>
@@ -218,8 +249,15 @@ const Header = ({ d }: { d: DatosCatalogo }) => (
 
 const Footer = ({ d }: { d: DatosCatalogo }) => (
   <View style={s.footer} fixed>
-    <Text style={s.footerText}>{d.empresaNombre || "Palm Hills"} · {d.productos.length} products · {d.fechaGeneracion}</Text>
+    <Text style={s.footerText}>{d.empresaNombre || "Palm Hills"} · {totalProductos(d)} products · {d.fechaGeneracion}</Text>
     <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
+  </View>
+);
+
+const SectionHeader = ({ marca, cantidad }: { marca: string; cantidad: number }) => (
+  <View style={s.sectionHeader} wrap={false}>
+    <Text style={s.sectionHeaderText}>{marca}</Text>
+    <Text style={s.sectionCount}>{cantidad} item{cantidad === 1 ? "" : "s"}</Text>
   </View>
 );
 
@@ -231,43 +269,50 @@ export async function renderCatalogoPdf(d: DatosCatalogo): Promise<Buffer> {
         <Header d={d} />
 
         {d.conFotos ? (
-          <View style={s.grid}>
-            {d.productos.map((p, i) => (
-              <View key={i} style={[s.card, (i + 1) % 3 === 0 ? { marginRight: 0 } : {}]} wrap={false}>
-                <View style={s.photoBox}>
-                  {p.foto ? <Image src={p.foto} style={s.photo} /> : <Text style={{ fontSize: 20, color: "#ccc" }}>—</Text>}
-                  {p.sku ? (
-                    <View style={s.skuPill}>
-                      <Text style={s.skuPillTxt}>{p.sku}</Text>
+          d.grupos.map((g) => (
+            <View key={g.marca}>
+              <SectionHeader marca={g.marca} cantidad={g.productos.length} />
+              <View style={s.grid}>
+                {g.productos.map((p, i) => (
+                  <View key={i} style={[s.card, (i + 1) % 3 === 0 ? { marginRight: 0 } : {}]} wrap={false}>
+                    <View style={s.photoBox}>
+                      {p.foto ? <Image src={p.foto} style={s.photo} /> : <Text style={{ fontSize: 20, color: "#ccc" }}>—</Text>}
+                      {p.sku ? (
+                        <View style={s.skuPill}>
+                          <Text style={s.skuPillTxt}>{p.sku}</Text>
+                        </View>
+                      ) : null}
                     </View>
-                  ) : null}
-                </View>
-                <Text style={s.cardNom}>{p.nom}</Text>
-                {p.fabricante ? <Text style={s.cardFabricante}>{p.fabricante}</Text> : null}
-                {d.conPrecio ? (
-                  <View style={s.priceRow}>
-                    <View style={s.pricePill}>
-                      <Text style={s.pricePillTxt}>{fmt(p.precio)}</Text>
-                    </View>
+                    <Text style={s.cardNom}>{p.nom}</Text>
+                    {d.conPrecio ? (
+                      <View style={s.priceRow}>
+                        <View style={s.pricePill}>
+                          <Text style={s.pricePillTxt}>{fmt(p.precio)}</Text>
+                        </View>
+                      </View>
+                    ) : null}
                   </View>
-                ) : null}
+                ))}
               </View>
-            ))}
-          </View>
+            </View>
+          ))
         ) : (
           <>
             <View style={s.colsRow} fixed>
               <Text style={[s.colTh, s.cSku]}>SKU</Text>
               <Text style={[s.colTh, s.cDesc]}>Description</Text>
-              <Text style={[s.colTh, s.cFabricante]}>Brand</Text>
               {d.conPrecio ? <Text style={[s.colTh, s.cPrecio]}>Price</Text> : null}
             </View>
-            {d.productos.map((p, i) => (
-              <View key={i} style={[s.row, { backgroundColor: i % 2 === 0 ? "#ffffff" : LIGHT }]} wrap={false}>
-                <Text style={s.cSku}>{p.sku || "—"}</Text>
-                <Text style={[s.cDesc, { textTransform: "uppercase" }]}>{p.nom}</Text>
-                <Text style={[s.cFabricante, { color: MUTED }]}>{p.fabricante || "—"}</Text>
-                {d.conPrecio ? <Text style={[s.cPrecio, { fontFamily: "Helvetica-Bold", color: PH }]}>{fmt(p.precio)}</Text> : null}
+            {d.grupos.map((g) => (
+              <View key={g.marca}>
+                <SectionHeader marca={g.marca} cantidad={g.productos.length} />
+                {g.productos.map((p, i) => (
+                  <View key={i} style={[s.row, { backgroundColor: i % 2 === 0 ? "#ffffff" : LIGHT }]} wrap={false}>
+                    <Text style={s.cSku}>{p.sku || "—"}</Text>
+                    <Text style={[s.cDesc, { textTransform: "uppercase" }]}>{p.nom}</Text>
+                    {d.conPrecio ? <Text style={[s.cPrecio, { fontFamily: "Helvetica-Bold", color: PH }]}>{fmt(p.precio)}</Text> : null}
+                  </View>
+                ))}
               </View>
             ))}
           </>

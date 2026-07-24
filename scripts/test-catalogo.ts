@@ -1,16 +1,16 @@
 // Test local del PDF de catalogo: usa productos reales de la DB (con y sin
 // fotos) para verificar que ambos layouts (grid con fotos / tabla sin fotos)
-// generen correctamente.
+// generen correctamente, agrupados por marca.
 //
 // El test de grid usa las fotos A TAMAÑO COMPLETO (24 productos = ~6.4MB) a
-// proposito: demuestra por que la app real reduce cada foto a ~160px en el
-// navegador (canvas) ANTES de mandarla a este renderer — @react-pdf embeda
-// los bytes de la imagen tal cual, sin recomprimir. Con miniaturas reales
-// (~5-10KB c/u) un catalogo de miles de productos pesa decenas de MB, no
+// proposito: demuestra por que la app real reduce cada foto (~320px, canvas)
+// en el navegador ANTES de mandarla a este renderer — @react-pdf embeda los
+// bytes de la imagen tal cual, sin recomprimir. Con miniaturas reales
+// (~15-25KB c/u) un catalogo de miles de productos pesa decenas de MB, no
 // cientos.
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { renderCatalogoPdf, ProductoCatalogo } from "../lib/pdf/catalogo-pdf";
+import { renderCatalogoPdf, ProductoCatalogo, GrupoCatalogo } from "../lib/pdf/catalogo-pdf";
 
 const ROOT = join(__dirname, "..");
 
@@ -27,6 +27,23 @@ async function sql(query: string) {
   return res.json();
 }
 
+// Mismo agrupado que CatalogoModal.generar en app/page.tsx: por `fabricante`,
+// sin marca cae en "Other Products" al final.
+function agrupar(items: (ProductoCatalogo & { fabricante?: string })[]): GrupoCatalogo[] {
+  const porMarca = new Map<string, ProductoCatalogo[]>();
+  for (const { fabricante, ...resto } of items) {
+    const marca = (fabricante || "").trim() || "Other Products";
+    if (!porMarca.has(marca)) porMarca.set(marca, []);
+    porMarca.get(marca)!.push(resto);
+  }
+  const marcasOrdenadas = Array.from(porMarca.keys()).sort((a, b) => {
+    if (a === "Other Products") return b === "Other Products" ? 0 : 1;
+    if (b === "Other Products") return -1;
+    return a.localeCompare(b, "en");
+  });
+  return marcasOrdenadas.map((marca) => ({ marca, productos: porMarca.get(marca)! }));
+}
+
 async function main() {
   const [empresaRow] = await sql("SELECT nombre, logo, telefono, email FROM empresa WHERE id = 1");
   const logo: Buffer | undefined = empresaRow?.logo
@@ -40,15 +57,18 @@ async function main() {
     "SELECT nom, sku, precio, fabricante, almacen FROM productos ORDER BY sku LIMIT 40"
   );
   console.log(`Productos (sin fotos): ${sinFotos.length}`);
-  const productosTabla: ProductoCatalogo[] = sinFotos.map((p: { nom: string; sku: string; precio: string; fabricante?: string }) => ({
-    nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined,
-  }));
+  const gruposTabla = agrupar(
+    sinFotos.map((p: { nom: string; sku: string; precio: string; fabricante?: string }) => ({
+      nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined,
+    }))
+  );
+  console.log(`Marcas (tabla): ${gruposTabla.map((g) => `${g.marca} (${g.productos.length})`).join(", ")}`);
   const bufTabla = await renderCatalogoPdf({
     fechaGeneracion: "07/24/2026",
     almacenLabel: "Both Warehouses",
     conPrecio: true,
     conFotos: false,
-    productos: productosTabla,
+    grupos: gruposTabla,
     empresaNombre,
     empresaContacto,
     logo,
@@ -65,15 +85,18 @@ async function main() {
   if (conFotosRows.length === 0) {
     console.log("(ningun producto con foto encontrado, se omite el test de grid)");
   } else {
-    const productosGrid: ProductoCatalogo[] = conFotosRows.map((p: { nom: string; sku: string; precio: string; fabricante?: string; foto: string }) => ({
-      nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto: p.foto,
-    }));
+    const gruposGrid = agrupar(
+      conFotosRows.map((p: { nom: string; sku: string; precio: string; fabricante?: string; foto: string }) => ({
+        nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto: p.foto,
+      }))
+    );
+    console.log(`Marcas (grid): ${gruposGrid.map((g) => `${g.marca} (${g.productos.length})`).join(", ")}`);
     const bufGrid = await renderCatalogoPdf({
       fechaGeneracion: "07/24/2026",
       almacenLabel: "Palm Hills",
       conPrecio: true,
       conFotos: true,
-      productos: productosGrid,
+      grupos: gruposGrid,
       empresaNombre,
       empresaContacto,
       logo,

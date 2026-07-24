@@ -7,7 +7,7 @@
 // de cientos de MB).
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
-import { renderCatalogoPdf, ProductoCatalogo } from "@/lib/pdf/catalogo-pdf";
+import { renderCatalogoPdf, GrupoCatalogo } from "@/lib/pdf/catalogo-pdf";
 import { EMPRESA_DEFAULT, empresaContacto } from "@/lib/empresa";
 
 export const runtime = "nodejs";
@@ -23,7 +23,7 @@ export async function POST(request: NextRequest) {
     conPrecio: boolean;
     conFotos: boolean;
     almacenLabel: string;
-    productos: ProductoCatalogo[];
+    grupos: GrupoCatalogo[];
   };
 
   const { data: empresaRow } = await supabase.from("empresa").select("*").eq("id", 1).maybeSingle();
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     almacenLabel: body.almacenLabel,
     conPrecio: body.conPrecio,
     conFotos: body.conFotos,
-    productos: body.productos || [],
+    grupos: body.grupos || [],
     empresaNombre: empresa.nombre,
     empresaContacto: empresaContacto(empresa) || undefined,
     logo,

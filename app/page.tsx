@@ -4753,11 +4753,14 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 // tamaño completo pesaria cientos de MB. Se reduce aqui, en el navegador
 // (mismo patron que otros compresores de foto de la app), para no depender
 // de una libreria de imagenes nueva en el servidor.
+// 320px/0.72 (antes 160px/0.55, se veia borroso al imprimir — la tarjeta del
+// grid mide ~2.3in de ancho, a 150-200dpi de impresion eso son ~340-460px
+// reales, asi que 160px quedaba muy por debajo de la resolucion visible).
 const compressCatalogPhoto = (dataUrl: string): Promise<string> =>
   new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => {
-      const MAX = 160;
+      const MAX = 320;
       const scale = Math.min(1, MAX / Math.max(img.width, img.height));
       const w = Math.max(1, Math.round(img.width * scale));
       const h = Math.max(1, Math.round(img.height * scale));
@@ -4766,10 +4769,12 @@ const compressCatalogPhoto = (dataUrl: string): Promise<string> =>
       canvas.height = h;
       const ctx = canvas.getContext("2d");
       if (!ctx) return reject(new Error("no ctx"));
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, w, h);
       ctx.drawImage(img, 0, 0, w, h);
-      resolve(canvas.toDataURL("image/jpeg", 0.55));
+      resolve(canvas.toDataURL("image/jpeg", 0.72));
     };
     img.onerror = reject;
     img.src = dataUrl;
@@ -4805,7 +4810,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
         return sa.localeCompare(sb, "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
       });
 
-      const items: { nom: string; sku?: string; precio: number; fabricante?: string; foto?: string }[] = [];
+      const items: { nom: string; sku?: string; precio: number; fabricante: string; foto?: string }[] = [];
       for (const p of ordenados) {
         let foto: string | undefined;
         if (conFotos && p.foto) {
@@ -4815,15 +4820,33 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
             foto = undefined;
           }
         }
-        items.push({ nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto });
+        items.push({ nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: (p.fabricante || "").trim(), foto });
         setProgreso((s) => ({ ...s, hecho: s.hecho + 1 }));
       }
+
+      // Agrupar por marca (fabricante) — pedido explicito del usuario en vez
+      // de una lista plana. Sin marca cae en "Other Products", siempre al final.
+      const porMarca = new Map<string, typeof items>();
+      for (const it of items) {
+        const marca = it.fabricante || "Other Products";
+        if (!porMarca.has(marca)) porMarca.set(marca, []);
+        porMarca.get(marca)!.push(it);
+      }
+      const marcasOrdenadas = Array.from(porMarca.keys()).sort((a, b) => {
+        if (a === "Other Products") return b === "Other Products" ? 0 : 1;
+        if (b === "Other Products") return -1;
+        return a.localeCompare(b, "en");
+      });
+      const grupos = marcasOrdenadas.map((marca) => ({
+        marca,
+        productos: porMarca.get(marca)!.map(({ fabricante: _f, ...resto }) => resto),
+      }));
 
       const almacenLabel = almacenCat === "all" ? "All Warehouses" : almacenInfo(almacenes, almacenCat).nombre;
       const res = await fetch("/api/reportes/catalogo/pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conPrecio, conFotos, almacenLabel, productos: items }),
+        body: JSON.stringify({ conPrecio, conFotos, almacenLabel, grupos }),
       });
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
