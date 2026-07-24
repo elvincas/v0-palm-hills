@@ -244,7 +244,7 @@ const BloqueTotales = ({ subtotal, descuento, total, totalPagado, saldo }: { sub
   </div>
 );
 
-const BloqueFirma = () => (
+const BloqueFirma = ({ mensaje }: { mensaje?: string | null }) => (
   <div data-m="firma">
     <div className="px-6 py-3 border-t border-gray-200">
       <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
@@ -256,6 +256,7 @@ const BloqueFirma = () => (
     </div>
     <div className="px-6 py-6 border-t border-gray-200 text-center">
       <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
+      {mensaje && <p className="mt-2 mx-auto max-w-md text-xs italic text-gray-500 bg-[#f2f4ee] rounded-lg px-3 py-2">{mensaje}</p>}
     </div>
   </div>
 );
@@ -895,7 +896,7 @@ export default function FacturaPage() {
           <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
         <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
-        <BloqueFirma />
+        <BloqueFirma mensaje={empresa.mensaje_factura} />
       </div>
 
       {/* Invoice — hojas cortadas por altura medida: header en cada hoja,
@@ -928,7 +929,7 @@ export default function FacturaPage() {
               {isLastPage && (
                 <>
                   <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
-                  <BloqueFirma />
+                  <BloqueFirma mensaje={empresa.mensaje_factura} />
                 </>
               )}
             </div>

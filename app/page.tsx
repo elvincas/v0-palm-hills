@@ -309,6 +309,33 @@ interface Faltante {
   monto: number;
 }
 
+// Quotation (fase B, 2026-07-24): documento propio, independiente de Orden —
+// a diferencia de una orden, NO reserva inventario (es solo una propuesta de
+// precio, puede que el cliente nunca la acepte). Si el cliente acepta, se
+// "convierte" creando una Orden real con las mismas lineas (ahi si reserva).
+interface LineaCotizacion {
+  prodId: string;
+  prodNom: string;
+  barcode?: string;
+  sku?: string;
+  precio: number;
+  precioCatalogo?: number;
+  qty: number;
+  almacen?: string;
+}
+
+interface Cotizacion {
+  id: string;
+  num: number;
+  cli: string;
+  fecha: string;
+  estado: string; // Pending | Accepted | Rejected | Expired
+  lineas: LineaCotizacion[];
+  total: number;
+  valido_hasta?: string | null;
+  mensaje?: string | null;
+}
+
 // Almacen: genérico, configurable (2026-07-23) — reemplaza el enum fijo
 // "palmhills"|"castillo". Definido en lib/almacenes.ts (compartido con las
 // paginas standalone que no usan el DataContext, ej. nueva-orden, facturas/[id]).
@@ -615,6 +642,10 @@ interface DataContextType {
   deleteAlmacen: (id: string) => Promise<void>;
   empresa: Empresa;
   updateEmpresa: (e: Omit<Empresa, "id">) => Promise<void>;
+  cotizaciones: Cotizacion[];
+  addCotizacion: (c: Omit<Cotizacion, "id" | "num">) => Promise<Cotizacion>;
+  updateCotizacion: (id: string, c: Omit<Cotizacion, "id" | "num">) => Promise<void>;
+  deleteCotizacion: (id: string) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -687,6 +718,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [faltantes, setFaltantes] = useState<Faltante[]>([]);
   const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT);
+  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -813,7 +845,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm, emp] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm, emp, cotz] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -830,6 +862,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Faltante>("faltantes", "*", "fecha", false),
         selectAll<Almacen>("almacenes", "*", "orden", true),
         supabase.from("empresa").select("*").eq("id", 1).maybeSingle(),
+        selectAll<Cotizacion>("cotizaciones", "*", "num", false),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
@@ -847,6 +880,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setFaltantes(falt);
       setAlmacenes(alm);
       if (emp.data) setEmpresa(emp.data as Empresa);
+      setCotizaciones(cotz.map((row) => ({ ...row, lineas: row.lineas || [] })));
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1602,6 +1636,31 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Company profile updated`);
   };
 
+  // --- Cotizaciones (Quotations): documento independiente, NO reserva
+  // inventario (a diferencia de addOrden). Numeracion propia, empieza en 1.
+  const addCotizacion = async (c: Omit<Cotizacion, "id" | "num">) => {
+    const num = await nextNumDb("cotizaciones", 1);
+    const { data, error } = await supabase.from("cotizaciones").insert({ ...c, num }).select().single();
+    if (error) throw new Error(error.message);
+    const cot = { ...(data as Cotizacion), lineas: (data as Cotizacion).lineas || [] };
+    setCotizaciones((prev) => [cot, ...prev]);
+    await logAct(`Quotation #${num} → ${c.cli}`);
+    return cot;
+  };
+
+  const updateCotizacion = async (id: string, c: Omit<Cotizacion, "id" | "num">) => {
+    const { data, error } = await supabase.from("cotizaciones").update(c).eq("id", id).select().single();
+    if (error) throw new Error(error.message);
+    setCotizaciones((prev) => prev.map((x) => (x.id === id ? { ...(data as Cotizacion), lineas: (data as Cotizacion).lineas || [] } : x)));
+  };
+
+  const deleteCotizacion = async (id: string) => {
+    const { error } = await supabase.from("cotizaciones").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setCotizaciones((prev) => prev.filter((x) => x.id !== id));
+    await logAct(`Quotation deleted`);
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1689,6 +1748,10 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     deleteAlmacen,
     empresa,
     updateEmpresa,
+    cotizaciones,
+    addCotizacion,
+    updateCotizacion,
+    deleteCotizacion,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -5241,6 +5304,68 @@ const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+// Document Templates (fase B, 2026-07-24): mensaje libre por tipo de
+// documento, mostrado ademas del contenido estructural fijo (firma de
+// entrega en factura, disclaimer de estimate, etc). Vive en la misma tabla
+// `empresa` (una fila) que Company Profile, pero como pantalla separada
+// porque conceptualmente es otra cosa (mensajeria al cliente, no datos de
+// contacto).
+const PLANTILLA_DOCS = [
+  { key: "mensaje_factura", label: "Invoice" },
+  { key: "mensaje_estimate", label: "Estimate" },
+  { key: "mensaje_cotizacion", label: "Quotation" },
+  { key: "mensaje_remito", label: "Packing Slip" },
+  { key: "mensaje_nota_credito", label: "Credit Note" },
+] as const;
+
+const PlantillasModal = ({ onClose }: { onClose: () => void }) => {
+  const { empresa, updateEmpresa, readOnly } = useData();
+  const [form, setForm] = useState<Record<string, string>>(() =>
+    Object.fromEntries(PLANTILLA_DOCS.map((d) => [d.key, empresa[d.key] || ""]))
+  );
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const { id: _id, ...resto } = empresa;
+      await updateEmpresa({
+        ...resto,
+        ...Object.fromEntries(PLANTILLA_DOCS.map((d) => [d.key, form[d.key].trim() || null])),
+      });
+      onClose();
+    } catch (err) {
+      alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Document Templates" onClose={onClose}>
+      <p className="text-xs text-muted-foreground mb-3">
+        An optional message shown to clients on each document type — a policy note, a thank-you, payment instructions, anything you want. Leave blank for none.
+      </p>
+      {PLANTILLA_DOCS.map((d) => (
+        <Field key={d.key} label={`${d.label} message`}>
+          <textarea
+            value={form[d.key]}
+            onChange={(e) => setForm({ ...form, [d.key]: e.target.value })}
+            rows={2}
+            placeholder="No message"
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring resize-none"
+          />
+        </Field>
+      ))}
+      {!readOnly && (
+        <button onClick={handleSave} disabled={saving} className={`w-full mt-2 py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+          {saving ? "Saving..." : "Save"}
+        </button>
+      )}
+    </Modal>
+  );
+};
+
 // Almacenes: reemplaza el enum fijo palmhills/castillo por una lista
 // configurable — asi cualquier negocio define cuantos almacenes tiene, como
 // se llaman, y si cada uno trackea stock en vivo o es de paso/consignacion
@@ -7380,6 +7505,204 @@ const FaltantesModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+// Quotation: precio-only, NO reserva inventario (a diferencia de New Order) —
+// mismo picker de producto que "New Invoice", pero guarda en `cotizaciones`.
+const CotizacionModal = ({ onClose }: { onClose: () => void }) => {
+  const { clientes, productos, listasPrecios, almacenes, addCotizacion } = useData();
+  const router = useRouter();
+  const [clienteSel, setClienteSel] = useState("");
+  const [fecha, setFecha] = useState(today());
+  const [validoHasta, setValidoHasta] = useState("");
+  const [lineas, setLineas] = useState<{ prodId: string; qty: number }[]>([{ prodId: "", qty: 1 }]);
+  const [invSearches, setInvSearches] = useState<string[]>([""]);
+  const [invFocus, setInvFocus] = useState<number | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  const listaCliente = useMemo(() => {
+    const c = clientes.find((x) => x.nom === clienteSel);
+    if (!c?.lista_precio_id) return null;
+    return listasPrecios.find((lp) => lp.id === c.lista_precio_id) || null;
+  }, [clienteSel, clientes, listasPrecios]);
+  const precioCliente = (p: Producto) => listaCliente?.precios?.[p.id] ?? Number(p.precio);
+
+  const getInvSugeridos = (search: string) => {
+    if (!search.trim()) return productos.slice(0, 30);
+    return flexibleSearch(productos, search, (p) => [p.nom, p.sku, p.barcode].filter(Boolean).join(" "), (p) => p.nom).slice(0, 30);
+  };
+
+  const total = lineas.reduce((acc, l) => {
+    const p = productos.find((x) => x.id === l.prodId);
+    return acc + (p ? precioCliente(p) * Number(l.qty || 1) : 0);
+  }, 0);
+
+  const handleSave = async () => {
+    if (saving) return;
+    if (!clienteSel) { alert("Select a client"); return; }
+    const items = lineas.filter((l) => l.prodId);
+    if (items.length === 0) { alert("Add at least one product"); return; }
+    const lineasDetalle: LineaCotizacion[] = items.map((l) => {
+      const p = productos.find((x) => x.id === l.prodId)!;
+      return {
+        prodId: p.id,
+        prodNom: p.nom,
+        sku: p.sku || "",
+        barcode: p.barcode || "",
+        qty: Number(l.qty),
+        precio: precioCliente(p),
+        precioCatalogo: Number(p.precio),
+        almacen: p.almacen || almacenPrincipal(almacenes),
+      };
+    });
+    setSaving(true);
+    try {
+      const cot = await addCotizacion({
+        cli: clienteSel,
+        fecha,
+        estado: "Pending",
+        lineas: lineasDetalle,
+        total: +total.toFixed(2),
+        valido_hasta: validoHasta || null,
+        mensaje: null,
+      });
+      onClose();
+      router.push(`/cotizaciones/${cot.id}`);
+    } catch (err) {
+      alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="New Quotation" onClose={onClose}>
+      <p className="text-xs text-muted-foreground mb-3">
+        A price quote for a client — unlike a New Order, this does not reserve any inventory.
+      </p>
+      <Field label="Client">
+        <select
+          value={clienteSel}
+          onChange={(e) => setClienteSel(e.target.value)}
+          className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        >
+          <option value="">Select...</option>
+          {clientes.map((c) => (
+            <option key={c.id} value={c.nom}>{c.nom}</option>
+          ))}
+        </select>
+      </Field>
+      <Row2>
+        <Field label="Date">
+          <input type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+        </Field>
+        <Field label="Valid until (optional)">
+          <input type="date" value={validoHasta} onChange={(e) => setValidoHasta(e.target.value)} className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+        </Field>
+      </Row2>
+      <div className="text-sm font-semibold text-muted-foreground mb-2">Products</div>
+      {lineas.map((l, i) => {
+        const selectedProd = productos.find((p) => p.id === l.prodId);
+        const srch = invSearches[i] ?? "";
+        const sugeridos = getInvSugeridos(srch);
+        const isFocused = invFocus === i;
+        return (
+          <div key={i} className="mb-2 bg-muted rounded-lg p-2">
+            <div className="flex gap-1.5 items-center">
+              <div className="flex-[2] relative">
+                {selectedProd ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-2 rounded-lg border border-primary bg-card text-card-foreground text-sm">
+                    <span className="flex-1 truncate">
+                      {selectedProd.sku ? `${selectedProd.sku} — ` : ""}{selectedProd.nom}
+                    </span>
+                    <button
+                      onClick={() => {
+                        setLineas((ls) => ls.map((x, j) => j === i ? { ...x, prodId: "" } : x));
+                        setInvSearches((ss) => ss.map((s, j) => j === i ? "" : s));
+                      }}
+                      className="text-muted-foreground text-xs ml-1"
+                    >
+                      X
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Search product..."
+                        value={srch}
+                        onChange={(e) => setInvSearches((ss) => ss.map((s, j) => j === i ? e.target.value : s))}
+                        onFocus={() => setInvFocus(i)}
+                        onBlur={() => setTimeout(() => setInvFocus(null), 200)}
+                        className="w-full px-2.5 py-2 pr-7 rounded-lg border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring"
+                      />
+                      {srch && <button onMouseDown={(e) => { e.preventDefault(); setInvSearches((ss) => ss.map((s, j) => j === i ? "" : s)); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-lg leading-none">×</button>}
+                    </div>
+                    {isFocused && sugeridos.length > 0 && (
+                      <div className="absolute left-0 right-0 top-full mt-1 bg-card border border-border rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
+                        {sugeridos.map((p) => (
+                          <button
+                            key={p.id}
+                            onMouseDown={() => {
+                              setLineas((ls) => ls.map((x, j) => j === i ? { ...x, prodId: p.id } : x));
+                              setInvSearches((ss) => ss.map((s, j) => j === i ? "" : s));
+                              setInvFocus(null);
+                            }}
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-muted border-b border-border last:border-0 text-card-foreground"
+                          >
+                            <span className="font-medium uppercase">{p.sku ? `${p.sku} — ` : ""}{p.nom}</span>
+                            <span className={listaCliente?.precios?.[p.id] !== undefined ? "text-[#b09060] font-semibold ml-1" : "text-muted-foreground ml-1"}>{fmt(precioCliente(p))}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={l.qty}
+                onChange={(e) =>
+                  setLineas((ls) => ls.map((x, j) => j === i ? { ...x, qty: Math.max(1, Number(e.target.value)) } : x))
+                }
+                autoComplete="off"
+                className="w-14 px-1.5 py-2 rounded-lg border border-input bg-card text-card-foreground text-sm text-center outline-none"
+              />
+              <button
+                onClick={() => {
+                  setLineas((ls) => ls.filter((_, j) => j !== i));
+                  setInvSearches((ss) => ss.filter((_, j) => j !== i));
+                }}
+                className="bg-transparent border-none text-lg cursor-pointer text-muted-foreground"
+              >
+                X
+              </button>
+            </div>
+          </div>
+        );
+      })}
+      <button
+        onClick={() => { setLineas((l) => [...l, { prodId: "", qty: 1 }]); setInvSearches((ss) => [...ss, ""]); }}
+        className="w-full px-4 py-2.5 rounded-xl bg-card border border-border text-card-foreground font-medium text-sm mb-3"
+      >
+        + Add product
+      </button>
+      <div className="border-t border-border pt-2.5 text-right mb-3">
+        <strong className="text-lg text-card-foreground">Total: {fmt(total)}</strong>
+      </div>
+      <div className="flex gap-2.5">
+        <button onClick={onClose} className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}>
+          Cancel
+        </button>
+        <button onClick={handleSave} disabled={saving} className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+          {saving ? "Saving..." : "Save Quotation"}
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
 // ------------------------------
 // Ordenes
 // ------------------------------
@@ -7399,6 +7722,8 @@ const Ordenes = () => {
     listasPrecios,
     addFaltantesBulk,
     almacenes,
+    cotizaciones,
+    deleteCotizacion,
   } = useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de estimate para que el primer tap abra rapido.
@@ -7408,6 +7733,8 @@ const Ordenes = () => {
   }, [ordenes.length > 0]);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showFaltantes, setShowFaltantes] = useState(false);
+  const [vistaOrdenes, setVistaOrdenes] = useState<"ordenes" | "cotizaciones">("ordenes");
+  const [showNuevaCotizacion, setShowNuevaCotizacion] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
   const [completing, setCompleting] = useState(false);
@@ -7822,8 +8149,75 @@ const Ordenes = () => {
     loadMore: ordenesLoadMore,
   } = usePagedList(ordenesOrdenadas, []);
 
+  const cotizacionesOrdenadas = [...cotizaciones].sort((a, b) => b.num - a.num);
+  const {
+    visible: cotizacionesVisibles,
+    hasMore: cotizacionesHasMore,
+    remaining: cotizacionesRemaining,
+    loadMore: cotizacionesLoadMore,
+  } = usePagedList(cotizacionesOrdenadas, [vistaOrdenes]);
+
+  const handleDeleteCotizacion = (c: Cotizacion) => {
+    if (!confirm(`Delete Quotation #${c.num}?`)) return;
+    deleteCotizacion(c.id).catch((err) => alert(`Could not delete: ${err instanceof Error ? err.message : String(err)}`));
+  };
+
   return (
     <div>
+      <div className="inline-flex bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
+        <button onClick={() => setVistaOrdenes("ordenes")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vistaOrdenes === "ordenes" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          Orders
+        </button>
+        <button onClick={() => setVistaOrdenes("cotizaciones")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vistaOrdenes === "cotizaciones" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          Quotations
+        </button>
+      </div>
+      {vistaOrdenes === "cotizaciones" ? (
+        <>
+          {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New quotation" onClick={() => setShowNuevaCotizacion(true)} />}
+          {showNuevaCotizacion && <CotizacionModal onClose={() => setShowNuevaCotizacion(false)} />}
+          <div className="bg-card rounded-3xl p-3.5 border border-border">
+            {cotizacionesOrdenadas.length ? (
+              cotizacionesVisibles.map((c) => {
+                const cInfo = clienteFor(c.cli);
+                return (
+                  <div key={c.id} onClick={() => router.push(`/cotizaciones/${c.id}`)} className="cursor-pointer">
+                    <Li
+                      left={
+                        <>
+                          <div className="text-sm font-semibold truncate uppercase text-card-foreground">{cInfo ? cInfo.nom : c.cli}</div>
+                          <div className="text-xs text-muted-foreground">Quotation #{c.num} · {fdate(c.fecha)}</div>
+                        </>
+                      }
+                      right={
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <div className="text-sm font-bold text-card-foreground">{fmt(c.total)}</div>
+                            <Badge e={c.estado} />
+                          </div>
+                          {!readOnly && (
+                            <button
+                              onClick={(e) => { e.stopPropagation(); handleDeleteCotizacion(c); }}
+                              aria-label="Delete"
+                              className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-destructive hover:bg-red-50 text-sm"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                      }
+                    />
+                  </div>
+                );
+              })
+            ) : (
+              <Empty text="No quotations yet. Tap + to create one." />
+            )}
+          </div>
+          <LoadMoreButton hasMore={cotizacionesHasMore} remaining={cotizacionesRemaining} onClick={cotizacionesLoadMore} />
+        </>
+      ) : (
+      <>
       {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New order" onClick={() => { setShowClientPicker(true); setPickerSearch(""); }} />}
       <button
         onClick={() => setShowFaltantes(true)}
@@ -8415,6 +8809,8 @@ const Ordenes = () => {
             </button>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );
@@ -9830,6 +10226,7 @@ function AppContent() {
   const [showVendedoresGlobal, setShowVendedoresGlobal] = useState(false);
   const [showAlmacenesGlobal, setShowAlmacenesGlobal] = useState(false);
   const [showEmpresaGlobal, setShowEmpresaGlobal] = useState(false);
+  const [showPlantillasGlobal, setShowPlantillasGlobal] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -9944,6 +10341,7 @@ function AppContent() {
     { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
     { id: "alm", label: "Warehouses", icon: NAV_ICONS.alm },
     ...(role === "admin" ? [{ id: "emp", label: "Company Profile", icon: NAV_ICONS.emp }] : []),
+    ...(role === "admin" ? [{ id: "tpl", label: "Document Templates", icon: NAV_ICONS.tpl }] : []),
     ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
   ];
 
@@ -10005,6 +10403,7 @@ function AppContent() {
                         if (it.id === "ven") setShowVendedoresGlobal(true);
                         else if (it.id === "alm") setShowAlmacenesGlobal(true);
                         else if (it.id === "emp") setShowEmpresaGlobal(true);
+                        else if (it.id === "tpl") setShowPlantillasGlobal(true);
                         else setTab(it.id);
                       }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
@@ -10112,6 +10511,7 @@ function AppContent() {
       {showVendedoresGlobal && <VendedoresModal onClose={() => setShowVendedoresGlobal(false)} />}
       {showAlmacenesGlobal && <AlmacenesModal onClose={() => setShowAlmacenesGlobal(false)} />}
       {showEmpresaGlobal && <EmpresaModal onClose={() => setShowEmpresaGlobal(false)} />}
+      {showPlantillasGlobal && <PlantillasModal onClose={() => setShowPlantillasGlobal(false)} />}
     </div>
   );
 }

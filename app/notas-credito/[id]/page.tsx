@@ -423,6 +423,9 @@ export default function NotaCreditoPage() {
 
           {/* Footer */}
           <div className="px-8 pb-6 text-center">
+            {empresa.mensaje_nota_credito && (
+              <p className="mb-2 mx-auto max-w-md text-xs italic text-gray-500 bg-[#f2f4ee] rounded-lg px-3 py-2">{empresa.mensaje_nota_credito}</p>
+            )}
             <p className="text-[9px] text-gray-400">
               This credit note was issued by {empresa.nombre} · {cnNum} · {fdate(nota.fecha)}
             </p>

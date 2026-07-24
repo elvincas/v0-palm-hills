@@ -185,11 +185,12 @@ const BloqueTotalesE = ({ subtotal, descuento, total }: { subtotal: number; desc
   </div>
 );
 
-const BloqueDisclaimerE = () => (
+const BloqueDisclaimerE = ({ mensaje }: { mensaje?: string | null }) => (
   <div className="px-6 py-4 border-t border-gray-200 text-center" data-m="firma">
     <p className="text-[11px] text-gray-500">
       This is an estimate and may vary based on availability at the time of dispatch.
     </p>
+    {mensaje && <p className="mt-2 mx-auto max-w-md text-xs italic text-gray-500 bg-[#f2f4ee] rounded-lg px-3 py-2">{mensaje}</p>}
   </div>
 );
 
@@ -421,7 +422,7 @@ export default function EstimadoPage() {
           <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
         <BloqueTotalesE subtotal={subtotal} descuento={descuento} total={total} />
-        <BloqueDisclaimerE />
+        <BloqueDisclaimerE mensaje={empresa.mensaje_estimate} />
       </div>
 
       {/* Estimate — hojas cortadas por altura medida: header en cada hoja,
@@ -453,7 +454,7 @@ export default function EstimadoPage() {
               {isLastPage && (
                 <>
                   <BloqueTotalesE subtotal={subtotal} descuento={descuento} total={total} />
-                  <BloqueDisclaimerE />
+                  <BloqueDisclaimerE mensaje={empresa.mensaje_estimate} />
                 </>
               )}
             </div>

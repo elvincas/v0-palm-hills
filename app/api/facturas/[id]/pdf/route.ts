@@ -122,6 +122,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     logo,
     empresaNombre: empresa.nombre,
     empresaContacto: empresaContacto(empresa) || undefined,
+    mensaje: empresa.mensaje_factura || undefined,
   });
 
   return new NextResponse(new Uint8Array(pdf), {

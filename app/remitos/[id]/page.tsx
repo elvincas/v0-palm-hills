@@ -190,6 +190,9 @@ export default function RemitoPage() {
 
           {/* Footer */}
           <div className="px-8 pb-5 text-center">
+            {empresa.mensaje_remito && (
+              <p className="mb-2 mx-auto max-w-md text-xs italic text-gray-500 bg-[#f2f4ee] rounded-lg px-3 py-2">{empresa.mensaje_remito}</p>
+            )}
             <p className="text-[9px] text-gray-300">
               Remito #{remito.num} · Order #{remito.orden_num} · {fdate(remito.fecha)} · {empresa.nombre}
             </p>

@@ -13,6 +13,15 @@ export interface Empresa {
   zip?: string | null;
   telefono?: string | null;
   email?: string | null;
+  // Plantillas de mensaje al cliente (2026-07-24, fase B): un mensaje libre
+  // por tipo de documento, opcional — si esta vacio, el documento no muestra
+  // ningun mensaje extra (los textos estructurales como la firma de entrega
+  // o el disclaimer del estimate NO dependen de esto, siguen fijos).
+  mensaje_factura?: string | null;
+  mensaje_estimate?: string | null;
+  mensaje_cotizacion?: string | null;
+  mensaje_remito?: string | null;
+  mensaje_nota_credito?: string | null;
 }
 
 // Fallback si la tabla no cargo todavia (o esta vacia) — mismos datos que
@@ -27,6 +36,11 @@ export const EMPRESA_DEFAULT: Empresa = {
   zip: null,
   telefono: "(551) 248-3442",
   email: "admin@palmhillsco.net",
+  mensaje_factura: null,
+  mensaje_estimate: null,
+  mensaje_cotizacion: null,
+  mensaje_remito: null,
+  mensaje_nota_credito: null,
 };
 
 export const empresaDireccion = (e: Empresa): string =>

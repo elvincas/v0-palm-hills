@@ -14,7 +14,7 @@ export interface LineaDoc {
 }
 
 export interface DatosDocumento {
-  tipo: "invoice" | "estimate";
+  tipo: "invoice" | "estimate" | "quotation";
   num: number | string;
   fecha: string; // MM/DD/YYYY
   estado?: string;
@@ -34,6 +34,11 @@ export interface DatosDocumento {
   // Opcional con fallback para no romper llamadas viejas.
   empresaNombre?: string;
   empresaContacto?: string;
+  // Mensaje de plantilla (Document Templates, fase B) — opcional, ademas del
+  // contenido estructural fijo (firma de entrega, disclaimer de estimate).
+  mensaje?: string;
+  // Solo quotations: fecha limite de validez, si se fijo una.
+  validoHasta?: string;
 }
 
 const PH = "#4a6741";
@@ -108,6 +113,7 @@ const s = StyleSheet.create({
   firmaLbl: { fontSize: 6.5, color: "#888", marginTop: 2 },
   gracias: { marginTop: 18, textAlign: "center", fontSize: 9.5, fontFamily: "Helvetica-Bold", color: PH },
   disclaimer: { marginTop: 16, borderTopWidth: 1, borderTopColor: "#ddd", paddingTop: 10, textAlign: "center", fontSize: 7.5, color: "#888" },
+  mensaje: { marginTop: 12, padding: 8, backgroundColor: "#f2f4ee", borderRadius: 3, textAlign: "center", fontSize: 8, color: "#444", fontFamily: "Helvetica-Oblique" },
 });
 
 const fmt = (n: number) =>
@@ -115,9 +121,10 @@ const fmt = (n: number) =>
 
 export async function renderDocumentoPdf(d: DatosDocumento): Promise<Buffer> {
   const esFactura = d.tipo === "invoice";
-  const titulo = esFactura ? "INVOICE" : "ESTIMATE";
+  const esCotizacion = d.tipo === "quotation";
+  const titulo = esFactura ? "INVOICE" : esCotizacion ? "QUOTATION" : "ESTIMATE";
   const colorTitulo = esFactura ? PH : GOLD;
-  const numTexto = esFactura ? `#${String(d.num).padStart(4, "0")}` : `Order #${d.num}`;
+  const numTexto = esFactura ? `#${String(d.num).padStart(4, "0")}` : esCotizacion ? `#${String(d.num).padStart(4, "0")}` : `Order #${d.num}`;
   const subtotal = d.lineas.reduce((a, l) => a + l.qty * (l.precioOriginal ?? l.precio), 0);
   const descuento = subtotal - d.lineas.reduce((a, l) => a + l.qty * l.precio, 0);
   const totalPagado = d.totalPagado || 0;
@@ -267,9 +274,12 @@ export async function renderDocumentoPdf(d: DatosDocumento): Promise<Buffer> {
             </>
           ) : (
             <Text style={s.disclaimer}>
-              This is an estimate and may vary based on availability at the time of dispatch.
+              {esCotizacion
+                ? `This is a price quotation${d.validoHasta ? `, valid until ${d.validoHasta}` : ""} and does not reserve inventory.`
+                : "This is an estimate and may vary based on availability at the time of dispatch."}
             </Text>
           )}
+          {d.mensaje ? <Text style={s.mensaje}>{d.mensaje}</Text> : null}
         </View>
       </Page>
     </Document>
