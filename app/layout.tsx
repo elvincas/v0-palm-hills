@@ -56,14 +56,27 @@ export const metadata: Metadata = {
   },
 }
 
+// Aplica la preferencia de tema (localStorage, ver hooks/use-theme.ts) antes
+// del primer paint — evita el flash de tema claro al recargar con dark activo.
+const THEME_INIT_SCRIPT = `
+  try {
+    if (localStorage.getItem('ph_theme') === 'dark') {
+      document.documentElement.classList.add('dark');
+    }
+  } catch (e) {}
+`;
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-background">
-      <body className="font-sans antialiased">
+    <html lang="en" className="bg-background" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+      </head>
+      <body className="font-sans antialiased" suppressHydrationWarning>
         {children}
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>

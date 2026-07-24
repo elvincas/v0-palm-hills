@@ -14,6 +14,7 @@ import { MoneyInput } from "@/components/ui/money-input";
 import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
 import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 import { Switch } from "@/components/ui/switch";
+import { useTheme, type Theme } from "@/hooks/use-theme";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -2054,10 +2055,13 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* ── TOP PRODUCTS ── */}
-      <div className="bg-card rounded-3xl overflow-hidden mb-3 border border-border">
+      {/* ── TOP PRODUCTS (glass podium, 2026-07-24) ── */}
+      <div
+        className="rounded-3xl overflow-hidden mb-3 border backdrop-blur-xl"
+        style={{ background: "var(--glass)", borderColor: "var(--glass-border)", boxShadow: "var(--glass-shadow)" }}
+      >
         {/* Header con acento verde del logo */}
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
+        <div className="px-4 pt-4 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--glass-border)" }}>
           <div>
             <div className="text-sm font-bold text-card-foreground">Top Products</div>
             <div className="text-[10px] text-muted-foreground">Last 3 months · by revenue</div>
@@ -2071,38 +2075,43 @@ const Dashboard = () => {
           <Empty text="No invoices yet" />
         ) : (
           <>
-            {/* Podio top 3 */}
-            <div className="px-3 pt-3 pb-4 grid grid-cols-3 gap-2.5">
-              {top15.slice(0, 3).map((p, i) => {
+            {/* Podio top 3: 2do–1ro–3ro, el 1ro elevado */}
+            <div className="px-3 pt-4 pb-2 grid grid-cols-3 gap-2.5 items-end">
+              {[1, 0, 2].map((idx) => {
+                const p = top15[idx];
+                if (!p) return <div key={idx} />;
                 const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
-                const medals = ["🥇", "🥈", "🥉"];
-                // Verde primario, plateado sutil, dorado acento — todos del tema
-                const ringColors = [
-                  "var(--primary)",          // #4a6741 verde logo
-                  "var(--muted-foreground)", // gris neutro
-                  "var(--accent)",           // #b09060 dorado cálido
-                ];
+                // idx 0 = 1er lugar (dorado), 1 = 2do (verde), 2 = 3ro (gris) — todos del tema
+                const ringColors: Record<number, string> = {
+                  0: "var(--accent)",
+                  1: "var(--primary)",
+                  2: "var(--muted-foreground)",
+                };
+                const ring = ringColors[idx];
+                const isFirst = idx === 0;
                 return (
-                  <div key={p.sku || p.nom} className="flex flex-col items-center gap-1.5">
+                  <div key={p.sku || p.nom} className={`flex flex-col items-center gap-1.5 ${isFirst ? "-mt-3" : ""}`}>
                     <div
-                      className="relative w-full aspect-square rounded-xl overflow-hidden border-2"
-                      style={{ borderColor: ringColors[i], boxShadow: `0 2px 12px 0 ${ringColors[i]}33` }}
+                      className="relative w-full aspect-square rounded-2xl overflow-hidden"
+                      style={{ background: "var(--glass-strong)", boxShadow: `0 0 0 2px ${ring}, 0 10px 22px -8px color-mix(in srgb, ${ring} 50%, transparent)` }}
                     >
                       {prod?.foto ? (
                         <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-3xl bg-secondary">📦</div>
+                        <div className="w-full h-full flex items-center justify-center text-3xl">📦</div>
                       )}
-                      <div className="absolute top-1 left-1 text-sm leading-none">{medals[i]}</div>
-                      <div className="absolute bottom-0 left-0 right-0 px-1.5 py-1" style={{ background: "linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 100%)" }}>
-                        <div className="text-[8px] font-bold text-white leading-tight truncate uppercase">{p.nom}</div>
+                      <div
+                        className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white"
+                        style={{ background: ring, boxShadow: "0 2px 6px rgba(0,0,0,0.25)" }}
+                      >
+                        {idx + 1}
                       </div>
                     </div>
                     <div className="text-[9px] font-semibold text-card-foreground text-center leading-tight line-clamp-2 uppercase" style={{ minHeight: "1.8rem" }}>
                       {p.nom}
                     </div>
                     {p.sku && <div className="text-[8px] font-mono text-primary/60 text-center truncate w-full">{p.sku}</div>}
-                    <div className="text-[10px] font-bold" style={{ color: "var(--accent)" }}>{fmt(p.monto)}</div>
+                    <div className="text-[10.5px] font-extrabold" style={{ color: "var(--accent)" }}>{fmt(p.monto)}</div>
                     <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
                   </div>
                 );
@@ -2110,16 +2119,26 @@ const Dashboard = () => {
             </div>
 
             {/* Posiciones 4–15 */}
-            <div className="border-t border-border">
-              {top15.slice(3).map((p, i) => {
+            <div style={{ borderTop: "1px solid var(--glass-border)" }}>
+              {top15.slice(3).map((p, i, arr) => {
                 const rank = i + 4;
                 const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
                 const maxMonto = top15[0]?.monto || 1;
                 const barW = Math.round((p.monto / maxMonto) * 100);
+                const isLast = i === arr.length - 1;
                 return (
-                  <div key={p.sku || p.nom} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
-                    <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{rank}</div>
-                    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 border border-border bg-secondary flex items-center justify-center">
+                  <div
+                    key={p.sku || p.nom}
+                    className="flex items-center gap-2.5 px-4 py-2.5"
+                    style={{ borderBottom: isLast ? "none" : "1px solid var(--glass-border)" }}
+                  >
+                    <div
+                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0"
+                      style={{ background: "var(--glass-strong)", color: "var(--muted-foreground)", boxShadow: "inset 0 0 0 1px var(--glass-border)" }}
+                    >
+                      {rank}
+                    </div>
+                    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-secondary flex items-center justify-center">
                       {prod?.foto ? (
                         <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
                       ) : (
@@ -5315,6 +5334,37 @@ const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
     </Modal>
   );
 };
+
+// Appearance (2026-07-24): preferencia de tema por dispositivo (ver
+// hooks/use-theme.ts) — NO vive en `empresa` (no es un dato de la empresa,
+// es local a este navegador/PWA). El modo oscuro ya existia en globals.css
+// (.dark) sin usarse; esto solo expone el toggle.
+const AppearanceModal = ({ theme, setTheme, onClose }: { theme: Theme; setTheme: (t: Theme) => void; onClose: () => void }) => (
+  <Modal title="Appearance" onClose={onClose}>
+    <p className="text-xs text-muted-foreground mb-3">Choose how Palm Hills looks on this device.</p>
+    <div className="grid grid-cols-2 gap-3">
+      {(["light", "dark"] as const).map((t) => (
+        <button
+          key={t}
+          onClick={() => setTheme(t)}
+          className={`rounded-2xl border-2 p-3 text-left transition-all ${theme === t ? "border-primary" : "border-border"}`}
+        >
+          <div
+            className="w-full h-16 rounded-xl mb-2.5 flex items-center overflow-hidden"
+            style={{ background: t === "dark" ? "#1a1a18" : "#f2f4ee" }}
+          >
+            <div className="w-1/3 h-full" style={{ background: t === "dark" ? "#252520" : "#ffffff" }} />
+            <div className="flex-1 flex items-center justify-center">
+              <div className="w-7 h-7 rounded-lg" style={{ background: t === "dark" ? "#6aaa2a" : "#4a6741" }} />
+            </div>
+          </div>
+          <div className="text-sm font-bold text-card-foreground capitalize">{t}</div>
+          <div className="text-[10px] text-muted-foreground">{t === "dark" ? "Dark background, neon green accent" : "The current look"}</div>
+        </button>
+      ))}
+    </div>
+  </Modal>
+);
 
 // Document Templates (fase B, 2026-07-24): mensaje libre por tipo de
 // documento, mostrado ademas del contenido estructural fijo (firma de
@@ -10319,6 +10369,8 @@ function AppContent() {
   const [showAlmacenesGlobal, setShowAlmacenesGlobal] = useState(false);
   const [showEmpresaGlobal, setShowEmpresaGlobal] = useState(false);
   const [showPlantillasGlobal, setShowPlantillasGlobal] = useState(false);
+  const [showAppearanceGlobal, setShowAppearanceGlobal] = useState(false);
+  const { theme, setTheme } = useTheme();
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -10429,6 +10481,7 @@ function AppContent() {
   };
 
   const MORE_ITEMS = [
+    { id: "thm", label: "Appearance", icon: NAV_ICONS.thm },
     { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
     { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
     { id: "alm", label: "Warehouses", icon: NAV_ICONS.alm },
@@ -10496,6 +10549,7 @@ function AppContent() {
                         else if (it.id === "alm") setShowAlmacenesGlobal(true);
                         else if (it.id === "emp") setShowEmpresaGlobal(true);
                         else if (it.id === "tpl") setShowPlantillasGlobal(true);
+                        else if (it.id === "thm") setShowAppearanceGlobal(true);
                         else setTab(it.id);
                       }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
@@ -10604,6 +10658,7 @@ function AppContent() {
       {showAlmacenesGlobal && <AlmacenesModal onClose={() => setShowAlmacenesGlobal(false)} />}
       {showEmpresaGlobal && <EmpresaModal onClose={() => setShowEmpresaGlobal(false)} />}
       {showPlantillasGlobal && <PlantillasModal onClose={() => setShowPlantillasGlobal(false)} />}
+      {showAppearanceGlobal && <AppearanceModal theme={theme} setTheme={setTheme} onClose={() => setShowAppearanceGlobal(false)} />}
     </div>
   );
 }
