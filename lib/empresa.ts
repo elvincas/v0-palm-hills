@@ -22,6 +22,16 @@ export interface Empresa {
   mensaje_cotizacion?: string | null;
   mensaje_remito?: string | null;
   mensaje_nota_credito?: string | null;
+  // Opciones de layout de documentos (2026-07-24, fase B2) — no es un editor
+  // visual libre (eso queda para mas adelante, ver memoria de sesion), son
+  // presets: posicion del logo, escala de tipografia, color de acento, y
+  // mostrar/ocultar los bloques de firma/disclaimer. Aplica a factura,
+  // estimate y quotation (los 3 documentos que comparten lib/pdf/documento-pdf.tsx).
+  doc_logo_pos?: "left" | "center" | "right";
+  doc_font_scale?: "compact" | "normal" | "large";
+  doc_accent_color?: string;
+  doc_show_signature?: boolean;
+  doc_show_disclaimer?: boolean;
 }
 
 // Fallback si la tabla no cargo todavia (o esta vacia) — mismos datos que
@@ -41,7 +51,14 @@ export const EMPRESA_DEFAULT: Empresa = {
   mensaje_cotizacion: null,
   mensaje_remito: null,
   mensaje_nota_credito: null,
+  doc_logo_pos: "left",
+  doc_font_scale: "normal",
+  doc_accent_color: "#4a6741",
+  doc_show_signature: true,
+  doc_show_disclaimer: true,
 };
+
+export const FONT_SCALE_FACTOR: Record<string, number> = { compact: 0.85, normal: 1, large: 1.15 };
 
 export const empresaDireccion = (e: Empresa): string =>
   [e.dir, [e.ciudad, e.estado_dir].filter(Boolean).join(", "), e.zip].filter(Boolean).join(" · ");

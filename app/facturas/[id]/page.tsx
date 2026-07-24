@@ -105,8 +105,11 @@ const IC = {
 function EncabezadoFactura({ factura, cliente, empresa, page, totalPages }: { factura: Factura; cliente: Cliente | null; empresa: Empresa; page?: number; totalPages?: number }) {
   return (
     <>
-      <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
-        <div className="flex items-center gap-2">
+      <div
+        className={`px-6 sm:px-10 pt-4 pb-3 flex items-center gap-6 border-b-2 ${empresa.doc_logo_pos === "right" ? "flex-row-reverse justify-between" : "justify-between"}`}
+        style={{ borderColor: empresa.doc_accent_color || "#4a6741" }}
+      >
+        <div className={`flex items-center gap-2 ${empresa.doc_logo_pos === "center" ? "flex-1 justify-center" : ""}`}>
           <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-14 h-14 object-contain shrink-0" />
           <div>
             <div className="text-sm font-bold text-[#1a1a18] leading-tight">{empresa.nombre}</div>
@@ -114,7 +117,7 @@ function EncabezadoFactura({ factura, cliente, empresa, page, totalPages }: { fa
           </div>
         </div>
         <div className="text-right shrink-0">
-          <div className="text-base font-black tracking-wide text-[#4a6741] leading-tight">INVOICE</div>
+          <div className="text-base font-black tracking-wide leading-tight" style={{ color: empresa.doc_accent_color || "#4a6741" }}>INVOICE</div>
           <div className="text-xs font-mono text-gray-600">#{String(factura.num).padStart(3, "0")}</div>
           {page !== undefined && totalPages !== undefined && (
             <div className="text-[9px] text-gray-400 mt-0.5">Page {page} of {totalPages}</div>
@@ -212,7 +215,7 @@ const FilaProducto = ({ l, i, mostrarDescuentoLista }: { l: LineaFactura; i: num
   );
 };
 
-const BloqueTotales = ({ subtotal, descuento, total, totalPagado, saldo }: { subtotal: number; descuento: number; total: number; totalPagado: number; saldo: number }) => (
+const BloqueTotales = ({ subtotal, descuento, total, totalPagado, saldo, accentColor }: { subtotal: number; descuento: number; total: number; totalPagado: number; saldo: number; accentColor?: string }) => (
   <div className="px-6 pb-4" data-m="totals">
     <div className="flex justify-end mt-4">
       <div className="w-full sm:w-64">
@@ -220,13 +223,13 @@ const BloqueTotales = ({ subtotal, descuento, total, totalPagado, saldo }: { sub
           <span>Subtotal</span><span>{fmt(subtotal)}</span>
         </div>
         {descuento > 0.01 && (
-          <div className="flex justify-between py-1.5 text-sm text-[#4a6741] font-medium">
+          <div className="flex justify-between py-1.5 text-sm font-medium" style={{ color: accentColor || "#4a6741" }}>
             <span>Discount</span><span>-{fmt(descuento)}</span>
           </div>
         )}
-        <div className="flex justify-between items-center py-2.5 mt-1 border-t-2 border-[#4a6741]">
+        <div className="flex justify-between items-center py-2.5 mt-1 border-t-2" style={{ borderColor: accentColor || "#4a6741" }}>
           <span className="text-base font-bold text-[#1a1a18]">Total</span>
-          <span className="text-xl font-black text-[#4a6741]">{fmt(total)}</span>
+          <span className="text-xl font-black" style={{ color: accentColor || "#4a6741" }}>{fmt(total)}</span>
         </div>
         {totalPagado > 0 && (
           <>
@@ -244,18 +247,20 @@ const BloqueTotales = ({ subtotal, descuento, total, totalPagado, saldo }: { sub
   </div>
 );
 
-const BloqueFirma = ({ mensaje }: { mensaje?: string | null }) => (
+const BloqueFirma = ({ mensaje, accentColor, showSignature = true }: { mensaje?: string | null; accentColor?: string; showSignature?: boolean }) => (
   <div data-m="firma">
-    <div className="px-6 py-3 border-t border-gray-200">
-      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
-      <div className="flex flex-wrap gap-x-6 gap-y-2">
-        <div><div className="border-b border-gray-400 h-4 w-28" /><div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div></div>
-        <div><div className="border-b border-gray-400 h-4 w-20" /><div className="text-[9px] text-gray-500 mt-0.5">Date</div></div>
-        <div><div className="border-b border-gray-400 h-4 w-40" /><div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div></div>
+    {showSignature && (
+      <div className="px-6 py-3 border-t border-gray-200">
+        <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-2">Delivery confirmation</div>
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
+          <div><div className="border-b border-gray-400 h-4 w-28" /><div className="text-[9px] text-gray-500 mt-0.5">Order received signature</div></div>
+          <div><div className="border-b border-gray-400 h-4 w-20" /><div className="text-[9px] text-gray-500 mt-0.5">Date</div></div>
+          <div><div className="border-b border-gray-400 h-4 w-40" /><div className="text-[9px] text-gray-500 mt-0.5">Name of recipient</div></div>
+        </div>
       </div>
-    </div>
+    )}
     <div className="px-6 py-6 border-t border-gray-200 text-center">
-      <p className="text-sm font-semibold text-[#4a6741] tracking-wide">Thank you for your purchase!</p>
+      <p className="text-sm font-semibold tracking-wide" style={{ color: accentColor || "#4a6741" }}>Thank you for your purchase!</p>
       {mensaje && <p className="mt-2 mx-auto max-w-md text-xs italic text-gray-500 bg-[#f2f4ee] rounded-lg px-3 py-2">{mensaje}</p>}
     </div>
   </div>
@@ -895,8 +900,8 @@ export default function FacturaPage() {
           <thead><FilaCols /></thead>
           <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
-        <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
-        <BloqueFirma mensaje={empresa.mensaje_factura} />
+        <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} accentColor={empresa.doc_accent_color} />
+        <BloqueFirma mensaje={empresa.mensaje_factura} accentColor={empresa.doc_accent_color} showSignature={empresa.doc_show_signature ?? true} />
       </div>
 
       {/* Invoice — hojas cortadas por altura medida: header en cada hoja,
@@ -928,8 +933,8 @@ export default function FacturaPage() {
               )}
               {isLastPage && (
                 <>
-                  <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} />
-                  <BloqueFirma mensaje={empresa.mensaje_factura} />
+                  <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} accentColor={empresa.doc_accent_color} />
+                  <BloqueFirma mensaje={empresa.mensaje_factura} accentColor={empresa.doc_accent_color} showSignature={empresa.doc_show_signature ?? true} />
                 </>
               )}
             </div>

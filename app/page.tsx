@@ -5323,6 +5323,12 @@ const PlantillasModal = ({ onClose }: { onClose: () => void }) => {
   const [form, setForm] = useState<Record<string, string>>(() =>
     Object.fromEntries(PLANTILLA_DOCS.map((d) => [d.key, empresa[d.key] || ""]))
   );
+  // Opciones de layout (fase B2) — presets, no un editor visual libre.
+  const [logoPos, setLogoPos] = useState(empresa.doc_logo_pos || "left");
+  const [fontScale, setFontScale] = useState(empresa.doc_font_scale || "normal");
+  const [accentColor, setAccentColor] = useState(empresa.doc_accent_color || "#4a6741");
+  const [showSignature, setShowSignature] = useState(empresa.doc_show_signature ?? true);
+  const [showDisclaimer, setShowDisclaimer] = useState(empresa.doc_show_disclaimer ?? true);
   const [saving, setSaving] = useState(false);
 
   const handleSave = async () => {
@@ -5332,6 +5338,11 @@ const PlantillasModal = ({ onClose }: { onClose: () => void }) => {
       await updateEmpresa({
         ...resto,
         ...Object.fromEntries(PLANTILLA_DOCS.map((d) => [d.key, form[d.key].trim() || null])),
+        doc_logo_pos: logoPos,
+        doc_font_scale: fontScale,
+        doc_accent_color: accentColor,
+        doc_show_signature: showSignature,
+        doc_show_disclaimer: showDisclaimer,
       });
       onClose();
     } catch (err) {
@@ -5343,6 +5354,63 @@ const PlantillasModal = ({ onClose }: { onClose: () => void }) => {
 
   return (
     <Modal title="Document Templates" onClose={onClose}>
+      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-2">Layout — Invoice, Estimate & Quotation</div>
+      <Field label="Logo position">
+        <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+          {(["left", "center", "right"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setLogoPos(p)}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold capitalize transition-all ${logoPos === p ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Font size">
+        <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+          {(["compact", "normal", "large"] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setFontScale(p)}
+              className={`flex-1 py-2 rounded-lg text-sm font-bold capitalize transition-all ${fontScale === p ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+            >
+              {p}
+            </button>
+          ))}
+        </div>
+      </Field>
+      <Field label="Accent color">
+        <div className="flex items-center gap-2">
+          <input
+            type="color"
+            value={accentColor}
+            onChange={(e) => setAccentColor(e.target.value)}
+            className="w-11 h-11 rounded-xl border border-input bg-card cursor-pointer shrink-0"
+          />
+          <input
+            value={accentColor}
+            onChange={(e) => setAccentColor(e.target.value)}
+            autoComplete="off"
+            className="flex-1 px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base font-mono outline-none focus:ring-2 focus:ring-ring"
+          />
+        </div>
+      </Field>
+      <label className="flex items-center justify-between gap-2.5 py-2 cursor-pointer">
+        <span className="text-sm text-card-foreground">Show delivery signature block (Invoice)</span>
+        <Switch checked={showSignature} onCheckedChange={setShowSignature} />
+      </label>
+      <label className="flex items-center justify-between gap-2.5 py-2 mb-2 cursor-pointer">
+        <span className="text-sm text-card-foreground">Show disclaimer (Estimate & Quotation)</span>
+        <Switch checked={showDisclaimer} onCheckedChange={setShowDisclaimer} />
+      </label>
+
+      <div className="h-px bg-border my-3" />
+
+      <div className="text-xs font-bold uppercase tracking-wider text-muted-foreground mb-1">Client Messages</div>
       <p className="text-xs text-muted-foreground mb-3">
         An optional message shown to clients on each document type — a policy note, a thank-you, payment instructions, anything you want. Leave blank for none.
       </p>

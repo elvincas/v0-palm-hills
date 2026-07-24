@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderDocumentoPdf, LineaDoc } from "@/lib/pdf/documento-pdf";
-import { EMPRESA_DEFAULT, empresaContacto } from "@/lib/empresa";
+import { EMPRESA_DEFAULT, empresaContacto, FONT_SCALE_FACTOR } from "@/lib/empresa";
 
 export const runtime = "nodejs";
 
@@ -115,6 +115,10 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     empresaNombre: empresa.nombre,
     empresaContacto: empresaContacto(empresa) || undefined,
     mensaje: empresa.mensaje_estimate || undefined,
+    logoPos: empresa.doc_logo_pos || "left",
+    fontScale: FONT_SCALE_FACTOR[empresa.doc_font_scale || "normal"],
+    accentColor: empresa.doc_accent_color || undefined,
+    showDisclaimer: empresa.doc_show_disclaimer ?? true,
   });
 
   return new NextResponse(new Uint8Array(pdf), {
