@@ -30,6 +30,10 @@ export interface DatosDocumento {
   // Si la factura esta pagada: fecha del ultimo pago y metodos usados
   pagoInfo?: { fecha: string; metodos: string[] };
   logo?: Buffer | Uint8Array;
+  // Company Profile (2026-07-24): nombre/contacto editables, ver lib/empresa.ts.
+  // Opcional con fallback para no romper llamadas viejas.
+  empresaNombre?: string;
+  empresaContacto?: string;
 }
 
 const PH = "#4a6741";
@@ -128,8 +132,8 @@ export async function renderDocumentoPdf(d: DatosDocumento): Promise<Buffer> {
             <View style={s.logoRow}>
               {d.logo ? <Image src={{ data: Buffer.from(d.logo), format: "png" }} style={s.logo} /> : null}
               <View>
-                <Text style={s.brand}>Palm Hills</Text>
-                <Text style={s.brandSub}>(551) 248-3442  ·  admin@palmhillsco.net</Text>
+                <Text style={s.brand}>{d.empresaNombre || "Palm Hills"}</Text>
+                <Text style={s.brandSub}>{d.empresaContacto || "(551) 248-3442  ·  admin@palmhillsco.net"}</Text>
               </View>
             </View>
             <View>

@@ -12,10 +12,11 @@ export interface ProductoCatalogo {
 
 export interface DatosCatalogo {
   fechaGeneracion: string; // MM/DD/YYYY
-  almacenLabel: string; // "Both" | "Palm Hills" | "Castillo"
+  almacenLabel: string; // "All Warehouses" | nombre del almacen
   conPrecio: boolean;
   conFotos: boolean;
   productos: ProductoCatalogo[];
+  empresaNombre?: string;
 }
 
 const PH = "#4a6741";
@@ -57,7 +58,7 @@ const fmt = (n: number) => "$" + Number(n || 0).toLocaleString("en-US", { minimu
 const Header = ({ d }: { d: DatosCatalogo }) => (
   <View style={s.headerTop} fixed>
     <View>
-      <Text style={s.brand}>Palm Hills</Text>
+      <Text style={s.brand}>{d.empresaNombre || "Palm Hills"}</Text>
       <Text style={s.brandSub}>Product Catalog — {d.almacenLabel}</Text>
     </View>
     <View>

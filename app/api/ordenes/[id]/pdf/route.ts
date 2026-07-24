@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderDocumentoPdf, LineaDoc } from "@/lib/pdf/documento-pdf";
+import { EMPRESA_DEFAULT, empresaContacto } from "@/lib/empresa";
 
 export const runtime = "nodejs";
 
@@ -42,10 +43,17 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     c = res.data;
   }
 
+  const { data: empresaRow } = await supabase.from("empresa").select("*").eq("id", 1).maybeSingle();
+  const empresa = empresaRow || EMPRESA_DEFAULT;
+
   let logo: Buffer | undefined;
   try {
-    const logoRes = await fetch(new URL("/logo.png", request.url));
-    if (logoRes.ok) logo = Buffer.from(await logoRes.arrayBuffer());
+    if (empresa.logo) {
+      logo = Buffer.from(empresa.logo.split(",")[1] || "", "base64");
+    } else {
+      const logoRes = await fetch(new URL("/logo.png", request.url));
+      if (logoRes.ok) logo = Buffer.from(await logoRes.arrayBuffer());
+    }
   } catch { /* sin logo */ }
 
   // Ordenes viejas (previas a este cambio) no tienen precioCatalogo guardado
@@ -104,6 +112,8 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     lineas,
     total,
     logo,
+    empresaNombre: empresa.nombre,
+    empresaContacto: empresaContacto(empresa) || undefined,
   });
 
   return new NextResponse(new Uint8Array(pdf), {

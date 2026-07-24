@@ -3,6 +3,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderReporteCarteraPdf, FilaReporteCartera, GrupoReporteCartera, NotaCreditoReporte } from "@/lib/pdf/reporte-cartera-pdf";
+import { EMPRESA_DEFAULT } from "@/lib/empresa";
 
 export const runtime = "nodejs";
 
@@ -97,6 +98,8 @@ export async function GET(request: NextRequest) {
       .sort((a, b) => b.filas[0].dias - a.filas[0].dias);
   }
 
+  const { data: empresaRow } = await supabase.from("empresa").select("nombre").eq("id", 1).maybeSingle();
+
   const pdf = await renderReporteCarteraPdf({
     fechaGeneracion: fdate(hoyStr()),
     modo,
@@ -106,6 +109,7 @@ export async function GET(request: NextRequest) {
     totalBruto: +totalBruto.toFixed(2),
     totalCreditos: +totalCreditos.toFixed(2),
     total: +total.toFixed(2),
+    empresaNombre: empresaRow?.nombre || EMPRESA_DEFAULT.nombre,
   });
 
   return new NextResponse(new Uint8Array(pdf), {

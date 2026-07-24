@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { BackButton } from "@/components/back-button";
 import { Switch } from "@/components/ui/switch";
+import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 
 interface LineaOrden {
   prodId?: string;
@@ -66,16 +67,16 @@ const IC = {
   print: "M6 9V4h12v5|M6 13h12v8H6z|M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2",
 };
 
-function EncabezadoEstimado({ orden, cliente, page, totalPages }: { orden: Orden; cliente: Cliente | null; page?: number; totalPages?: number }) {
+function EncabezadoEstimado({ orden, cliente, empresa, page, totalPages }: { orden: Orden; cliente: Cliente | null; empresa: Empresa; page?: number; totalPages?: number }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Palm Hills" className="w-14 h-14 object-contain shrink-0" />
+          <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-14 h-14 object-contain shrink-0" />
           <div>
-            <div className="text-sm font-bold text-[#1a1a18] leading-tight">Palm Hills</div>
+            <div className="text-sm font-bold text-[#1a1a18] leading-tight">{empresa.nombre}</div>
             <div className="text-[10px] text-gray-500">
-              📞 (551) 248-3442 &nbsp;·&nbsp; ✉️ admin@palmhillsco.net
+              {[empresa.telefono ? `📞 ${empresa.telefono}` : "", empresa.email ? `✉️ ${empresa.email}` : ""].filter(Boolean).join("  ·  ")}
             </div>
           </div>
         </div>
@@ -234,6 +235,11 @@ export default function EstimadoPage() {
   // de guardar precioCatalogo en cada linea (si no, el switch nunca aparece
   // en pedidos anteriores a este cambio).
   const [catalogoPrecios, setCatalogoPrecios] = useState<Record<string, number>>({});
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT);
+
+  useEffect(() => {
+    supabase.from("empresa").select("*").eq("id", 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa); });
+  }, [supabase]);
 
   useEffect(() => {
     const load = async () => {
@@ -409,7 +415,7 @@ export default function EstimadoPage() {
         className="absolute top-0 bg-white text-sm"
         style={{ left: "-9999px", width: "7.2in", visibility: "hidden" }}
       >
-        <div data-m="header"><EncabezadoEstimado orden={orden} cliente={cliente} /></div>
+        <div data-m="header"><EncabezadoEstimado orden={orden} cliente={cliente} empresa={empresa} /></div>
         <table className="w-full text-sm">
           <thead><FilaColsE /></thead>
           <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
@@ -429,7 +435,7 @@ export default function EstimadoPage() {
               className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
               style={{ breakAfter: isLastPage ? "auto" : "page" }}
             >
-              <EncabezadoEstimado orden={orden} cliente={cliente} page={pageIdx + 1} totalPages={arr.length} />
+              <EncabezadoEstimado orden={orden} cliente={cliente} empresa={empresa} page={pageIdx + 1} totalPages={arr.length} />
               {(pageLineas.length > 0 || lineas.length === 0) && (
                 <table className="w-full text-sm">
                   <thead><FilaColsE /></thead>

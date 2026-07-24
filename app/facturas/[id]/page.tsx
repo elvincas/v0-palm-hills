@@ -7,6 +7,7 @@ import { BackButton } from "@/components/back-button";
 import { Switch } from "@/components/ui/switch";
 import { MoneyInput } from "@/components/ui/money-input";
 import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
+import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 
 interface LineaFactura {
   prodNom: string;
@@ -101,15 +102,15 @@ const IC = {
   trash: "M3 6h18|M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6",
 };
 
-function EncabezadoFactura({ factura, cliente, page, totalPages }: { factura: Factura; cliente: Cliente | null; page?: number; totalPages?: number }) {
+function EncabezadoFactura({ factura, cliente, empresa, page, totalPages }: { factura: Factura; cliente: Cliente | null; empresa: Empresa; page?: number; totalPages?: number }) {
   return (
     <>
       <div className="px-6 sm:px-10 pt-4 pb-3 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
         <div className="flex items-center gap-2">
-          <img src="/logo.png" alt="Palm Hills" className="w-14 h-14 object-contain shrink-0" />
+          <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-14 h-14 object-contain shrink-0" />
           <div>
-            <div className="text-sm font-bold text-[#1a1a18] leading-tight">Palm Hills</div>
-            <div className="text-[10px] text-gray-500">📞 (551) 248-3442 &nbsp;·&nbsp; ✉️ admin@palmhillsco.net</div>
+            <div className="text-sm font-bold text-[#1a1a18] leading-tight">{empresa.nombre}</div>
+            <div className="text-[10px] text-gray-500">{[empresa.telefono ? `📞 ${empresa.telefono}` : "", empresa.email ? `✉️ ${empresa.email}` : ""].filter(Boolean).join("  ·  ")}</div>
           </div>
         </div>
         <div className="text-right shrink-0">
@@ -319,12 +320,14 @@ export default function FacturaPage() {
   const [catalogoPorSku, setCatalogoPorSku] = useState<Record<string, number>>({});
   const [catalogoPorNom, setCatalogoPorNom] = useState<Record<string, number>>({});
   const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT);
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
       setReadOnly(data.user?.user_metadata?.role === "visitante");
     });
     supabase.from("almacenes").select("*").order("orden").then(({ data }) => { if (data) setAlmacenes(data as Almacen[]); });
+    supabase.from("empresa").select("*").eq("id", 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa); });
     const load = async () => {
       const { data: f, error: fErr } = await supabase
         .from("facturas")
@@ -886,7 +889,7 @@ export default function FacturaPage() {
         className="absolute top-0 bg-white text-sm"
         style={{ left: "-9999px", width: "7.2in", visibility: "hidden" }}
       >
-        <div data-m="header"><EncabezadoFactura factura={factura} cliente={cliente} /></div>
+        <div data-m="header"><EncabezadoFactura factura={factura} cliente={cliente} empresa={empresa} /></div>
         <table className="w-full text-sm">
           <thead><FilaCols /></thead>
           <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
@@ -907,7 +910,7 @@ export default function FacturaPage() {
               className="invoice-page bg-white print:shadow-none print:border-0 print:rounded-none overflow-hidden print:overflow-visible"
               style={{ breakAfter: isLastPage ? "auto" : "page" }}
             >
-              <EncabezadoFactura factura={factura} cliente={cliente} page={pageIdx + 1} totalPages={arr.length} />
+              <EncabezadoFactura factura={factura} cliente={cliente} empresa={empresa} page={pageIdx + 1} totalPages={arr.length} />
               {(pageLineas.length > 0 || lineas.length === 0) && (
                 <table className="w-full text-sm">
                   <thead><FilaCols /></thead>

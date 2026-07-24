@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { printOrShare } from "@/lib/print";
 import { BackButton } from "@/components/back-button";
+import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 
 interface Cliente {
   nom: string;
@@ -59,6 +60,11 @@ export default function EstadoCuentaPage() {
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT);
+
+  useEffect(() => {
+    supabase.from("empresa").select("*").eq("id", 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa); });
+  }, [supabase]);
 
   useEffect(() => {
     const load = async () => {
@@ -136,10 +142,10 @@ export default function EstadoCuentaPage() {
           {/* Header */}
           <div className="px-8 pt-6 pb-4 flex items-center justify-between gap-6 border-b-2 border-[#4a6741]">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Palm Hills" className="w-14 h-14 object-contain shrink-0" />
+              <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-14 h-14 object-contain shrink-0" />
               <div>
-                <div className="text-sm font-bold text-[#1a1a18] leading-tight">Palm Hills</div>
-                <div className="text-[10px] text-gray-500">📞 (551) 248-3442 &nbsp;·&nbsp; ✉️ admin@palmhillsco.net</div>
+                <div className="text-sm font-bold text-[#1a1a18] leading-tight">{empresa.nombre}</div>
+                <div className="text-[10px] text-gray-500">{[empresa.telefono ? `📞 ${empresa.telefono}` : "", empresa.email ? `✉️ ${empresa.email}` : ""].filter(Boolean).join("  ·  ")}</div>
               </div>
             </div>
             <div className="text-right">

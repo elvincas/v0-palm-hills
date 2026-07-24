@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { BackButton } from '@/components/back-button'
+import { type Empresa, EMPRESA_DEFAULT } from '@/lib/empresa'
+import { type Almacen, almacenInfo } from '@/lib/almacenes'
 
 interface LineaOrden {
   prodId: string
@@ -38,10 +40,14 @@ export default function RemitoPage() {
   const router = useRouter()
   const [remito, setRemito] = useState<Remito | null>(null)
   const [loading, setLoading] = useState(true)
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT)
+  const [almacenes, setAlmacenes] = useState<Almacen[]>([])
 
   useEffect(() => {
     const load = async () => {
       const supabase = createClient()
+      supabase.from('empresa').select('*').eq('id', 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa) })
+      supabase.from('almacenes').select('*').order('orden').then(({ data }) => { if (data) setAlmacenes(data as Almacen[]) })
       const { data } = await supabase.from('remitos').select('*').eq('id', id).single()
       if (data) setRemito(data as Remito)
       setLoading(false)
@@ -110,10 +116,10 @@ export default function RemitoPage() {
           {/* Header */}
           <div className="px-8 pt-6 pb-4 flex items-center justify-between border-b-2 border-[#4a6741]">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Palm Hills" className="w-12 h-12 object-contain shrink-0" />
+              <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-12 h-12 object-contain shrink-0" />
               <div>
-                <div className="text-base font-black text-[#1a1a18] leading-tight">Palm Hills</div>
-                <div className="text-[10px] text-gray-400 mt-0.5">Pickup Confirmation — Castillo</div>
+                <div className="text-base font-black text-[#1a1a18] leading-tight">{empresa.nombre}</div>
+                <div className="text-[10px] text-gray-400 mt-0.5">Pickup Confirmation — {almacenInfo(almacenes, remito.lineas?.[0]?.almacen).nombre}</div>
               </div>
             </div>
             <div className="text-right">
@@ -185,7 +191,7 @@ export default function RemitoPage() {
           {/* Footer */}
           <div className="px-8 pb-5 text-center">
             <p className="text-[9px] text-gray-300">
-              Remito #{remito.num} · Order #{remito.orden_num} · {fdate(remito.fecha)} · Palm Hills
+              Remito #{remito.num} · Order #{remito.orden_num} · {fdate(remito.fecha)} · {empresa.nombre}
             </p>
           </div>
 

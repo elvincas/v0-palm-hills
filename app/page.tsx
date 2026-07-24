@@ -12,6 +12,7 @@ import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom
 import { proximaFechaEntrega } from "@/lib/delivery";
 import { MoneyInput } from "@/components/ui/money-input";
 import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
+import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 import { Switch } from "@/components/ui/switch";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
@@ -612,6 +613,8 @@ interface DataContextType {
   addAlmacen: (a: Almacen) => Promise<void>;
   updateAlmacen: (id: string, a: Omit<Almacen, "id">) => Promise<void>;
   deleteAlmacen: (id: string) => Promise<void>;
+  empresa: Empresa;
+  updateEmpresa: (e: Omit<Empresa, "id">) => Promise<void>;
 }
 
 const DataContext = createContext<DataContextType | null>(null);
@@ -683,6 +686,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [vendedores, setVendedores] = useState<Vendedor[]>([]);
   const [faltantes, setFaltantes] = useState<Faltante[]>([]);
   const [almacenes, setAlmacenes] = useState<Almacen[]>([]);
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT);
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [role, setRole] = useState<"admin" | "visitante">("admin");
@@ -809,7 +813,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm, emp] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -825,6 +829,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Vendedor>("vendedores", "*", "created_at", true),
         selectAll<Faltante>("faltantes", "*", "fecha", false),
         selectAll<Almacen>("almacenes", "*", "orden", true),
+        supabase.from("empresa").select("*").eq("id", 1).maybeSingle(),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
@@ -841,6 +846,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setVendedores(ven);
       setFaltantes(falt);
       setAlmacenes(alm);
+      if (emp.data) setEmpresa(emp.data as Empresa);
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1588,6 +1594,14 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Warehouse deleted: ${nombre}`);
   };
 
+  // --- Company Profile (fila unica) ---
+  const updateEmpresa = async (e: Omit<Empresa, "id">) => {
+    const { data, error } = await supabase.from("empresa").update(e).eq("id", 1).select().single();
+    if (error) throw new Error(error.message);
+    setEmpresa(data as Empresa);
+    await logAct(`Company profile updated`);
+  };
+
   const addTodo = async (t: Omit<Todo, "id" | "created_at" | "completado">) => {
     const { data, error } = await supabase.from("todos").insert({ ...t, completado: false }).select().single();
     if (error) throw new Error(error.message);
@@ -1673,6 +1687,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     addAlmacen,
     updateAlmacen,
     deleteAlmacen,
+    empresa,
+    updateEmpresa,
   };
 
   return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
@@ -5041,6 +5057,190 @@ const slugify = (s: string) =>
     .replace(/[^a-z0-9]+/g, "")
     .slice(0, 24);
 
+// Comprime el logo a PNG (preserva transparencia, a diferencia de los
+// compresores de foto que rellenan blanco) — un logo cabe sobrado en 400px.
+const compressLogo = (file: File): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 400;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const w = Math.max(1, Math.round(img.width * scale));
+        const h = Math.max(1, Math.round(img.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return reject(new Error("no ctx"));
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/png"));
+      };
+      img.onerror = reject;
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+
+// Company Profile: nombre/logo/direccion/contacto editables — reemplaza lo
+// que antes estaba escrito directo en el codigo ("Palm Hills", telefono,
+// correo) en el header de la app y en todos los documentos (factura,
+// estimate, remito, nota de credito, estado de cuenta). Fila unica en la
+// tabla `empresa`, ya sembrada con los datos que estaban hardcodeados —
+// mientras no se edite nada, todo se ve exactamente igual que antes.
+const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
+  const { empresa, updateEmpresa, readOnly } = useData();
+  const [form, setForm] = useState({
+    nombre: empresa.nombre,
+    logo: empresa.logo || "",
+    dir: empresa.dir || "",
+    ciudad: empresa.ciudad || "",
+    estado_dir: empresa.estado_dir || "",
+    zip: empresa.zip || "",
+    telefono: empresa.telefono || "",
+    email: empresa.email || "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [subiendoLogo, setSubiendoLogo] = useState(false);
+
+  const handleLogo = async (file?: File) => {
+    if (!file) return;
+    setSubiendoLogo(true);
+    try {
+      const logo = await compressLogo(file);
+      setForm((f) => ({ ...f, logo }));
+    } catch {
+      alert("Could not read that image");
+    } finally {
+      setSubiendoLogo(false);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!form.nombre.trim()) { alert("Enter the company name"); return; }
+    setSaving(true);
+    try {
+      await updateEmpresa({
+        nombre: form.nombre.trim(),
+        logo: form.logo || null,
+        dir: form.dir.trim() || null,
+        ciudad: form.ciudad.trim() || null,
+        estado_dir: form.estado_dir.trim() || null,
+        zip: form.zip.trim() || null,
+        telefono: form.telefono.trim() || null,
+        email: form.email.trim() || null,
+      });
+      onClose();
+    } catch (err) {
+      alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="Company Profile" onClose={onClose}>
+      <p className="text-xs text-muted-foreground mb-3">
+        Shown on your app header and on every document your clients see (invoices, estimates, packing slips, credit notes).
+      </p>
+      <Field label="Logo">
+        <div className="flex items-center gap-3">
+          <div className="w-16 h-16 rounded-2xl bg-muted border border-border flex items-center justify-center overflow-hidden shrink-0">
+            {form.logo ? (
+              <img src={form.logo} alt="Logo" className="w-full h-full object-contain" />
+            ) : (
+              <span className="text-2xl" aria-hidden="true">🏢</span>
+            )}
+          </div>
+          {!readOnly && (
+            <div className="flex gap-2">
+              <label className={`px-3 py-2 rounded-xl font-bold text-xs cursor-pointer ${GLASS_BTN}`}>
+                {subiendoLogo ? "..." : form.logo ? "Change" : "Upload"}
+                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogo(e.target.files?.[0])} />
+              </label>
+              {form.logo && (
+                <button onClick={() => setForm((f) => ({ ...f, logo: "" }))} className={`px-3 py-2 rounded-xl font-bold text-xs ${GLASS_BTN_DESTRUCTIVE}`}>
+                  Remove
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      </Field>
+      <Field label="Company name *">
+        <input
+          value={form.nombre}
+          onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+          autoComplete="off"
+          className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+      </Field>
+      <Field label="Address">
+        <input
+          value={form.dir}
+          onChange={(e) => setForm({ ...form, dir: e.target.value })}
+          placeholder="Street address"
+          autoComplete="off"
+          className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+      </Field>
+      <Row2>
+        <Field label="City">
+          <input
+            value={form.ciudad}
+            onChange={(e) => setForm({ ...form, ciudad: e.target.value })}
+            autoComplete="off"
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+        </Field>
+        <Field label="State">
+          <input
+            value={form.estado_dir}
+            onChange={(e) => setForm({ ...form, estado_dir: e.target.value })}
+            autoComplete="off"
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+        </Field>
+      </Row2>
+      <Row2>
+        <Field label="ZIP">
+          <input
+            value={form.zip}
+            onChange={(e) => setForm({ ...form, zip: e.target.value })}
+            autoComplete="off"
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+        </Field>
+        <Field label="Phone">
+          <input
+            value={form.telefono}
+            onChange={(e) => setForm({ ...form, telefono: formatPhone(e.target.value) })}
+            placeholder="(xxx) xxx-xxxx"
+            autoComplete="off"
+            className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+          />
+        </Field>
+      </Row2>
+      <Field label="Email">
+        <input
+          type="email"
+          value={form.email}
+          onChange={(e) => setForm({ ...form, email: e.target.value })}
+          autoComplete="off"
+          className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+      </Field>
+      {!readOnly && (
+        <button onClick={handleSave} disabled={saving} className={`w-full mt-2 py-2.5 rounded-xl font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+          {saving ? "Saving..." : "Save"}
+        </button>
+      )}
+    </Modal>
+  );
+};
+
 // Almacenes: reemplaza el enum fijo palmhills/castillo por una lista
 // configurable — asi cualquier negocio define cuantos almacenes tiene, como
 // se llaman, y si cada uno trackea stock en vivo o es de paso/consignacion
@@ -8193,7 +8393,7 @@ const Ordenes = () => {
                 disabled={!puedeGuardarParcial}
                 title={
                   !puedeGuardarParcial
-                    ? "Check off all Palm Hills or all Castillo items to save progress"
+                    ? "Check off all items from one warehouse to save progress"
                     : undefined
                 }
                 className="flex-1 px-3 py-2.5 rounded-full bg-amber-100 text-amber-800 font-bold text-sm disabled:opacity-40 disabled:cursor-not-allowed"
@@ -9622,13 +9822,14 @@ const GestionarUsuarios = () => {
 
 function AppContent() {
   const [tab, setTab] = useState("dash");
-  const { loading, role, refreshAll } = useData();
+  const { loading, role, refreshAll, empresa } = useData();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
   const [showVendedoresGlobal, setShowVendedoresGlobal] = useState(false);
   const [showAlmacenesGlobal, setShowAlmacenesGlobal] = useState(false);
+  const [showEmpresaGlobal, setShowEmpresaGlobal] = useState(false);
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -9742,6 +9943,7 @@ function AppContent() {
     { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
     { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
     { id: "alm", label: "Warehouses", icon: NAV_ICONS.alm },
+    ...(role === "admin" ? [{ id: "emp", label: "Company Profile", icon: NAV_ICONS.emp }] : []),
     ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
   ];
 
@@ -9753,17 +9955,19 @@ function AppContent() {
       >
         <div className="flex items-center gap-2.5">
           <img
-            src="/logo.png"
-            alt="Palm Hills"
+            src={empresa.logo || "/logo.png"}
+            alt={empresa.nombre}
             className="w-12 h-12 object-contain"
           />
           <div>
             <div className="text-base font-bold text-primary leading-tight">
-              Palm Hills
+              {empresa.nombre}
             </div>
-            <div className="text-xs text-accent font-medium tracking-wide">
-              Beauty & Health
-            </div>
+            {empresa.ciudad && (
+              <div className="text-xs text-accent font-medium tracking-wide">
+                {[empresa.ciudad, empresa.estado_dir].filter(Boolean).join(", ")}
+              </div>
+            )}
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -9800,6 +10004,7 @@ function AppContent() {
                         setShowMoreMenu(false);
                         if (it.id === "ven") setShowVendedoresGlobal(true);
                         else if (it.id === "alm") setShowAlmacenesGlobal(true);
+                        else if (it.id === "emp") setShowEmpresaGlobal(true);
                         else setTab(it.id);
                       }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
@@ -9906,6 +10111,7 @@ function AppContent() {
       <BottomNav active={tab} onSelect={setTab} hiddenTabs={role === "visitante" ? ["usr"] : []} />
       {showVendedoresGlobal && <VendedoresModal onClose={() => setShowVendedoresGlobal(false)} />}
       {showAlmacenesGlobal && <AlmacenesModal onClose={() => setShowAlmacenesGlobal(false)} />}
+      {showEmpresaGlobal && <EmpresaModal onClose={() => setShowEmpresaGlobal(false)} />}
     </div>
   );
 }

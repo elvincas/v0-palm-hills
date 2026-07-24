@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { BackButton } from '@/components/back-button'
+import { type Empresa, EMPRESA_DEFAULT } from '@/lib/empresa'
 
 interface LineaNC {
   prodNom: string
@@ -52,6 +53,7 @@ export default function NotaCreditoPage() {
   const [loading, setLoading] = useState(true)
   const [readOnly, setReadOnly] = useState(false)
   const [savingAplicada, setSavingAplicada] = useState(false)
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT)
 
   useEffect(() => {
     const load = async () => {
@@ -59,6 +61,7 @@ export default function NotaCreditoPage() {
       supabase.auth.getUser().then(({ data }) => {
         setReadOnly(data.user?.user_metadata?.role === 'visitante')
       })
+      supabase.from('empresa').select('*').eq('id', 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa) })
       const { data } = await supabase.from('notas_credito').select('*').eq('id', id).single()
       if (data) setNota(data as NotaCredito)
       setLoading(false)
@@ -315,10 +318,10 @@ export default function NotaCreditoPage() {
           {/* Header */}
           <div className="px-8 pt-6 pb-4 flex items-center justify-between border-b-2 border-[#4a6741]">
             <div className="flex items-center gap-3">
-              <img src="/logo.png" alt="Palm Hills" className="w-14 h-14 object-contain shrink-0" />
+              <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-14 h-14 object-contain shrink-0" />
               <div>
-                <div className="text-base font-black text-[#1a1a18] leading-tight">Palm Hills</div>
-                <div className="text-[10px] text-gray-500 mt-0.5">📞 (551) 248-3442 · ✉️ admin@palmhillsco.net</div>
+                <div className="text-base font-black text-[#1a1a18] leading-tight">{empresa.nombre}</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">{[empresa.telefono ? `📞 ${empresa.telefono}` : "", empresa.email ? `✉️ ${empresa.email}` : ""].filter(Boolean).join(" · ")}</div>
               </div>
             </div>
             <div className="text-right">
@@ -421,7 +424,7 @@ export default function NotaCreditoPage() {
           {/* Footer */}
           <div className="px-8 pb-6 text-center">
             <p className="text-[9px] text-gray-400">
-              This credit note was issued by Palm Hills · {cnNum} · {fdate(nota.fecha)}
+              This credit note was issued by {empresa.nombre} · {cnNum} · {fdate(nota.fecha)}
             </p>
           </div>
 

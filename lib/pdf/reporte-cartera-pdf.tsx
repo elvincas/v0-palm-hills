@@ -37,6 +37,7 @@ export interface DatosReporteCartera {
   totalBruto: number;
   totalCreditos: number;
   total: number; // neto = totalBruto - totalCreditos
+  empresaNombre?: string;
 }
 
 const PH = "#4a6741";
@@ -122,7 +123,7 @@ export async function renderReporteCarteraPdf(d: DatosReporteCartera): Promise<B
       <Page size="LETTER" style={s.page}>
         <View style={s.headerTop} fixed>
           <View>
-            <Text style={s.brand}>Palm Hills</Text>
+            <Text style={s.brand}>{d.empresaNombre || "Palm Hills"}</Text>
             <Text style={s.brandSub}>Aging Report — Pending Invoices</Text>
           </View>
           <View>
