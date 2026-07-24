@@ -6957,7 +6957,7 @@ const Inventario = () => {
                 )}
                 <div
                   onClick={() => p.foto && setFotoAmpliada(p.foto)}
-                  className={`w-full aspect-square rounded-xl bg-white border border-border/60 flex items-center justify-center text-2xl mb-2.5 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
+                  className={`w-full aspect-square rounded-xl overflow-hidden bg-white border border-border/60 flex items-center justify-center text-2xl mb-2.5 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
                 >
                   {p.foto ? (
                     <img
@@ -8652,7 +8652,7 @@ const Ordenes = () => {
                         qty > 0 ? "border-primary" : "border-border"
                       }`}
                     >
-                      <div className="w-full aspect-square rounded-lg bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
+                      <div className="w-full aspect-square rounded-lg overflow-hidden bg-white flex items-center justify-center text-2xl mb-2 shrink-0">
                         {p.foto ? (
                           <img src={p.foto || "/placeholder.svg"} alt={p.nom} loading="lazy" className="w-full h-full object-contain" />
                         ) : (
