@@ -63,7 +63,7 @@ supabase/
 | **Clientes** | CRUD clientes, importación Excel, foto de local, código auto-numérico (`01-0001`) |
 | **Inventario** | Dual almacén (palmhills / castillo), fotos, SKU, stock mínimo, importación masiva Excel+ZIP |
 | **Facturas** | Sub-tabs Facturas, Notas de Crédito y Remitos; sin impuestos; detalle con pagos |
-| **Ordenes** | Flujo orden → pick → factura, envíos parciales por almacén |
+| **Ordenes** | Sub-tabs Orders/Quotations. Orders: flujo orden → pick → factura, envíos parciales por almacén. Quotations: cotizaciones independientes que no reservan inventario (ver tabla `cotizaciones`) |
 | **Calendario** | Fechas de entrega (🚚), visitas, cobros, pedidos; los eventos alimentan el selector de fecha en órdenes/facturas |
 | **P&L** | Reporte de utilidad por periodo + gestión de gastos operativos pagados |
 | **Purchases** | Ingresado de inventario: facturas de compra a proveedores, actualiza stock y costo |
@@ -137,6 +137,18 @@ Botón "🏭 Brands" en Inventario (`MarcasModal`), mismo esquema bidireccional 
 
 ### `empresa` (Company Profile, 2026-07-24)
 Fila única (`id=1`, constraint que lo obliga). `nombre`, `logo` (text, data URI base64 PNG), `dir`, `ciudad`, `estado_dir`, `zip`, `telefono`, `email`. RLS: select para cualquier `authenticated` (todos necesitan verla para los documentos), write bloqueado a `visitante`. Sembrada con los datos que antes estaban escritos directo en el código (Palm Hills, `(551) 248-3442`, `admin@palmhillsco.net`) — mientras nadie edite Company Profile, todo se ve exactamente igual que antes. Tipo + `EMPRESA_DEFAULT` (fallback) en `lib/empresa.ts`, compartido entre el DataContext y las páginas standalone que generan documentos.
+
+**Document Templates (fase B, 2026-07-24):** la misma fila de `empresa` tiene 5 columnas `mensaje_factura`/`mensaje_estimate`/`mensaje_cotizacion`/`mensaje_remito`/`mensaje_nota_credito` (texto libre, nullable) — un mensaje opcional al cliente por tipo de documento, editable en "Document Templates" (menú More). Se muestra como bloque adicional (fondo `#f2f4ee`, itálica) junto al contenido estructural fijo (firma de entrega de la factura, disclaimer del estimate/quotation) — NO lo reemplaza. Wireado en: factura y estimate (pantalla + PDF), quotation (pantalla + PDF), remito y nota de crédito (solo pantalla, esos dos usan `window.print()` en vez de un PDF de servidor).
+
+### `cotizaciones` (Quotations, fase B, 2026-07-24)
+`id`, `num` (numeración propia, empieza en 1), `cli`, `fecha`, `estado` (Pending/Accepted/Rejected/Expired), `lineas` (jsonb `LineaCotizacion[]`: `{prodId, prodNom, sku, barcode, qty, precio, precioCatalogo, almacen}` — sin `qtyEnviada`/`picked`, una cotización nunca se pickea), `total`, `valido_hasta` (fecha opcional), `mensaje` (override por-cotización, no usado por la UI actual que solo edita la plantilla global). RLS: authenticated sin bloqueo por rol (igual que `facturas`).
+
+Documento **completamente independiente de `ordenes`** — a propósito, para resolver que antes la única forma de cotizar era crear una Orden (lo que reserva inventario vía `addOrden`/`ajustarInventario` de inmediato, aunque el cliente ni haya confirmado). Una Quotation nunca toca `productos.reservado`.
+
+- **UI**: tab Orders tiene sub-tabs "Orders"/"Quotations" (`vistaOrdenes` en el componente `Ordenes`). "+ New Quotation" abre `CotizacionModal` (cliente vía `<select>`, líneas de producto con buscador — mismo patrón que "New Invoice" en Facturas).
+- **Documento**: `/cotizaciones/[id]` (mismo mecanismo de paginación por altura medida que `/facturas/[id]`), PDF vía `/api/cotizaciones/[id]/pdf`. `lib/pdf/documento-pdf.tsx` ganó el tipo `"quotation"` (título "QUOTATION", disclaimer "does not reserve inventory", muestra `valido_hasta` si está fijada).
+- **Estado**: pastillas Pending/Accepted/Rejected/Expired editables directo en el documento (solo admin).
+- **Convert to Order**: botón que crea una Orden real con las mismas líneas — ahí sí se reserva inventario (respeta `lleva_stock` por almacén, mismo criterio que `ajustarInventario`) y la cotización pasa a "Accepted". Es la única forma de que una cotización se vuelva una venta real.
 
 ### `faltantes` (Missing Stock Report, 2026-07-23)
 `id`, `fecha`, `orden_id`/`orden_num`, `cli`, `prod_id`/`prod_nom`/`sku`/`almacen`, `qty`, `precio`, `monto`. Sin UI para crear/editar a mano — se puebla sola en `completePick` (Ordenes): al completar un pick, cada línea que quedó en `qtyEnviada === 0` ("Missing", sin stock para enviarla) genera una fila vía `addFaltantesBulk`, con `qty` = lo pedido originalmente y `monto` = `qty × precio` (la venta que no se pudo facturar). RLS permisiva para `authenticated` (igual que `facturas`/`remitos`, sin bloqueo por rol — completar un pick no está restringido a admin). Reporte: botón "📉 Missing Stock Report" en el tab Orders (`FaltantesModal`), mismo period-preset que P&L/Vendedores + toggle "By date"/"By product" (agrupado, ordenado por $ perdido) para ver qué se queda sin stock más seguido.
