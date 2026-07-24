@@ -1772,11 +1772,12 @@ const mesActualKey = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 };
 // Top de productos por monto facturado desde una fecha (YYYY-MM-DD)
-const calcTopProductos = (facturas: Factura[], desde: string, limite = 15) => {
+const calcTopProductos = (facturas: Factura[], desde: string, limite = 15, almacen?: string) => {
   const totals: Record<string, { nom: string; sku: string; qty: number; monto: number }> = {};
   for (const f of facturas) {
     if ((f.fecha || "") < desde) continue;
     for (const l of f.lineas || []) {
+      if (almacen && almacen !== "todos" && (l.almacen || "") !== almacen) continue;
       const key = l.sku || l.prodNom;
       if (!totals[key]) totals[key] = { nom: l.prodNom, sku: l.sku || "", qty: 0, monto: 0 };
       totals[key].qty += Number(l.qty) || 0;
@@ -6085,11 +6086,12 @@ const Inventario = () => {
   const [showCategorias, setShowCategorias] = useState(false);
   const [showMarcas, setShowMarcas] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
+  const [topAlmacenFiltro, setTopAlmacenFiltro] = useState<string>("todos");
   const topProductosModal = useMemo(() => {
     const d = new Date();
     d.setMonth(d.getMonth() - topPeriodoMeses);
-    return calcTopProductos(facturas, d.toISOString().slice(0, 10));
-  }, [facturas, topPeriodoMeses]);
+    return calcTopProductos(facturas, d.toISOString().slice(0, 10), 15, topAlmacenFiltro);
+  }, [facturas, topPeriodoMeses, topAlmacenFiltro]);
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -6842,6 +6844,17 @@ const Inventario = () => {
                 className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${topPeriodoMeses === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
               >
                 {m === 1 ? "This month" : "3 months"}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-1.5 p-1 bg-muted rounded-xl mb-3">
+            {[{ id: "todos", label: "All" }, ...almacenes.filter((x) => x.activo).map((x) => ({ id: x.id, label: `${x.icono} ${x.nombre}` }))].map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setTopAlmacenFiltro(a.id)}
+                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${topAlmacenFiltro === a.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+              >
+                {a.label}
               </button>
             ))}
           </div>

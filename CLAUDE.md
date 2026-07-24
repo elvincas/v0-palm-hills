@@ -284,6 +284,8 @@ La gestión de Gastos (alta/edición, filtro All/Pending/Paid, comprobante de pa
 ### Top Clients (score honesto)
 `calcTopClientes` en page.tsx: score = 60% volumen + 40% pago (pago = %pagado × speedFactor30: COD≤2d=1.0, 3-30d 0.9→0.7, >30d cae a 0.4→0.1). Se muestra en Home, modal en Clientes; `calcTopProductos` alimenta Home + modal en Inventario (1m/3m) + top 25% en perfil de cliente.
 
+**Filtro por almacén en el modal "Top Products" de Inventario (2026-07-24):** `calcTopProductos(facturas, desde, limite, almacen?)` ganó un 4to parámetro opcional que filtra las líneas de factura por `l.almacen` antes de sumar (sin filtro o `"todos"` = combinado, el comportamiento de siempre). El modal agrega una fila de pills "All" + un botón por cada almacén activo (mismo patrón que el filtro de almacén en Categories/Brands), estado `topAlmacenFiltro`. Solo aplicado a este modal — el widget "Top Products" de Home sigue combinado (no tiene selector de periodo tampoco, es solo un vistazo rápido).
+
 ### Cargas paginadas
 Toda carga con `.range()` DEBE ordenar con `.order(col).order("id")` — miles de productos comparten `created_at` y sin desempate PostgREST duplica/salta filas.
 
