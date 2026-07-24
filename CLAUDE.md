@@ -339,13 +339,21 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJhbGc...
 
 ## Deuda Técnica Conocida
 
-- `app/page.tsx` es un componente monolítico de ~6900 líneas (todos los tabs en uno)
-- Sin framework de tests (solo `scripts/test-pdf.ts` para el PDF, correr con tsx)
+- `app/page.tsx` es un componente monolítico de ~10700 líneas (todos los tabs en uno)
+- Sin framework de tests (solo `scripts/test-*.ts` para los PDFs, correr con tsx)
 - Error handling básico con `alert()` (sin error boundaries)
 - Casi todas las queries son client-side directas a Supabase (solo los PDFs tienen ruta API)
 - TypeScript con `ignoreBuildErrors: true`
-- Rol visitante se valida solo en UI — RLS permite escribir a cualquier usuario autenticado
+- `ordenes/[id]/estimado` y `remitos/[id]` no tienen ningún check de `readOnly`/rol — a diferencia de facturas/cotizaciones/clientes, cualquier usuario autenticado (incluido visitante) ve los botones de acción ahí. Gap preexistente, no tocado en el fix de RLS de 2026-07-24 (era sobre otra cosa — ver abajo).
 - Pendiente: envío de remitos por Gmail con PDF adjunto (esperando App Password de admin@palmhillsco.net)
+
+### Seguridad: rol en `app_metadata` + RLS sin bypass (fix 2026-07-24)
+Dos bugs de seguridad reales encontrados en una auditoría (no teóricos — afectaban la app de un solo tenant, no solo el multi-tenant futuro):
+
+1. **El rol vivía en `user_metadata`**, que el usuario puede reescribir él mismo desde el navegador (`supabase.auth.updateUser({ data: {...} })`) — un `visitante` podía auto-asignarse `role: "admin"` sin pasar por `/api/admin/users`. Fix: el rol se movió a **`app_metadata`** (solo escribible con la service role key, nunca desde el cliente) en `app/api/admin/users/route.ts` (`createUser`/`updateUserById` con `app_metadata` en vez de `user_metadata`) y en los ~7 lugares que leen `data.user?.user_metadata?.role` en el cliente (ahora `app_metadata`). Migración SQL en `auth.users`: `UPDATE auth.users SET raw_app_meta_data = raw_app_meta_data || jsonb_build_object('role', ...) WHERE raw_app_meta_data->>'role' IS NULL` (copia el rol viejo de `user_metadata`, default `admin` si no había nada).
+2. **Políticas RLS duplicadas anulaban el bloqueo a `visitante`.** 6 tablas (`clientes`, `facturas`, `ordenes`, `productos`, `mejoras`, `actividad`) tenían, para INSERT/UPDATE/DELETE, 3 policies: dos versiones viejas sin condición (`with_check: true`, sobrantes de antes de que existiera el rol visitante) + una tercera que sí bloqueaba a visitante. Como Postgres combina policies del mismo comando con **OR**, bastaba que una lo permitiera para que pasara — las dos viejas anulaban por completo a la que debía bloquear. En la práctica, un usuario `visitante` podía crear/editar/borrar clientes, facturas, órdenes, productos y mejoras directo contra Supabase (saltándose los botones que la UI le esconde). Fix: se dropearon las 2 policies redundantes por tabla/comando (36 `DROP POLICY`) y se alteraron las 18 `block_visitante` restantes para leer `app_metadata` en vez de `user_metadata`. Las policies de SELECT no se tocaron (correctas: visitante SÍ debe poder leer, es justamente lo que significa "solo lectura").
+
+**Al crear una tabla nueva con rol restringido:** verificar que la policy de bloqueo sea la ÚNICA para ese comando — si ya existe una policy vieja "permite siempre" para INSERT/UPDATE/DELETE, hay que borrarla, no simplemente agregar la de bloqueo al lado (este bug existía silenciosamente desde que se introdujo el rol visitante).
 
 ---
 

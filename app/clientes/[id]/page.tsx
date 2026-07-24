@@ -186,7 +186,7 @@ export default function ClientePerfilPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setReadOnly(data.user?.user_metadata?.role === "visitante");
+      setReadOnly(data.user?.app_metadata?.role === "visitante");
     });
   }, [supabase]);
 

@@ -340,7 +340,7 @@ export default function FacturaPage() {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      setReadOnly(data.user?.user_metadata?.role === "visitante");
+      setReadOnly(data.user?.app_metadata?.role === "visitante");
     });
     supabase.from("almacenes").select("*").order("orden").then(({ data }) => { if (data) setAlmacenes(data as Almacen[]); });
     supabase.from("empresa").select("*").eq("id", 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa); });

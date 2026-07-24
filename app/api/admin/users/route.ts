@@ -12,13 +12,19 @@ const getSupabaseAdmin = () =>
 // Esta API usa la llave de servicio (acceso total), asi que primero hay que
 // confirmar que quien llama tiene una sesion valida con rol "admin" - de lo
 // contrario cualquiera que conozca esta URL podria crear o borrar usuarios.
+//
+// El rol vive en `app_metadata`, NUNCA en `user_metadata` (2026-07-24, fix de
+// seguridad): user_metadata lo puede reescribir el usuario mismo desde el
+// navegador via supabase.auth.updateUser() -- un "visitante" podia auto-
+// asignarse role: "admin" sin pasar por aqui. app_metadata solo se puede
+// escribir con la service role key (esta misma API), nunca desde el cliente.
 async function requireAdmin() {
   const supabase = await createServerSessionClient()
   const { data, error } = await supabase.auth.getUser()
   if (error || !data.user) {
     return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
   }
-  if (data.user.user_metadata?.role === 'visitante') {
+  if (data.user.app_metadata?.role === 'visitante') {
     return NextResponse.json({ error: 'No tienes permiso para gestionar usuarios' }, { status: 403 })
   }
   return null
@@ -53,7 +59,7 @@ export async function POST(request: Request) {
         email,
         password,
         email_confirm: true,
-        user_metadata: { role: role === 'visitante' ? 'visitante' : 'admin' },
+        app_metadata: { role: role === 'visitante' ? 'visitante' : 'admin' },
       })
 
       if (error) {
@@ -131,7 +137,7 @@ export async function POST(request: Request) {
       }
 
       const { error } = await getSupabaseAdmin().auth.admin.updateUserById(userToUpdate.id, {
-        user_metadata: { ...userToUpdate.user_metadata, role: role === 'visitante' ? 'visitante' : 'admin' },
+        app_metadata: { ...userToUpdate.app_metadata, role: role === 'visitante' ? 'visitante' : 'admin' },
       })
 
       if (error) {
@@ -229,7 +235,7 @@ export async function GET() {
       email: user.email,
       created_at: user.created_at,
       last_sign_in_at: user.last_sign_in_at,
-      role: user.user_metadata?.role === 'visitante' ? 'visitante' : 'admin',
+      role: user.app_metadata?.role === 'visitante' ? 'visitante' : 'admin',
     }))
 
     return NextResponse.json({ users: safeUsers })

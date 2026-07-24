@@ -213,7 +213,7 @@ export default function NuevaOrdenPage() {
       try {
         const supabase = createClient()
         const { data: userData } = await supabase.auth.getUser()
-        if (userData.user?.user_metadata?.role === 'visitante') {
+        if (userData.user?.app_metadata?.role === 'visitante') {
           setReadOnly(true)
           setLoading(false)
           return

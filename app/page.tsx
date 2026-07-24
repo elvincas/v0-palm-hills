@@ -726,7 +726,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     supabase.auth.getUser().then(({ data }) => {
-      const r = data.user?.user_metadata?.role;
+      const r = data.user?.app_metadata?.role;
       setRole(r === "visitante" ? "visitante" : "admin");
     }).catch(() => {});
   }, [supabase]);
