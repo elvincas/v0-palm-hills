@@ -85,6 +85,7 @@ function EncabezadoCotizacion({ cot, cliente, empresa, page, totalPages }: { cot
           <img src={empresa.logo || "/logo.png"} alt={empresa.nombre} className="w-14 h-14 object-contain shrink-0" />
           <div>
             <div className="text-sm font-bold text-[#1a1a18] leading-tight">{empresa.nombre}</div>
+            {empresa.eslogan && <div className="text-[10px] italic text-gray-500">{empresa.eslogan}</div>}
             <div className="text-[10px] text-gray-500">
               {[empresa.telefono ? `📞 ${empresa.telefono}` : "", empresa.email ? `✉️ ${empresa.email}` : ""].filter(Boolean).join("  ·  ")}
             </div>

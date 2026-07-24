@@ -33,6 +33,7 @@ export interface DatosDocumento {
   // Company Profile (2026-07-24): nombre/contacto editables, ver lib/empresa.ts.
   // Opcional con fallback para no romper llamadas viejas.
   empresaNombre?: string;
+  empresaEslogan?: string;
   empresaContacto?: string;
   // Mensaje de plantilla (Document Templates, fase B) — opcional, ademas del
   // contenido estructural fijo (firma de entrega, disclaimer de estimate).
@@ -80,7 +81,8 @@ const makeStyles = (accent: string, scale: number) =>
     logoRow: { flexDirection: "row", alignItems: "center", gap: 6 },
     logo: { width: f(42, scale), height: f(42, scale), objectFit: "contain" },
     brand: { fontSize: f(11, scale), fontFamily: "Helvetica-Bold", color: INK },
-    brandSub: { fontSize: f(7, scale), color: "#777", marginTop: 2 },
+    brandSlogan: { fontSize: f(7, scale), fontFamily: "Helvetica-Oblique", color: "#777", marginTop: 1 },
+    brandSub: { fontSize: f(7, scale), color: "#777", marginTop: 1 },
     docTitle: { fontSize: f(13, scale), fontFamily: "Helvetica-Bold", textAlign: "right" },
     docNum: { fontSize: f(9, scale), fontFamily: "Courier", color: "#555", textAlign: "right", marginTop: 2 },
     pageNum: { fontSize: f(6.5, scale), color: "#999", textAlign: "right", marginTop: 2 },
@@ -155,6 +157,7 @@ export async function renderDocumentoPdf(d: DatosDocumento): Promise<Buffer> {
       {d.logo ? <Image src={{ data: Buffer.from(d.logo), format: "png" }} style={s.logo} /> : null}
       <View>
         <Text style={s.brand}>{d.empresaNombre || "Palm Hills"}</Text>
+        <Text style={s.brandSlogan}>{d.empresaEslogan || "Beauty & Health"}</Text>
         <Text style={s.brandSub}>{d.empresaContacto || "(551) 248-3442  ·  admin@palmhillsco.net"}</Text>
       </View>
     </View>

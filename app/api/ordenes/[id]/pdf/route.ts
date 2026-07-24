@@ -113,6 +113,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     total,
     logo,
     empresaNombre: empresa.nombre,
+    empresaEslogan: empresa.eslogan || undefined,
     empresaContacto: empresaContacto(empresa) || undefined,
     mensaje: empresa.mensaje_estimate || undefined,
     logoPos: empresa.doc_logo_pos || "left",

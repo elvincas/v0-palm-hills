@@ -121,6 +121,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     totalPagado: ((f.pagos || []) as { monto: number }[]).reduce((a, p) => a + p.monto, 0),
     logo,
     empresaNombre: empresa.nombre,
+    empresaEslogan: empresa.eslogan || undefined,
     empresaContacto: empresaContacto(empresa) || undefined,
     mensaje: empresa.mensaje_factura || undefined,
     logoPos: empresa.doc_logo_pos || "left",

@@ -13,6 +13,10 @@ export interface Empresa {
   zip?: string | null;
   telefono?: string | null;
   email?: string | null;
+  // Slogan corto (ej. "Beauty & Health") — reemplaza a la ciudad/estado en el
+  // header de la app y se muestra junto al nombre en el header de los
+  // documentos (factura/estimate/quotation), en vez de la direccion.
+  eslogan?: string | null;
   // Plantillas de mensaje al cliente (2026-07-24, fase B): un mensaje libre
   // por tipo de documento, opcional — si esta vacio, el documento no muestra
   // ningun mensaje extra (los textos estructurales como la firma de entrega
@@ -46,6 +50,7 @@ export const EMPRESA_DEFAULT: Empresa = {
   zip: null,
   telefono: "(551) 248-3442",
   email: "admin@palmhillsco.net",
+  eslogan: "Beauty & Health",
   mensaje_factura: null,
   mensaje_estimate: null,
   mensaje_cotizacion: null,

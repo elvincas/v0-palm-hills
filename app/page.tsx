@@ -5157,6 +5157,7 @@ const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
   const { empresa, updateEmpresa, readOnly } = useData();
   const [form, setForm] = useState({
     nombre: empresa.nombre,
+    eslogan: empresa.eslogan || "",
     logo: empresa.logo || "",
     dir: empresa.dir || "",
     ciudad: empresa.ciudad || "",
@@ -5187,6 +5188,7 @@ const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
     try {
       await updateEmpresa({
         nombre: form.nombre.trim(),
+        eslogan: form.eslogan.trim() || null,
         logo: form.logo || null,
         dir: form.dir.trim() || null,
         ciudad: form.ciudad.trim() || null,
@@ -5236,6 +5238,15 @@ const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
         <input
           value={form.nombre}
           onChange={(e) => setForm({ ...form, nombre: e.target.value })}
+          autoComplete="off"
+          className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+        />
+      </Field>
+      <Field label="Slogan">
+        <input
+          value={form.eslogan}
+          onChange={(e) => setForm({ ...form, eslogan: e.target.value })}
+          placeholder="e.g. Beauty & Health"
           autoComplete="off"
           className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
         />
@@ -10429,9 +10440,9 @@ function AppContent() {
             <div className="text-base font-bold text-primary leading-tight">
               {empresa.nombre}
             </div>
-            {empresa.ciudad && (
+            {empresa.eslogan && (
               <div className="text-xs text-accent font-medium tracking-wide">
-                {[empresa.ciudad, empresa.estado_dir].filter(Boolean).join(", ")}
+                {empresa.eslogan}
               </div>
             )}
           </div>
