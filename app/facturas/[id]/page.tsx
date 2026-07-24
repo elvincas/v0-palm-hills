@@ -297,11 +297,20 @@ export default function FacturaPage() {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], `Invoice-${String(factura.num).padStart(4, "0")}.pdf`, { type: "application/pdf" });
+      // Si el fetch tarda (red lenta), iOS puede revocar el "user activation"
+      // que navigator.share() necesita antes de que el PDF este listo, y
+      // falla con NotAllowedError aunque el usuario no haya cancelado nada —
+      // en ese caso se abre el PDF directo en vez de mostrar un error.
+      let compartido = false;
       if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file] });
-      } else {
-        window.open(URL.createObjectURL(blob), "_blank");
+        try {
+          await navigator.share({ files: [file] });
+          compartido = true;
+        } catch (shareErr) {
+          if (shareErr instanceof DOMException && shareErr.name === "AbortError") compartido = true; // cancelado a proposito
+        }
       }
+      if (!compartido) window.open(URL.createObjectURL(blob), "_blank");
     } catch (err) {
       // Cancelar el share sheet lanza AbortError: no es un error real
       if (!(err instanceof DOMException && err.name === "AbortError")) {

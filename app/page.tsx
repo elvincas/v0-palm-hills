@@ -4828,11 +4828,21 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], "Product-Catalog.pdf", { type: "application/pdf" });
+      // Comprimir 100+ fotos puede tardar varios segundos — para cuando el PDF
+      // esta listo, iOS ya pudo haber revocado el "user activation" que
+      // navigator.share() necesita, y falla con NotAllowedError aunque el
+      // usuario nunca haya cancelado nada. Si eso pasa, se abre el PDF directo
+      // en vez de mostrarle un error al usuario (el archivo SI se genero bien).
+      let compartido = false;
       if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
-        await navigator.share({ files: [file] });
-      } else {
-        window.open(URL.createObjectURL(blob), "_blank");
+        try {
+          await navigator.share({ files: [file] });
+          compartido = true;
+        } catch (shareErr) {
+          if (shareErr instanceof DOMException && shareErr.name === "AbortError") compartido = true; // cancelado a proposito
+        }
       }
+      if (!compartido) window.open(URL.createObjectURL(blob), "_blank");
       onClose();
     } catch (err) {
       if (!(err instanceof DOMException && err.name === "AbortError")) {
