@@ -5434,6 +5434,39 @@ const SettingsModal = ({
   </Modal>
 );
 
+// Inventory Tools (2026-07-24): Top/Lists/Catalog/Categories/Brands eran 5
+// pildoras sueltas que se cortaban a dos filas en pantallas angostas — el
+// usuario vio 5 mockups y eligio la opcion "grid tipo catalogo" (mismo
+// componente que SettingsModal, pero con emoji en vez de iconos SVG porque
+// estos 5 accesos siempre usaron emoji) disparada desde un boton chico al
+// lado del contador de productos, no una fila propia.
+const INV_TOOL_ITEMS = [
+  { id: "top", label: "Top", emoji: "🏆" },
+  { id: "lists", label: "Lists", emoji: "🏷️" },
+  { id: "catalog", label: "Catalog", emoji: "📖" },
+  { id: "categories", label: "Categories", emoji: "🗂️" },
+  { id: "brands", label: "Brands", emoji: "🏭" },
+] as const;
+
+const InventoryToolsModal = ({ onSelect, onClose }: { onSelect: (id: string) => void; onClose: () => void }) => (
+  <Modal title="Inventory Tools" onClose={onClose}>
+    <div className="grid grid-cols-3 gap-3">
+      {INV_TOOL_ITEMS.map((it) => (
+        <button
+          key={it.id}
+          onClick={() => onSelect(it.id)}
+          className="flex flex-col items-center justify-center gap-2 py-5 px-2 rounded-3xl border border-border bg-card active:scale-[0.97] transition-all"
+        >
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center text-xl shrink-0" style={{ background: "var(--secondary)" }}>
+            {it.emoji}
+          </div>
+          <span className="text-xs font-bold text-card-foreground text-center leading-tight">{it.label}</span>
+        </button>
+      ))}
+    </div>
+  </Modal>
+);
+
 // Document Templates (fase B, 2026-07-24): mensaje libre por tipo de
 // documento, mostrado ademas del contenido estructural fijo (firma de
 // entrega en factura, disclaimer de estimate, etc). Vive en la misma tabla
@@ -6203,6 +6236,7 @@ const Inventario = () => {
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCategorias, setShowCategorias] = useState(false);
   const [showMarcas, setShowMarcas] = useState(false);
+  const [showInvTools, setShowInvTools] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
   const [topAlmacenFiltro, setTopAlmacenFiltro] = useState<string>("todos");
   const topProductosModal = useMemo(() => {
@@ -6915,39 +6949,27 @@ const Inventario = () => {
         <span className="text-xs text-muted-foreground shrink-0">
           {filtered.length} prod.
         </span>
-      </div>
-      <div className="flex flex-wrap gap-2 mb-3">
         <button
-          onClick={() => setShowTopProductos(true)}
-          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
+          onClick={() => setShowInvTools(true)}
+          aria-label="Inventory Tools"
+          className="shrink-0 w-9 h-9 rounded-xl border border-border bg-card text-primary flex items-center justify-center text-base"
         >
-          🏆 Top
-        </button>
-        <button
-          onClick={() => setShowListasPrecios(true)}
-          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
-        >
-          🏷️ Lists
-        </button>
-        <button
-          onClick={() => setShowCatalogo(true)}
-          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
-        >
-          📖 Catalog
-        </button>
-        <button
-          onClick={() => setShowCategorias(true)}
-          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
-        >
-          🗂️ Categories
-        </button>
-        <button
-          onClick={() => setShowMarcas(true)}
-          className="shrink-0 px-3 py-2 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center gap-1"
-        >
-          🏭 Brands
+          🛠️
         </button>
       </div>
+      {showInvTools && (
+        <InventoryToolsModal
+          onClose={() => setShowInvTools(false)}
+          onSelect={(id) => {
+            setShowInvTools(false);
+            if (id === "top") setShowTopProductos(true);
+            else if (id === "lists") setShowListasPrecios(true);
+            else if (id === "catalog") setShowCatalogo(true);
+            else if (id === "categories") setShowCategorias(true);
+            else if (id === "brands") setShowMarcas(true);
+          }}
+        />
+      )}
       {showListasPrecios && <ListasPreciosModal onClose={() => setShowListasPrecios(false)} />}
       {showCatalogo && <CatalogoModal onClose={() => setShowCatalogo(false)} />}
       {showCategorias && <CategoriasModal onClose={() => setShowCategorias(false)} />}
