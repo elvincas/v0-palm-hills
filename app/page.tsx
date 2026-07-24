@@ -4805,7 +4805,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
         return sa.localeCompare(sb, "en", { numeric: true }) || a.nom.localeCompare(b.nom, "en");
       });
 
-      const items: { nom: string; sku?: string; precio: number; foto?: string }[] = [];
+      const items: { nom: string; sku?: string; precio: number; fabricante?: string; foto?: string }[] = [];
       for (const p of ordenados) {
         let foto: string | undefined;
         if (conFotos && p.foto) {
@@ -4815,7 +4815,7 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
             foto = undefined;
           }
         }
-        items.push({ nom: p.nom, sku: p.sku, precio: Number(p.precio), foto });
+        items.push({ nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto });
         setProgreso((s) => ({ ...s, hecho: s.hecho + 1 }));
       }
 

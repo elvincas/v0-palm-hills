@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { renderCatalogoPdf, ProductoCatalogo } from "@/lib/pdf/catalogo-pdf";
-import { EMPRESA_DEFAULT } from "@/lib/empresa";
+import { EMPRESA_DEFAULT, empresaContacto } from "@/lib/empresa";
 
 export const runtime = "nodejs";
 
@@ -26,7 +26,18 @@ export async function POST(request: NextRequest) {
     productos: ProductoCatalogo[];
   };
 
-  const { data: empresaRow } = await supabase.from("empresa").select("nombre").eq("id", 1).maybeSingle();
+  const { data: empresaRow } = await supabase.from("empresa").select("*").eq("id", 1).maybeSingle();
+  const empresa = empresaRow || EMPRESA_DEFAULT;
+
+  let logo: Buffer | undefined;
+  try {
+    if (empresa.logo) {
+      logo = Buffer.from(empresa.logo.split(",")[1] || "", "base64");
+    } else {
+      const logoRes = await fetch(new URL("/logo.png", request.url));
+      if (logoRes.ok) logo = Buffer.from(await logoRes.arrayBuffer());
+    }
+  } catch { /* sin logo */ }
 
   const pdf = await renderCatalogoPdf({
     fechaGeneracion: new Date().toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" }),
@@ -34,7 +45,9 @@ export async function POST(request: NextRequest) {
     conPrecio: body.conPrecio,
     conFotos: body.conFotos,
     productos: body.productos || [],
-    empresaNombre: empresaRow?.nombre || EMPRESA_DEFAULT.nombre,
+    empresaNombre: empresa.nombre,
+    empresaContacto: empresaContacto(empresa) || undefined,
+    logo,
   });
 
   return new NextResponse(new Uint8Array(pdf), {

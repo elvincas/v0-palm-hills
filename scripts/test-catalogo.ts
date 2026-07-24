@@ -28,20 +28,30 @@ async function sql(query: string) {
 }
 
 async function main() {
+  const [empresaRow] = await sql("SELECT nombre, logo, telefono, email FROM empresa WHERE id = 1");
+  const logo: Buffer | undefined = empresaRow?.logo
+    ? Buffer.from(String(empresaRow.logo).split(",")[1] || "", "base64")
+    : undefined;
+  const empresaContacto = [empresaRow?.telefono, empresaRow?.email].filter(Boolean).join("  ·  ") || undefined;
+  const empresaNombre = empresaRow?.nombre || "Palm Hills";
+
   // Tabla sin fotos: 40 productos random para verificar el layout de tabla rapido
   const sinFotos = await sql(
-    "SELECT nom, sku, precio, almacen FROM productos ORDER BY sku LIMIT 40"
+    "SELECT nom, sku, precio, fabricante, almacen FROM productos ORDER BY sku LIMIT 40"
   );
   console.log(`Productos (sin fotos): ${sinFotos.length}`);
-  const productosTabla: ProductoCatalogo[] = sinFotos.map((p: { nom: string; sku: string; precio: string }) => ({
-    nom: p.nom, sku: p.sku, precio: Number(p.precio),
+  const productosTabla: ProductoCatalogo[] = sinFotos.map((p: { nom: string; sku: string; precio: string; fabricante?: string }) => ({
+    nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined,
   }));
   const bufTabla = await renderCatalogoPdf({
-    fechaGeneracion: "07/21/2026",
+    fechaGeneracion: "07/24/2026",
     almacenLabel: "Both Warehouses",
     conPrecio: true,
     conFotos: false,
     productos: productosTabla,
+    empresaNombre,
+    empresaContacto,
+    logo,
   });
   writeFileSync(join(__dirname, "test-catalogo-tabla.pdf"), bufTabla);
   console.log(`Tabla PDF: ${(bufTabla.length / 1024).toFixed(0)} KB`);
@@ -49,21 +59,24 @@ async function main() {
   // Grid con fotos: solo productos que SI tienen foto, limitado a 24 para que
   // el test corra rapido (la app real puede generar miles).
   const conFotosRows = await sql(
-    "SELECT nom, sku, precio, foto FROM productos WHERE foto IS NOT NULL ORDER BY sku LIMIT 24"
+    "SELECT nom, sku, precio, fabricante, foto FROM productos WHERE foto IS NOT NULL ORDER BY sku LIMIT 24"
   );
   console.log(`Productos (con fotos): ${conFotosRows.length}`);
   if (conFotosRows.length === 0) {
     console.log("(ningun producto con foto encontrado, se omite el test de grid)");
   } else {
-    const productosGrid: ProductoCatalogo[] = conFotosRows.map((p: { nom: string; sku: string; precio: string; foto: string }) => ({
-      nom: p.nom, sku: p.sku, precio: Number(p.precio), foto: p.foto,
+    const productosGrid: ProductoCatalogo[] = conFotosRows.map((p: { nom: string; sku: string; precio: string; fabricante?: string; foto: string }) => ({
+      nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto: p.foto,
     }));
     const bufGrid = await renderCatalogoPdf({
-      fechaGeneracion: "07/21/2026",
+      fechaGeneracion: "07/24/2026",
       almacenLabel: "Palm Hills",
       conPrecio: true,
       conFotos: true,
       productos: productosGrid,
+      empresaNombre,
+      empresaContacto,
+      logo,
     });
     writeFileSync(join(__dirname, "test-catalogo-grid.pdf"), bufGrid);
     console.log(`Grid PDF: ${(bufGrid.length / 1024).toFixed(0)} KB`);
@@ -74,8 +87,8 @@ async function main() {
   const { PDFParse } = require("pdf-parse");
   const parser = new PDFParse({ data: new Uint8Array(bufTabla) });
   const text = (await parser.getText()).text.toUpperCase();
-  const ok = text.includes("CATALOG") && text.includes("PALM HILLS");
-  console.log(`\nTabla OK: ${ok}`);
+  const ok = text.includes("PRODUCT CATALOG") && text.includes(empresaNombre.toUpperCase());
+  console.log(`\nPortada + tabla OK: ${ok}`);
   if (!ok) { console.error("\n❌ FALLO"); process.exit(1); }
   console.log("✅ Catalogo OK");
 }
