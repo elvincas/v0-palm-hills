@@ -72,6 +72,8 @@ supabase/
 
 **Navegación (2026-07-21):** el bottom nav muestra `dash, cal, fact, cli, inv, ord, pl, com` (`components/bottom-nav.tsx` → `NAV_TABS`). Mejoras y Users se movieron a un menú desplegable "More" (botón ⋯ en el header de `app/page.tsx`) porque son de uso poco frecuente — decisión explícita del usuario para no saturar el bottom nav al agregar P&L/Purchases. `ALL_TAB_IDS` (superset que incluye `mej`/`usr`) es lo que valida el parámetro `?tab=` en la URL — si se agregan tabs nuevos que no van en el bottom nav, hay que añadirlos ahí también o el deep-link no los reconoce.
 
+**Settings (ruedita, 2026-07-24):** el header ganó un segundo botón (ícono de engranaje, `NAV_ICONS.set`) separado del "More" (⋯) — pedido explícito del usuario: "no incluyas Improvements/Salespeople/Warehouses [en Settings], esas son tablas del app, lo demás son configuraciones". Se abre `SettingsModal`, un grid de "cuadros" tipo catálogo (mismo lenguaje visual que las tarjetas de producto en Inventario: ícono en círculo + label, `grid-cols-2`) en vez de una lista de texto como el "More". Contiene `SETTINGS_ITEMS`: Appearance (todos los roles) + Company Profile/Document Templates/Manage Users (solo admin). El "More" (⋯) se achicó a `MORE_ITEMS`: solo Improvements/Salespeople/Warehouses — las "tablas operativas" del negocio, no configuración. Ningún punto de entrada existente se perdió: Salespeople ya tenía su propio botón rápido en el tab Clientes, y ambos menús siguen abriendo las mismas modales/tabs de siempre (`EmpresaModal`, `PlantillasModal`, `AppearanceModal`, `VendedoresModal`, `AlmacenesModal`, o navegación a `usr`/`mej` vía `setTab`).
+
 ---
 
 ## Modelos de Datos (tablas Supabase)

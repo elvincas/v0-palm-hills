@@ -5399,6 +5399,41 @@ const AppearanceModal = ({ theme, setTheme, onClose }: { theme: Theme; setTheme:
   </Modal>
 );
 
+// Settings (2026-07-24): la ruedita del header abre este grid de "cuadros"
+// tipo catalogo (mismo lenguaje visual que las tarjetas de producto en
+// Inventario) en vez de una lista de texto — pedido explicito del usuario.
+// Solo lleva configuracion de la empresa/app (Appearance, Company Profile,
+// Document Templates, Manage Users); Improvements/Salespeople/Warehouses son
+// "tablas del app" y se quedan en el menu "More" (⋯) de siempre.
+const SettingsModal = ({
+  items,
+  onSelect,
+  onClose,
+}: {
+  items: { id: string; label: string; icon: string }[];
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) => (
+  <Modal title="Settings" onClose={onClose}>
+    <div className="grid grid-cols-2 gap-3">
+      {items.map((it) => (
+        <button
+          key={it.id}
+          onClick={() => onSelect(it.id)}
+          className="flex flex-col items-center justify-center gap-2.5 py-6 px-3 rounded-3xl border border-border bg-card active:scale-[0.97] transition-all"
+        >
+          <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0" style={{ background: "var(--secondary)", color: "var(--primary)" }}>
+            <svg width={22} height={22} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              {it.icon.split("|").map((d, i) => <path key={i} d={d} />)}
+            </svg>
+          </div>
+          <span className="text-xs font-bold text-card-foreground text-center leading-tight">{it.label}</span>
+        </button>
+      ))}
+    </div>
+  </Modal>
+);
+
 // Document Templates (fase B, 2026-07-24): mensaje libre por tipo de
 // documento, mostrado ademas del contenido estructural fijo (firma de
 // entrega en factura, disclaimer de estimate, etc). Vive en la misma tabla
@@ -10398,6 +10433,7 @@ function AppContent() {
   const supabase = useMemo(() => createClient(), []);
   const [email, setEmail] = useState("");
   const [showMoreMenu, setShowMoreMenu] = useState(false);
+  const [showSettingsMenu, setShowSettingsMenu] = useState(false);
   const [showVendedoresGlobal, setShowVendedoresGlobal] = useState(false);
   const [showAlmacenesGlobal, setShowAlmacenesGlobal] = useState(false);
   const [showEmpresaGlobal, setShowEmpresaGlobal] = useState(false);
@@ -10513,11 +10549,18 @@ function AppContent() {
     com: <Compras />,
   };
 
+  // "More" (⋯) se queda solo con las tablas operativas del negocio (2026-07-24,
+  // pedido explicito del usuario: "esas son tablas del app, lo demas son
+  // configuraciones") — Appearance/Company Profile/Document Templates/Manage
+  // Users se movieron al grid de "Settings" (la ruedita), ver SETTINGS_ITEMS.
   const MORE_ITEMS = [
-    { id: "thm", label: "Appearance", icon: NAV_ICONS.thm },
     { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
     { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
     { id: "alm", label: "Warehouses", icon: NAV_ICONS.alm },
+  ];
+
+  const SETTINGS_ITEMS = [
+    { id: "thm", label: "Appearance", icon: NAV_ICONS.thm },
     ...(role === "admin" ? [{ id: "emp", label: "Company Profile", icon: NAV_ICONS.emp }] : []),
     ...(role === "admin" ? [{ id: "tpl", label: "Document Templates", icon: NAV_ICONS.tpl }] : []),
     ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
@@ -10557,6 +10600,15 @@ function AppContent() {
               </div>
             )}
           </div>
+          <button
+            onClick={() => setShowSettingsMenu(true)}
+            aria-label="Settings"
+            className="shrink-0 w-9 h-9 rounded-lg border border-border bg-background flex items-center justify-center text-muted-foreground hover:text-foreground"
+          >
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
+              {NAV_ICONS.set.split("|").map((d, i) => <path key={i} d={d} />)}
+            </svg>
+          </button>
           <div className="relative">
             <button
               onClick={() => setShowMoreMenu((v) => !v)}
@@ -10580,9 +10632,6 @@ function AppContent() {
                         setShowMoreMenu(false);
                         if (it.id === "ven") setShowVendedoresGlobal(true);
                         else if (it.id === "alm") setShowAlmacenesGlobal(true);
-                        else if (it.id === "emp") setShowEmpresaGlobal(true);
-                        else if (it.id === "tpl") setShowPlantillasGlobal(true);
-                        else if (it.id === "thm") setShowAppearanceGlobal(true);
                         else setTab(it.id);
                       }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
@@ -10692,6 +10741,19 @@ function AppContent() {
       {showEmpresaGlobal && <EmpresaModal onClose={() => setShowEmpresaGlobal(false)} />}
       {showPlantillasGlobal && <PlantillasModal onClose={() => setShowPlantillasGlobal(false)} />}
       {showAppearanceGlobal && <AppearanceModal theme={theme} setTheme={setTheme} onClose={() => setShowAppearanceGlobal(false)} />}
+      {showSettingsMenu && (
+        <SettingsModal
+          items={SETTINGS_ITEMS}
+          onClose={() => setShowSettingsMenu(false)}
+          onSelect={(id) => {
+            setShowSettingsMenu(false);
+            if (id === "emp") setShowEmpresaGlobal(true);
+            else if (id === "tpl") setShowPlantillasGlobal(true);
+            else if (id === "thm") setShowAppearanceGlobal(true);
+            else setTab(id);
+          }}
+        />
+      )}
     </div>
   );
 }
