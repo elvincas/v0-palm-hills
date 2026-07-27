@@ -16,10 +16,13 @@ const fdate = (s: string) => {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Si se pide revelar el descuento de la lista de precios (catalogo -> lista),
-  // ademas del ajuste manual por linea que siempre se muestra. Decidido en la
-  // pantalla de la factura, no aqui: ?listDiscount=1|0, default 0 (comportamiento historico).
-  const mostrarDescuentoLista = new URL(request.url).searchParams.get("listDiscount") === "1";
+  // Decidido en la pantalla de la factura, no aqui: ?discounts=1|0 (switch
+  // maestro — apagado, ningun precio tachado, solo finales; default 1 por
+  // compatibilidad) y ?listDiscount=1|0 (revela el descuento de la lista de
+  // precios ademas del ajuste manual; default 0, comportamiento historico).
+  const searchParams = new URL(request.url).searchParams;
+  const mostrarDescuentos = searchParams.get("discounts") !== "0";
+  const mostrarDescuentoLista = searchParams.get("listDiscount") === "1";
   const supabase = await createClient();
 
   const { data: userData } = await supabase.auth.getUser();
@@ -95,7 +98,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
         sku: l.sku,
         qty: l.qty,
         precio: l.precio,
-        precioOriginal: mostrarDescuentoLista ? precioCatalogo ?? l.precioOriginal : l.precioOriginal,
+        precioOriginal: !mostrarDescuentos ? undefined : mostrarDescuentoLista ? precioCatalogo ?? l.precioOriginal : l.precioOriginal,
       };
     });
 

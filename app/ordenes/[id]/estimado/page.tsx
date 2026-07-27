@@ -126,16 +126,17 @@ const FilaColsE = () => (
   </tr>
 );
 
-// precioComparado: el precio "de antes" a tachar. Con el switch de descuento
-// de lista encendido se usa el precio de catalogo puro (revela el descuento
-// de lista completo); apagado, se usa l.precio (solo el ajuste manual, el
-// comportamiento historico donde el precio de lista se ve como precio normal).
-const precioComparadoE = (l: LineaOrden, mostrarDescuentoLista: boolean) =>
-  mostrarDescuentoLista ? l.precioCatalogo ?? l.precio : l.precio;
+// precioComparado: el precio "de antes" a tachar. Con el switch maestro de
+// descuentos apagado no se tacha nada (el documento muestra solo el precio
+// final, limpio). Encendido, el sub-switch de descuento de lista decide si el
+// tachado es el precio de catalogo puro (revela el descuento de lista
+// completo) o l.precio (solo el ajuste manual, el comportamiento historico).
+const precioComparadoE = (l: LineaOrden, mostrarDescuentos: boolean, mostrarDescuentoLista: boolean) =>
+  !mostrarDescuentos ? l.precioFinal ?? l.precio : mostrarDescuentoLista ? l.precioCatalogo ?? l.precio : l.precio;
 
-const FilaProductoE = ({ l, i, mostrarDescuentoLista }: { l: LineaOrden; i: number; mostrarDescuentoLista: boolean }) => {
+const FilaProductoE = ({ l, i, mostrarDescuentos, mostrarDescuentoLista }: { l: LineaOrden; i: number; mostrarDescuentos: boolean; mostrarDescuentoLista: boolean }) => {
   const precioFinal = l.precioFinal ?? l.precio;
-  const comparado = precioComparadoE(l, mostrarDescuentoLista);
+  const comparado = precioComparadoE(l, mostrarDescuentos, mostrarDescuentoLista);
   const tieneDescuento = precioFinal !== comparado;
   return (
     <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
@@ -208,8 +209,10 @@ export default function EstimadoPage() {
 
   const [orden, setOrden] = useState<Orden | null>(null);
   const [generandoPdf, setGenerandoPdf] = useState(false);
-  // Mismo switch que en /facturas/[id]: revela el descuento de lista de
-  // precios (catalogo -> lista) ademas del ajuste manual. Encendido por defecto.
+  // Mismos switches que en /facturas/[id]. El maestro decide si se muestran
+  // los descuentos tachados (de lista y ajuste manual) o el documento limpio
+  // con solo precios finales; el de lista, cual precio se tacha.
+  const [mostrarDescuentos, setMostrarDescuentos] = useState(true);
   const [mostrarDescuentoLista, setMostrarDescuentoLista] = useState(true);
 
   // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
@@ -217,7 +220,7 @@ export default function EstimadoPage() {
     if (generandoPdf || !orden) return;
     setGenerandoPdf(true);
     try {
-      const res = await fetch(`/api/ordenes/${ordenId}/pdf?listDiscount=${mostrarDescuentoLista ? "1" : "0"}`);
+      const res = await fetch(`/api/ordenes/${ordenId}/pdf?discounts=${mostrarDescuentos ? "1" : "0"}&listDiscount=${mostrarDescuentoLista ? "1" : "0"}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], `Estimate-Order${orden.num}.pdf`, { type: "application/pdf" });
@@ -381,12 +384,17 @@ export default function EstimadoPage() {
   }
 
   const lineas = lineasOrdenadas;
-  // Solo tiene sentido ofrecer el switch si al menos una linea tiene un
-  // precio de catalogo distinto al precio de lista ya guardado.
+  // Switch maestro: aparece si hay CUALQUIER descuento que ocultar (ajuste
+  // manual por linea o descuento de lista). El sub-switch de lista solo si
+  // ademas hay un precio de catalogo distinto al de la linea.
+  const hayDescuentoVisible = lineas.some((l) => {
+    const final = l.precioFinal ?? l.precio;
+    return l.precio !== final || (l.precioCatalogo !== undefined && l.precioCatalogo !== final);
+  });
   const hayDescuentoListaDisponible = lineas.some(
     (l) => l.precioCatalogo !== undefined && l.precioCatalogo !== l.precio
   );
-  const subtotal = lineas.reduce((acc, l) => acc + l.qty * precioComparadoE(l, mostrarDescuentoLista), 0);
+  const subtotal = lineas.reduce((acc, l) => acc + l.qty * precioComparadoE(l, mostrarDescuentos, mostrarDescuentoLista), 0);
   const total = lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0);
   const descuento = subtotal - total;
 
@@ -410,7 +418,19 @@ export default function EstimadoPage() {
             <span className={TAB_LBL}>{generandoPdf ? "..." : "Print / PDF"}</span>
           </button>
         </div>
-        {hayDescuentoListaDisponible && (
+        {hayDescuentoVisible && (
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 pb-2.5 flex items-center justify-between gap-3">
+            <label htmlFor="mostrar-descuentos-e" className="text-xs font-medium text-gray-600">
+              Show discounts
+            </label>
+            <Switch
+              id="mostrar-descuentos-e"
+              checked={mostrarDescuentos}
+              onCheckedChange={setMostrarDescuentos}
+            />
+          </div>
+        )}
+        {mostrarDescuentos && hayDescuentoListaDisponible && (
           <div className="max-w-3xl mx-auto px-4 sm:px-8 pb-2.5 flex items-center justify-between gap-3">
             <label htmlFor="mostrar-descuento-lista-e" className="text-xs font-medium text-gray-600">
               Show list price as discount
@@ -434,7 +454,7 @@ export default function EstimadoPage() {
         <div data-m="header"><EncabezadoEstimado orden={orden} cliente={cliente} empresa={empresa} /></div>
         <table className="w-full text-sm">
           <thead><FilaColsE /></thead>
-          <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
+          <tbody>{lineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentos={mostrarDescuentos} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
         <BloqueTotalesE subtotal={subtotal} descuento={descuento} total={total} accentColor={empresa.doc_accent_color} />
         <BloqueDisclaimerE mensaje={empresa.mensaje_estimate} showDisclaimer={empresa.doc_show_disclaimer ?? true} />
@@ -457,7 +477,7 @@ export default function EstimadoPage() {
                   <thead><FilaColsE /></thead>
                   <tbody>
                     {pageLineas.length ? (
-                      pageLineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)
+                      pageLineas.map((l, i) => <FilaProductoE key={i} l={l} i={i} mostrarDescuentos={mostrarDescuentos} mostrarDescuentoLista={mostrarDescuentoLista} />)
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>

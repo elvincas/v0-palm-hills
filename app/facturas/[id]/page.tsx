@@ -177,15 +177,16 @@ const FilaCols = () => (
   </tr>
 );
 
-// precioComparado: el precio "de antes" a tachar. Con el switch de descuento
-// de lista encendido se usa el precio de catalogo puro (revela el descuento de
-// lista completo); apagado, se usa precioOriginal (solo el ajuste manual, el
-// comportamiento historico donde el precio de lista se ve como precio normal).
-const precioComparado = (l: LineaFactura, mostrarDescuentoLista: boolean) =>
-  mostrarDescuentoLista ? l.precioCatalogo ?? l.precioOriginal : l.precioOriginal;
+// precioComparado: el precio "de antes" a tachar. Con el switch maestro de
+// descuentos apagado no se tacha nada (el documento muestra solo el precio
+// final, limpio). Encendido, el sub-switch de descuento de lista decide si el
+// tachado es el precio de catalogo puro (revela el descuento de lista
+// completo) o precioOriginal (solo el ajuste manual, el comportamiento historico).
+const precioComparado = (l: LineaFactura, mostrarDescuentos: boolean, mostrarDescuentoLista: boolean) =>
+  !mostrarDescuentos ? undefined : mostrarDescuentoLista ? l.precioCatalogo ?? l.precioOriginal : l.precioOriginal;
 
-const FilaProducto = ({ l, i, mostrarDescuentoLista }: { l: LineaFactura; i: number; mostrarDescuentoLista: boolean }) => {
-  const comparado = precioComparado(l, mostrarDescuentoLista);
+const FilaProducto = ({ l, i, mostrarDescuentos, mostrarDescuentoLista }: { l: LineaFactura; i: number; mostrarDescuentos: boolean; mostrarDescuentoLista: boolean }) => {
+  const comparado = precioComparado(l, mostrarDescuentos, mostrarDescuentoLista);
   const tieneDescuento = comparado !== undefined && comparado !== l.precio;
   return (
     <tr className={i % 2 === 0 ? "bg-white" : "bg-[#e3e9da]"} data-m="row">
@@ -281,10 +282,13 @@ export default function FacturaPage() {
   const [readOnly, setReadOnly] = useState(false);
 
   const [generandoPdf, setGenerandoPdf] = useState(false);
-  // Si se ve el descuento de la lista de precios (catalogo -> precio de lista)
-  // ademas del ajuste manual por linea. Decidido aqui (no en el pick) porque
-  // es una decision comercial de quien envia/imprime, no de quien pickea.
-  // Encendido por defecto.
+  // Switch maestro: si se muestran los descuentos tachados (de lista y ajuste
+  // manual) o el documento limpio con solo precios finales. El sub-switch de
+  // lista decide si el tachado revela el descuento de la lista de precios
+  // (catalogo -> lista) ademas del ajuste manual por linea. Decididos aqui (no
+  // en el pick) porque es una decision comercial de quien envia/imprime, no de
+  // quien pickea. Encendidos por defecto.
+  const [mostrarDescuentos, setMostrarDescuentos] = useState(true);
   const [mostrarDescuentoLista, setMostrarDescuentoLista] = useState(true);
 
   // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
@@ -293,7 +297,7 @@ export default function FacturaPage() {
     if (generandoPdf || !factura) return;
     setGenerandoPdf(true);
     try {
-      const res = await fetch(`/api/facturas/${facturaId}/pdf?listDiscount=${mostrarDescuentoLista ? "1" : "0"}`);
+      const res = await fetch(`/api/facturas/${facturaId}/pdf?discounts=${mostrarDescuentos ? "1" : "0"}&listDiscount=${mostrarDescuentoLista ? "1" : "0"}`);
       if (!res.ok) throw new Error(`Error ${res.status}`);
       const blob = await res.blob();
       const file = new File([blob], `Invoice-${String(factura.num).padStart(4, "0")}.pdf`, { type: "application/pdf" });
@@ -705,13 +709,18 @@ export default function FacturaPage() {
   const saldo = factura.total - totalPagado;
 
   const lineas = lineasOrdenadas;
-  // Solo tiene sentido ofrecer el switch si al menos una linea tiene un
-  // precio de catalogo distinto al precio de lista/original ya guardado —
-  // si no, no hay ningun descuento de lista que revelar.
+  // Switch maestro: aparece si hay CUALQUIER descuento que ocultar (ajuste
+  // manual por linea o descuento de lista). El sub-switch de lista solo si
+  // ademas hay un precio de catalogo distinto al de lista/original guardado.
+  const hayDescuentoVisible = lineas.some(
+    (l) =>
+      (l.precioOriginal !== undefined && l.precioOriginal !== l.precio) ||
+      (l.precioCatalogo !== undefined && l.precioCatalogo !== l.precio)
+  );
   const hayDescuentoListaDisponible = lineas.some(
     (l) => l.precioCatalogo !== undefined && l.precioOriginal !== undefined && l.precioCatalogo !== l.precioOriginal
   );
-  const subtotal = lineas.reduce((acc, l) => acc + l.qty * (precioComparado(l, mostrarDescuentoLista) ?? l.precio), 0);
+  const subtotal = lineas.reduce((acc, l) => acc + l.qty * (precioComparado(l, mostrarDescuentos, mostrarDescuentoLista) ?? l.precio), 0);
   const descuento = subtotal - factura.total;
   const isPaid = factura.estado === "Paid";
 
@@ -777,7 +786,19 @@ export default function FacturaPage() {
             </button>
           )}
         </div>
-        {hayDescuentoListaDisponible && (
+        {hayDescuentoVisible && (
+          <div className="max-w-3xl mx-auto px-4 sm:px-8 pb-2.5 flex items-center justify-between gap-3">
+            <label htmlFor="mostrar-descuentos" className="text-xs font-medium text-gray-600">
+              Show discounts
+            </label>
+            <Switch
+              id="mostrar-descuentos"
+              checked={mostrarDescuentos}
+              onCheckedChange={setMostrarDescuentos}
+            />
+          </div>
+        )}
+        {mostrarDescuentos && hayDescuentoListaDisponible && (
           <div className="max-w-3xl mx-auto px-4 sm:px-8 pb-2.5 flex items-center justify-between gap-3">
             <label htmlFor="mostrar-descuento-lista" className="text-xs font-medium text-gray-600">
               Show list price as discount
@@ -908,7 +929,7 @@ export default function FacturaPage() {
         <div data-m="header"><EncabezadoFactura factura={factura} cliente={cliente} empresa={empresa} /></div>
         <table className="w-full text-sm">
           <thead><FilaCols /></thead>
-          <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
+          <tbody>{lineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentos={mostrarDescuentos} mostrarDescuentoLista={mostrarDescuentoLista} />)}</tbody>
         </table>
         <BloqueTotales subtotal={subtotal} descuento={descuento} total={factura.total} totalPagado={totalPagado} saldo={saldo} accentColor={empresa.doc_accent_color} />
         <BloqueFirma mensaje={empresa.mensaje_factura} accentColor={empresa.doc_accent_color} showSignature={empresa.doc_show_signature ?? true} />
@@ -932,7 +953,7 @@ export default function FacturaPage() {
                   <thead><FilaCols /></thead>
                   <tbody>
                     {pageLineas.length ? (
-                      pageLineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentoLista={mostrarDescuentoLista} />)
+                      pageLineas.map((l, i) => <FilaProducto key={i} l={l} i={i} mostrarDescuentos={mostrarDescuentos} mostrarDescuentoLista={mostrarDescuentoLista} />)
                     ) : (
                       <tr>
                         <td colSpan={5} className="py-6 text-center text-gray-400 text-sm">No product details</td>

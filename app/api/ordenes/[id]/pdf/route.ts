@@ -20,9 +20,13 @@ interface LineaOrden extends LineaDoc {
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  // Revela el descuento de la lista de precios (catalogo -> lista) ademas del
-  // ajuste manual, decidido en la pantalla del estimate: ?listDiscount=1|0.
-  const mostrarDescuentoLista = new URL(request.url).searchParams.get("listDiscount") === "1";
+  // Decidido en la pantalla del estimate: ?discounts=1|0 (switch maestro —
+  // apagado, ningun precio tachado, solo finales; default 1 por compatibilidad)
+  // y ?listDiscount=1|0 (revela el descuento de la lista de precios ademas
+  // del ajuste manual).
+  const searchParams = new URL(request.url).searchParams;
+  const mostrarDescuentos = searchParams.get("discounts") !== "0";
+  const mostrarDescuentoLista = searchParams.get("listDiscount") === "1";
   const supabase = await createClient();
 
   const { data: userData } = await supabase.auth.getUser();
@@ -80,7 +84,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
     .map((l) => {
       const precioFinal = l.precioFinal ?? l.precio;
       const precioCatalogo = l.precioCatalogo ?? (l.prodId ? catalogoPrecios[l.prodId] : undefined);
-      const comparado = mostrarDescuentoLista ? precioCatalogo ?? l.precio : l.precio;
+      const comparado = !mostrarDescuentos ? precioFinal : mostrarDescuentoLista ? precioCatalogo ?? l.precio : l.precio;
       return {
         prodNom: l.prodNom,
         sku: l.sku,
