@@ -211,8 +211,9 @@ export default function EstimadoPage() {
   const [generandoPdf, setGenerandoPdf] = useState(false);
   // Mismos switches que en /facturas/[id]. El maestro decide si se muestran
   // los descuentos tachados (de lista y ajuste manual) o el documento limpio
-  // con solo precios finales; el de lista, cual precio se tacha.
-  const [mostrarDescuentos, setMostrarDescuentos] = useState(true);
+  // con solo precios finales; el de lista, cual precio se tacha. El maestro
+  // arranca apagado (documento limpio por defecto, pedido del usuario).
+  const [mostrarDescuentos, setMostrarDescuentos] = useState(false);
   const [mostrarDescuentoLista, setMostrarDescuentoLista] = useState(true);
 
   // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).

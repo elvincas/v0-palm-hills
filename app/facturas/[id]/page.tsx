@@ -287,8 +287,9 @@ export default function FacturaPage() {
   // lista decide si el tachado revela el descuento de la lista de precios
   // (catalogo -> lista) ademas del ajuste manual por linea. Decididos aqui (no
   // en el pick) porque es una decision comercial de quien envia/imprime, no de
-  // quien pickea. Encendidos por defecto.
-  const [mostrarDescuentos, setMostrarDescuentos] = useState(true);
+  // quien pickea. El maestro arranca apagado (documento limpio por defecto,
+  // pedido del usuario); el de lista encendido, para cuando se prenda el maestro.
+  const [mostrarDescuentos, setMostrarDescuentos] = useState(false);
   const [mostrarDescuentoLista, setMostrarDescuentoLista] = useState(true);
 
   // Descarga el PDF y abre el share sheet nativo (con Print/Save/AirDrop).
