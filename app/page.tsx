@@ -1833,36 +1833,60 @@ const calcTopClientes = (facturas: Factura[], meses = 6, limite = 10) => {
     .slice(0, limite);
 };
 
-// Lista compacta de top clientes (usada en Home y en el modal de Clientes)
+// Lista compacta de top clientes (usada en Home y en el modal de Clientes).
+// Tabla zebra tipo documento (2026-07-27), mismo lenguaje que Top Products.
 const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
   const top = useMemo(() => calcTopClientes(facturas), [facturas]);
   if (!top.length) return <Empty text="Not enough invoice data yet." />;
-  const maxScore = top[0].score || 1;
   return (
-    <div>
-      {top.map((c, i) => (
-        <div key={c.cli} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
-          <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
-          <div className="flex-1 min-w-0">
-            <div className="text-xs font-semibold text-card-foreground truncate leading-tight">{c.cli}</div>
-            <div className={`text-[10px] leading-tight mt-0.5 ${c.pctPagado > 0 && c.diasProm > 30 ? "text-red-600 font-semibold" : c.diasProm <= 2 && c.pctPagado >= 0.95 ? "text-green-700 font-semibold" : "text-muted-foreground"}`}>
-              {c.diasProm <= 2 && c.pctPagado >= 0.95
-                ? "Pays COD ⚡"
-                : c.pctPagado === 0
-                  ? "No payments yet"
-                  : `Pays in ~${Math.round(c.diasProm)}d · ${Math.round(c.pctPagado * 100)}% paid`}
-            </div>
-            <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
-              <div className="h-full rounded-full" style={{ width: `${Math.round((c.score / maxScore) * 100)}%`, background: "var(--primary)" }} />
-            </div>
-          </div>
-          <div className="text-right shrink-0">
-            <div className="text-xs font-bold text-card-foreground tabular-nums">{fmt(c.comprado)}</div>
-            <div className="text-[9px] text-muted-foreground">score {(c.score * 100).toFixed(0)}</div>
-          </div>
-        </div>
-      ))}
-    </div>
+    <table className="w-full border-collapse">
+      <thead>
+        <tr className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">
+          <th className="pt-2.5 pb-2 pl-4 border-b-2 border-foreground" />
+          <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">Client</th>
+          <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">Score</th>
+          <th className="pt-2.5 pb-2 pl-2 pr-4 text-right border-b-2 border-foreground">Volume</th>
+        </tr>
+      </thead>
+      <tbody>
+        {top.map((c, i) => {
+          // Top 3 con medalla de color del tema: dorado / verde / gris
+          const dot = i < 3 ? ["var(--accent)", "var(--primary)", "var(--muted-foreground)"][i] : null;
+          return (
+            <tr key={c.cli} className={i % 2 === 1 ? "bg-secondary/40" : ""}>
+              <td className="py-2.5 pl-4 pr-1 align-middle w-9 text-center">
+                {dot ? (
+                  <span
+                    className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] font-extrabold text-white"
+                    style={{ background: dot }}
+                  >
+                    {i + 1}
+                  </span>
+                ) : (
+                  <span className="text-[11px] font-extrabold text-muted-foreground tabular-nums">{i + 1}</span>
+                )}
+              </td>
+              <td className="py-2.5 px-2 align-middle">
+                <div className="text-xs font-semibold text-card-foreground break-words leading-tight">{c.cli}</div>
+                <div className={`text-[10px] leading-tight mt-0.5 ${c.pctPagado > 0 && c.diasProm > 30 ? "text-red-600 font-semibold" : c.diasProm <= 2 && c.pctPagado >= 0.95 ? "text-green-700 font-semibold" : "text-muted-foreground"}`}>
+                  {c.diasProm <= 2 && c.pctPagado >= 0.95
+                    ? "Pays COD ⚡"
+                    : c.pctPagado === 0
+                      ? "No payments yet"
+                      : `Pays in ~${Math.round(c.diasProm)}d · ${Math.round(c.pctPagado * 100)}% paid`}
+                </div>
+              </td>
+              <td className="py-2.5 px-2 text-right align-middle text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+                {(c.score * 100).toFixed(0)}
+              </td>
+              <td className="py-2.5 pl-2 pr-4 text-right align-middle text-xs font-extrabold text-card-foreground tabular-nums whitespace-nowrap">
+                {fmt(c.comprado)}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
   );
 };
 
@@ -2055,13 +2079,9 @@ const Dashboard = () => {
         </div>
       )}
 
-      {/* ── TOP PRODUCTS (glass podium, 2026-07-24) ── */}
-      <div
-        className="rounded-3xl overflow-hidden mb-3 border backdrop-blur-xl"
-        style={{ background: "var(--glass)", borderColor: "var(--glass-border)", boxShadow: "var(--glass-shadow)" }}
-      >
-        {/* Header con acento verde del logo */}
-        <div className="px-4 pt-4 pb-3 flex items-center justify-between" style={{ borderBottom: "1px solid var(--glass-border)" }}>
+      {/* ── TOP PRODUCTS (tabla zebra tipo documento, 2026-07-27) ── */}
+      <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+        <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
           <div>
             <div className="text-sm font-bold text-card-foreground">Top Products</div>
             <div className="text-[10px] text-muted-foreground">Last 3 months · by revenue</div>
@@ -2074,93 +2094,48 @@ const Dashboard = () => {
         {top15.length === 0 ? (
           <Empty text="No invoices yet" />
         ) : (
-          <>
-            {/* Podio top 3: 2do–1ro–3ro, el 1ro elevado */}
-            <div className="px-3 pt-4 pb-2 grid grid-cols-3 gap-2.5 items-end">
-              {[1, 0, 2].map((idx) => {
-                const p = top15[idx];
-                if (!p) return <div key={idx} />;
-                const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
-                // idx 0 = 1er lugar (dorado), 1 = 2do (verde), 2 = 3ro (gris) — todos del tema
-                const ringColors: Record<number, string> = {
-                  0: "var(--accent)",
-                  1: "var(--primary)",
-                  2: "var(--muted-foreground)",
-                };
-                const ring = ringColors[idx];
-                const isFirst = idx === 0;
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                <th className="pt-2.5 pb-2 pl-4 border-b-2 border-foreground" />
+                <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">Product</th>
+                <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">Qty</th>
+                <th className="pt-2.5 pb-2 pl-2 pr-4 text-right border-b-2 border-foreground">Revenue</th>
+              </tr>
+            </thead>
+            <tbody>
+              {top15.map((p, i) => {
+                // Top 3 con medalla de color del tema: dorado / verde / gris
+                const dot = i < 3 ? ["var(--accent)", "var(--primary)", "var(--muted-foreground)"][i] : null;
                 return (
-                  <div key={p.sku || p.nom} className={`flex flex-col items-center gap-1.5 ${isFirst ? "-mt-3" : ""}`}>
-                    <div
-                      className="relative w-full aspect-square rounded-2xl overflow-hidden"
-                      style={{ background: "var(--glass-strong)", boxShadow: `0 0 0 2px ${ring}, 0 10px 22px -8px color-mix(in srgb, ${ring} 50%, transparent)` }}
-                    >
-                      {prod?.foto ? (
-                        <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
+                  <tr key={p.sku || p.nom} className={i % 2 === 1 ? "bg-secondary/40" : ""}>
+                    <td className="py-2.5 pl-4 pr-1 align-middle w-9 text-center">
+                      {dot ? (
+                        <span
+                          className="w-5 h-5 rounded-full inline-flex items-center justify-center text-[10px] font-extrabold text-white"
+                          style={{ background: dot }}
+                        >
+                          {i + 1}
+                        </span>
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-3xl">📦</div>
+                        <span className="text-[11px] font-extrabold text-muted-foreground tabular-nums">{i + 1}</span>
                       )}
-                      <div
-                        className="absolute top-1.5 left-1.5 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-extrabold text-white"
-                        style={{ background: ring, boxShadow: "0 2px 6px rgba(0,0,0,0.25)" }}
-                      >
-                        {idx + 1}
-                      </div>
-                    </div>
-                    <div className="text-[9px] font-semibold text-card-foreground text-center leading-tight line-clamp-2 uppercase" style={{ minHeight: "1.8rem" }}>
-                      {p.nom}
-                    </div>
-                    {p.sku && <div className="text-[8px] font-mono text-primary/60 text-center truncate w-full">{p.sku}</div>}
-                    <div className="text-[10.5px] font-extrabold" style={{ color: "var(--accent)" }}>{fmt(p.monto)}</div>
-                    <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* Posiciones 4–15 */}
-            <div style={{ borderTop: "1px solid var(--glass-border)" }}>
-              {top15.slice(3).map((p, i, arr) => {
-                const rank = i + 4;
-                const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
-                const maxMonto = top15[0]?.monto || 1;
-                const barW = Math.round((p.monto / maxMonto) * 100);
-                const isLast = i === arr.length - 1;
-                return (
-                  <div
-                    key={p.sku || p.nom}
-                    className="flex items-center gap-2.5 px-4 py-2.5"
-                    style={{ borderBottom: isLast ? "none" : "1px solid var(--glass-border)" }}
-                  >
-                    <div
-                      className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0"
-                      style={{ background: "var(--glass-strong)", color: "var(--muted-foreground)", boxShadow: "inset 0 0 0 1px var(--glass-border)" }}
-                    >
-                      {rank}
-                    </div>
-                    <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 bg-secondary flex items-center justify-center">
-                      {prod?.foto ? (
-                        <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-sm">📦</span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
+                    </td>
+                    <td className="py-2.5 px-2 align-middle">
                       <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{p.nom}</div>
-                      {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
-                      <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
-                        <div className="h-full rounded-full" style={{ width: `${barW}%`, background: "var(--primary)" }} />
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-xs font-bold text-card-foreground">{fmt(p.monto)}</div>
-                      <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
-                    </div>
-                  </div>
+                      {p.sku && <div className="text-[9px] font-mono text-muted-foreground mt-0.5">{p.sku}</div>}
+                    </td>
+                    <td className="py-2.5 px-2 text-right align-middle text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
+                      {p.qty.toLocaleString()}
+                    </td>
+                    <td className="py-2.5 pl-2 pr-4 text-right align-middle text-xs font-extrabold text-card-foreground tabular-nums whitespace-nowrap">
+                      {fmt(p.monto)}
+                    </td>
+                  </tr>
                 );
               })}
-            </div>
-          </>
+            </tbody>
+          </table>
         )}
       </div>
 
