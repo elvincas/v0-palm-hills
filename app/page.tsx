@@ -2137,9 +2137,10 @@ const Dashboard = () => {
                     </td>
                     <td className="py-2.5 px-2 align-middle">
                       <div className="flex items-center gap-2.5">
+                        {/* Marco gris uniforme para todas las fotos (el anillo
+                            de color del top 3 se probo y el usuario lo quito) */}
                         <div
-                          className={`${dot ? "w-10 h-10" : "w-8 h-8"} rounded-lg overflow-hidden shrink-0 bg-secondary flex items-center justify-center`}
-                          style={dot ? { boxShadow: `0 0 0 2px ${dot}` } : undefined}
+                          className={`${dot ? "w-10 h-10" : "w-8 h-8"} rounded-lg overflow-hidden shrink-0 bg-secondary border-2 border-muted-foreground/30 flex items-center justify-center`}
                         >
                           {prod?.foto ? (
                             <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
