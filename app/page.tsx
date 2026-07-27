@@ -1850,10 +1850,16 @@ const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
       </thead>
       <tbody>
         {top.map((c, i) => {
-          // Top 3 con medalla de color del tema: dorado / verde / gris
+          // Top 3 con medalla de color del tema: dorado / verde / gris,
+          // destacados con un lavado del color de fondo, nombre en bold y
+          // monto mas grande; la zebra corre solo del 4to en adelante.
           const dot = i < 3 ? ["var(--accent)", "var(--primary)", "var(--muted-foreground)"][i] : null;
           return (
-            <tr key={c.cli} className={i % 2 === 1 ? "bg-secondary/40" : ""}>
+            <tr
+              key={c.cli}
+              className={!dot && (i - 3) % 2 === 1 ? "bg-secondary/40" : ""}
+              style={dot ? { background: `color-mix(in srgb, ${dot} 8%, transparent)` } : undefined}
+            >
               <td className="py-2.5 pl-4 pr-1 align-middle w-9 text-center">
                 {dot ? (
                   <span
@@ -1867,7 +1873,7 @@ const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
                 )}
               </td>
               <td className="py-2.5 px-2 align-middle">
-                <div className="text-xs font-semibold text-card-foreground break-words leading-tight">{c.cli}</div>
+                <div className={`text-xs ${dot ? "font-bold" : "font-semibold"} text-card-foreground break-words leading-tight`}>{c.cli}</div>
                 <div className={`text-[10px] leading-tight mt-0.5 ${c.pctPagado > 0 && c.diasProm > 30 ? "text-red-600 font-semibold" : c.diasProm <= 2 && c.pctPagado >= 0.95 ? "text-green-700 font-semibold" : "text-muted-foreground"}`}>
                   {c.diasProm <= 2 && c.pctPagado >= 0.95
                     ? "Pays COD ⚡"
@@ -1879,7 +1885,7 @@ const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
               <td className="py-2.5 px-2 text-right align-middle text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
                 {(c.score * 100).toFixed(0)}
               </td>
-              <td className="py-2.5 pl-2 pr-4 text-right align-middle text-xs font-extrabold text-card-foreground tabular-nums whitespace-nowrap">
+              <td className={`py-2.5 pl-2 pr-4 text-right align-middle ${dot ? "text-[13px]" : "text-xs"} font-extrabold text-card-foreground tabular-nums whitespace-nowrap`}>
                 {fmt(c.comprado)}
               </td>
             </tr>
@@ -2105,10 +2111,18 @@ const Dashboard = () => {
             </thead>
             <tbody>
               {top15.map((p, i) => {
-                // Top 3 con medalla de color del tema: dorado / verde / gris
+                // Top 3 con medalla de color del tema: dorado / verde / gris.
+                // Se destacan con un lavado del color de su medalla de fondo,
+                // foto mas grande con anillo y monto mas grande; la zebra
+                // corre solo del 4to en adelante.
                 const dot = i < 3 ? ["var(--accent)", "var(--primary)", "var(--muted-foreground)"][i] : null;
+                const prod = productos.find((pr) => (p.sku && pr.sku === p.sku) || pr.nom === p.nom);
                 return (
-                  <tr key={p.sku || p.nom} className={i % 2 === 1 ? "bg-secondary/40" : ""}>
+                  <tr
+                    key={p.sku || p.nom}
+                    className={!dot && (i - 3) % 2 === 1 ? "bg-secondary/40" : ""}
+                    style={dot ? { background: `color-mix(in srgb, ${dot} 8%, transparent)` } : undefined}
+                  >
                     <td className="py-2.5 pl-4 pr-1 align-middle w-9 text-center">
                       {dot ? (
                         <span
@@ -2122,13 +2136,27 @@ const Dashboard = () => {
                       )}
                     </td>
                     <td className="py-2.5 px-2 align-middle">
-                      <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{p.nom}</div>
-                      {p.sku && <div className="text-[9px] font-mono text-muted-foreground mt-0.5">{p.sku}</div>}
+                      <div className="flex items-center gap-2.5">
+                        <div
+                          className={`${dot ? "w-10 h-10" : "w-8 h-8"} rounded-lg overflow-hidden shrink-0 bg-secondary flex items-center justify-center`}
+                          style={dot ? { boxShadow: `0 0 0 2px ${dot}` } : undefined}
+                        >
+                          {prod?.foto ? (
+                            <img src={prod.foto} alt={p.nom} className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-sm">📦</span>
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <div className={`text-xs ${dot ? "font-bold" : "font-semibold"} text-card-foreground uppercase break-words leading-tight`}>{p.nom}</div>
+                          {p.sku && <div className="text-[9px] font-mono text-muted-foreground mt-0.5">{p.sku}</div>}
+                        </div>
+                      </div>
                     </td>
                     <td className="py-2.5 px-2 text-right align-middle text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
                       {p.qty.toLocaleString()}
                     </td>
-                    <td className="py-2.5 pl-2 pr-4 text-right align-middle text-xs font-extrabold text-card-foreground tabular-nums whitespace-nowrap">
+                    <td className={`py-2.5 pl-2 pr-4 text-right align-middle ${dot ? "text-[13px]" : "text-xs"} font-extrabold text-card-foreground tabular-nums whitespace-nowrap`}>
                       {fmt(p.monto)}
                     </td>
                   </tr>
