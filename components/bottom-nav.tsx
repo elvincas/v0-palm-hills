@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { useLang } from "@/lib/i18n";
 
 export const NAV_ICONS: Record<string, string> = {
   dash: "M3 3h7v7H3z M14 3h7v7h-7z M3 14h7v7H3z M14 14h7v7h-7z",
@@ -20,6 +21,7 @@ export const NAV_ICONS: Record<string, string> = {
   tpl: "M4 4h16v16H4z M4 9h16 M9 9v11",
   thm: "M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z",
   set: "M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0z",
+  pay: "M12 1v22 M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6",
 };
 
 // Tabs visibles en el bottom nav. Mejoras y Users se movieron al menu "More"
@@ -81,6 +83,7 @@ export function BottomNav({
   hiddenTabs?: string[];
 }) {
   const router = useRouter();
+  const { t } = useLang();
   const itemRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   useEffect(() => {
@@ -113,7 +116,7 @@ export function BottomNav({
     }
   };
 
-  const tabs = NAV_TABS.filter((t) => !hiddenTabs?.includes(t.id));
+  const tabs = NAV_TABS.filter((tb) => !hiddenTabs?.includes(tb.id));
 
   return (
     // Barra flotante en una sola caja curva (estilo Apple: cápsula translúcida
@@ -127,16 +130,16 @@ export function BottomNav({
         className="flex overflow-x-auto no-scrollbar gap-0.5 p-1.5"
         style={{ scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch" }}
       >
-        {tabs.map((t) => (
+        {tabs.map((tb) => (
           <button
-            key={t.id}
+            key={tb.id}
             ref={(el) => {
-              itemRefs.current[t.id] = el;
+              itemRefs.current[tb.id] = el;
             }}
-            onClick={() => go(t.id)}
+            onClick={() => go(tb.id)}
             style={{ scrollSnapAlign: "center" }}
             className={`w-[58px] shrink-0 flex flex-col items-center py-1.5 px-0.5 cursor-pointer text-[10px] gap-0.5 border-none rounded-2xl transition-colors font-sans ${
-              active === t.id ? "bg-secondary text-secondary-foreground font-bold" : "bg-transparent text-muted-foreground font-normal"
+              active === tb.id ? "bg-secondary text-secondary-foreground font-bold" : "bg-transparent text-muted-foreground font-normal"
             }`}
           >
             <svg
@@ -144,14 +147,14 @@ export function BottomNav({
               height={19}
               viewBox="0 0 24 24"
               fill="none"
-              stroke={active === t.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
-              strokeWidth={active === t.id ? 2 : 1.8}
+              stroke={active === tb.id ? "var(--secondary-foreground)" : "var(--muted-foreground)"}
+              strokeWidth={active === tb.id ? 2 : 1.8}
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <path d={NAV_ICONS[t.id]} />
+              <path d={NAV_ICONS[tb.id]} />
             </svg>
-            <span className="truncate w-full text-center">{t.label}</span>
+            <span className="truncate w-full text-center">{t(tb.label)}</span>
           </button>
         ))}
       </div>

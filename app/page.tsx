@@ -15,6 +15,7 @@ import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
 import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 import { Switch } from "@/components/ui/switch";
 import { useTheme, type Theme } from "@/hooks/use-theme";
+import { useLang } from "@/lib/i18n";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -349,6 +350,45 @@ interface EventoCalendario {
   tipos: TipoEvento[];
   cliente_id: string | null;
   nota?: string;
+  // Check-in de la Ruta del Día (2026-07-27): marca que la visita ya se hizo
+  completado?: boolean;
+  created_at?: string;
+}
+
+// Empleado (2026-07-27): la tabla existia en Supabase desde el inicio pero
+// nunca se conecto a la app — se retomo para la nomina. `sal` es la tarifa
+// (por hora si tipo_pago=hourly, por periodo si salary); `ded` deducciones
+// fijas por periodo. Las comisiones de VENTA no van aqui: eso es la tabla
+// `vendedores` y su reporte — un empleado tipo "commission" se paga con
+// monto manual en Run Payroll.
+interface Empleado {
+  id: string;
+  nom: string;
+  puesto?: string;
+  dept?: string;
+  sal: number;
+  ded: number;
+  fecha?: string;
+  estado: string; // Active | Inactive
+  email?: string;
+  tipo_pago: "hourly" | "salary" | "commission";
+  periodo: "weekly" | "biweekly" | "monthly";
+  created_at?: string;
+}
+
+// Pago de nomina individual (historial por empleado). Ademas de esta fila,
+// Run Payroll registra un Gasto categoria "Payroll" (pagado) por el mismo
+// monto — asi el pago fluye al P&L/Cash Flow por el mecanismo existente.
+interface PagoNomina {
+  id: string;
+  empleado_id?: string | null;
+  empleado_nom: string;
+  desde: string;
+  hasta: string;
+  detalle?: string;
+  monto: number;
+  fecha_pago: string;
+  gasto_id?: string | null;
   created_at?: string;
 }
 
@@ -1836,16 +1876,17 @@ const calcTopClientes = (facturas: Factura[], meses = 6, limite = 10) => {
 // Lista compacta de top clientes (usada en Home y en el modal de Clientes).
 // Tabla zebra tipo documento (2026-07-27), mismo lenguaje que Top Products.
 const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
+  const { t } = useLang();
   const top = useMemo(() => calcTopClientes(facturas), [facturas]);
-  if (!top.length) return <Empty text="Not enough invoice data yet." />;
+  if (!top.length) return <Empty text={t("Not enough invoice data yet.")} />;
   return (
     <table className="w-full border-collapse">
       <thead>
         <tr className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">
           <th className="pt-2.5 pb-2 pl-4 border-b-2 border-foreground" />
-          <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">Client</th>
-          <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">Score</th>
-          <th className="pt-2.5 pb-2 pl-2 pr-4 text-right border-b-2 border-foreground">Volume</th>
+          <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">{t("Client")}</th>
+          <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">{t("Score")}</th>
+          <th className="pt-2.5 pb-2 pl-2 pr-4 text-right border-b-2 border-foreground">{t("Volume")}</th>
         </tr>
       </thead>
       <tbody>
@@ -1876,10 +1917,10 @@ const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
                 <div className={`text-xs ${dot ? "font-bold" : "font-semibold"} text-card-foreground break-words leading-tight`}>{c.cli}</div>
                 <div className={`text-[10px] leading-tight mt-0.5 ${c.pctPagado > 0 && c.diasProm > 30 ? "text-red-600 font-semibold" : c.diasProm <= 2 && c.pctPagado >= 0.95 ? "text-green-700 font-semibold" : "text-muted-foreground"}`}>
                   {c.diasProm <= 2 && c.pctPagado >= 0.95
-                    ? "Pays COD ⚡"
+                    ? t("Pays COD ⚡")
                     : c.pctPagado === 0
-                      ? "No payments yet"
-                      : `Pays in ~${Math.round(c.diasProm)}d · ${Math.round(c.pctPagado * 100)}% paid`}
+                      ? t("No payments yet")
+                      : `${t("Pays in ~")}${Math.round(c.diasProm)}d · ${Math.round(c.pctPagado * 100)}% ${t("paid")}`}
                 </div>
               </td>
               <td className="py-2.5 px-2 text-right align-middle text-[10px] text-muted-foreground tabular-nums whitespace-nowrap">
@@ -1899,6 +1940,527 @@ const TopClientesLista = ({ facturas }: { facturas: Factura[] }) => {
 const mesActualNombre = () => {
   const nombre = new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" });
   return nombre.charAt(0).toUpperCase() + nombre.slice(1);
+};
+
+// ── Helpers de cobranza / briefing (2026-07-27) ──
+const saldoDeFactura = (f: Factura) =>
+  Number(f.total) - (f.pagos || []).reduce((a, p) => a + Number(p.monto || 0), 0);
+const diasDesde = (fecha: string) =>
+  Math.floor((Date.now() - new Date(fecha + "T00:00:00").getTime()) / 86400000);
+
+// ══════════════════════════════════════════════════════════════════
+// Daily Briefing (2026-07-27): lo accionable de HOY en una tarjeta —
+// entregas, facturas vencidas 30+, stock bajo, visitas. Los datos ya
+// existian regados en 5 tabs; esto solo los junta y linkea a resolver.
+// ══════════════════════════════════════════════════════════════════
+const BriefingCard = ({ onReorder, goTab }: { onReorder: () => void; goTab: (id: string) => void }) => {
+  const { facturas, productos, almacenes, eventosCalendario } = useData();
+  const { t } = useLang();
+  const router = useRouter();
+  const hoy = today();
+
+  const entregasHoy = eventosCalendario.filter((e) => e.fecha === hoy && e.tipos.includes("delivery")).length;
+  const visitasHoy = eventosCalendario.filter((e) => e.fecha === hoy && e.tipos.some((tp) => tp !== "delivery")).length;
+  const vencidas = useMemo(
+    () => facturas.filter((f) => f.estado !== "Paid" && saldoDeFactura(f) > 0.005 && diasDesde(f.fecha) > 30),
+    [facturas]
+  );
+  const totalVencido = vencidas.reduce((a, f) => a + saldoDeFactura(f), 0);
+  const masVieja = vencidas.reduce<Factura | null>((acc, f) => (!acc || f.fecha < acc.fecha ? f : acc), null);
+  const lowStockCount = useMemo(
+    () => productos.filter((p) => almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes)).lleva_stock && Number(p.stock) <= Number(p.min || 5)).length,
+    [productos, almacenes]
+  );
+  const ventasHoy = facturas.filter((f) => f.fecha === hoy).reduce((a, f) => a + Number(f.total), 0);
+  const outstanding = useMemo(
+    () => facturas.filter((f) => f.estado !== "Paid").reduce((a, f) => a + saldoDeFactura(f), 0),
+    [facturas]
+  );
+
+  const hora = new Date().getHours();
+  const saludo = hora < 12 ? `${t("Good morning")} ☀️` : hora < 19 ? `${t("Good afternoon")} 🌤️` : `${t("Good evening")} 🌙`;
+
+  const rows: { icon: string; tint: string; title: string; sub?: string; subRed?: boolean; chip: string; chipRed?: boolean; onClick: () => void }[] = [];
+  if (entregasHoy > 0)
+    rows.push({ icon: "🚚", tint: "bg-secondary", title: `${entregasHoy} ${t(entregasHoy === 1 ? "delivery today" : "deliveries today")}`, chip: t("View"), onClick: () => goTab("cal") });
+  if (vencidas.length > 0)
+    rows.push({
+      icon: "⏰", tint: "bg-red-50", chipRed: true, subRed: true,
+      title: `${vencidas.length} ${t(vencidas.length === 1 ? "invoice overdue 30+ days" : "invoices overdue 30+ days")}`,
+      sub: `${fmt(totalVencido)}${masVieja ? ` — ${t("oldest")}: #${masVieja.num} (${diasDesde(masVieja.fecha)}d)` : ""}`,
+      chip: t("Collect"), onClick: () => router.push("/reportes/facturas-pendientes"),
+    });
+  if (lowStockCount > 0)
+    rows.push({ icon: "📦", tint: "bg-secondary", title: `${lowStockCount} ${t(lowStockCount === 1 ? "product below minimum" : "products below minimum")}`, chip: t("Reorder"), onClick: onReorder });
+  if (visitasHoy > 0)
+    rows.push({ icon: "📅", tint: "bg-accent/15", title: `${visitasHoy} ${t(visitasHoy === 1 ? "visit today" : "visits today")}`, chip: t("Route"), onClick: () => goTab("cal") });
+
+  return (
+    <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+      <div className="px-4 pt-4 pb-3">
+        <div className="text-sm font-bold text-card-foreground">{saludo}</div>
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          {fdate(hoy)} · {rows.length === 0 ? `${t("All clear for today")} 🎉` : `${rows.length} ${t(rows.length === 1 ? "thing needs you today" : "things need you today")}`}
+        </div>
+      </div>
+      {rows.map((r) => (
+        <button
+          key={r.title}
+          onClick={r.onClick}
+          className="w-full flex items-center gap-3 px-4 py-2.5 border-t border-border text-left active:bg-muted transition-colors"
+        >
+          <div className={`w-9 h-9 rounded-xl ${r.tint} flex items-center justify-center text-base shrink-0`}>{r.icon}</div>
+          <div className="flex-1 min-w-0">
+            <div className="text-xs font-bold text-card-foreground leading-tight">{r.title}</div>
+            {r.sub && <div className={`text-[10px] leading-tight mt-0.5 ${r.subRed ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>{r.sub}</div>}
+          </div>
+          <span className={`text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0 ${r.chipRed ? "bg-red-50 text-red-700" : ""}`} style={r.chipRed ? undefined : { background: "var(--secondary)", color: "var(--primary)" }}>
+            {r.chip}
+          </span>
+        </button>
+      ))}
+      <div className="grid grid-cols-2 border-t border-border">
+        <div className="px-4 py-2.5 border-r border-border">
+          <div className="text-sm font-extrabold tabular-nums text-card-foreground">{fmt(ventasHoy)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{t("Sales today")}</div>
+        </div>
+        <div className="px-4 py-2.5">
+          <div className="text-sm font-extrabold tabular-nums text-card-foreground">{fmt(outstanding)}</div>
+          <div className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">{t("Outstanding")}</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Collections (2026-07-27): cobranza priorizada por antiguedad. "Remind"
+// abre WhatsApp con el resumen del saldo; "Promise" agenda la promesa de
+// pago como evento collect_money en el calendario (aparece en el Briefing
+// y la Ruta del dia prometido).
+// ══════════════════════════════════════════════════════════════════
+const CollectionsCard = () => {
+  const { facturas, clientes, empresa, eventosCalendario, addEvento, readOnly } = useData();
+  const { t } = useLang();
+  const router = useRouter();
+
+  const porCliente = useMemo(() => {
+    const m = new Map<string, { saldo: number; oldest: number; nums: number[] }>();
+    for (const f of facturas) {
+      if (f.estado === "Paid") continue;
+      const saldo = saldoDeFactura(f);
+      if (saldo <= 0.005) continue;
+      const e = m.get(f.cli) || { saldo: 0, oldest: 0, nums: [] };
+      e.saldo += saldo;
+      e.oldest = Math.max(e.oldest, diasDesde(f.fecha));
+      e.nums.push(f.num);
+      m.set(f.cli, e);
+    }
+    return Array.from(m.entries())
+      .map(([cli, e]) => ({ cli, ...e }))
+      .sort((a, b) => b.oldest - a.oldest);
+  }, [facturas]);
+
+  const totalOut = porCliente.reduce((a, c) => a + c.saldo, 0);
+  const numVencidos = porCliente.filter((c) => c.oldest > 30).length;
+
+  // Promesa de pago futura de un cliente (evento collect_money con nota "Promise...")
+  const promesaDe = (cliNom: string) => {
+    const cl = clientes.find((c) => c.nom === cliNom);
+    if (!cl) return null;
+    const ev = eventosCalendario.find(
+      (e) => e.cliente_id === cl.id && e.fecha >= today() && e.tipos.includes("collect_money") && (e.nota || "").startsWith("Promise")
+    );
+    return ev?.fecha || null;
+  };
+
+  const remind = (row: { cli: string; saldo: number; nums: number[] }) => {
+    const cl = clientes.find((c) => c.nom === row.cli);
+    const tel = (cl?.tel || "").replace(/\D/g, "");
+    if (!tel) {
+      alert(t("This client has no phone number saved"));
+      return;
+    }
+    const full = tel.length === 10 ? "1" + tel : tel;
+    const nums = [...row.nums].sort((a, b) => a - b).map((n) => `#${n}`).join(", ");
+    const msg = `${t("Hello")} ${row.cli}, ${t("friendly reminder from")} ${empresa.nombre}: ${t("your pending balance is")} ${fmt(row.saldo)}. ${t("Invoices:")} ${nums}. ${t("Thank you!")}`;
+    window.open(`https://wa.me/${full}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  const promise = async (row: { cli: string; saldo: number }) => {
+    const fecha = prompt(`${t("Payment promise date:")} (YYYY-MM-DD)`, today());
+    if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+    const cl = clientes.find((c) => c.nom === row.cli);
+    try {
+      await addEvento({ fecha, tipos: ["collect_money"], cliente_id: cl?.id ?? null, nota: `Promise: ${row.cli} ${fmt(row.saldo)}` });
+      alert(t("Promise saved to calendar"));
+    } catch (e) {
+      alert("Error: " + (e instanceof Error ? e.message : String(e)));
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+      <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
+        <div>
+          <div className="text-sm font-bold text-card-foreground">{t("Collections")}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {fmt(totalOut)} {t("outstanding")} · {porCliente.length} {t(porCliente.length === 1 ? "client" : "clients")}
+          </div>
+        </div>
+        {numVencidos > 0 && (
+          <div className="text-xs font-bold px-2.5 py-1 rounded-full bg-red-50 text-red-700">
+            {numVencidos} {t("overdue")}
+          </div>
+        )}
+      </div>
+      {porCliente.length === 0 ? (
+        <Empty text={`${t("No pending balances")} 🎉`} />
+      ) : (
+        <>
+          {porCliente.slice(0, 6).map((row) => {
+            const promesa = promesaDe(row.cli);
+            const vencido = row.oldest > 30;
+            const nums = [...row.nums].sort((a, b) => a - b).slice(0, 3).map((n) => `#${n}`).join(", ");
+            return (
+              <div key={row.cli} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-bold text-card-foreground leading-tight break-words">{row.cli}</div>
+                  <div className={`text-[10px] leading-tight mt-0.5 ${vencido ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
+                    {fmt(row.saldo)} · {row.oldest}d{vencido ? "" : ` — ${t("current")}`} — {nums}
+                    {row.nums.length > 3 ? ` +${row.nums.length - 3}` : ""}
+                  </div>
+                  {promesa && <div className="text-[10px] text-green-700 font-semibold mt-0.5">🤝 {t("Promised")} {fdate(promesa)}</div>}
+                </div>
+                <button
+                  onClick={() => remind(row)}
+                  title={t("Remind")}
+                  className="w-9 h-9 rounded-xl border border-border bg-secondary flex items-center justify-center text-base shrink-0 active:scale-95 transition-transform"
+                >
+                  💬
+                </button>
+                {!readOnly && (
+                  <button
+                    onClick={() => promise(row)}
+                    title={t("Promise")}
+                    className="w-9 h-9 rounded-xl border border-border bg-secondary flex items-center justify-center text-base shrink-0 active:scale-95 transition-transform"
+                  >
+                    🤝
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          <button
+            onClick={() => router.push("/reportes/facturas-pendientes")}
+            className="w-full py-2.5 text-xs font-bold text-primary border-t border-border active:bg-muted"
+          >
+            {t("Aging report")} →
+          </button>
+        </>
+      )}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Today's Route (2026-07-27): las visitas de HOY del calendario como ruta
+// accionable — que hacer en cada parada (cobrar el saldo real, entregar
+// ordenes abiertas, tomar pedido) + check-in que marca la visita hecha.
+// ══════════════════════════════════════════════════════════════════
+const RutaHoyCard = () => {
+  const { eventosCalendario, clientes, facturas, ordenes, updateEvento, readOnly } = useData();
+  const { t } = useLang();
+  const hoy = today();
+
+  const paradas = eventosCalendario.filter((e) => e.fecha === hoy && e.tipos.some((tp) => tp !== "delivery"));
+
+  const saldoCliente = (nom?: string) =>
+    nom ? facturas.filter((f) => f.cli === nom && f.estado !== "Paid").reduce((a, f) => a + saldoDeFactura(f), 0) : 0;
+
+  const checkIn = async (e: EventoCalendario) => {
+    try {
+      await updateEvento(e.id, { fecha: e.fecha, tipos: e.tipos, cliente_id: e.cliente_id, nota: e.nota, completado: !e.completado });
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+      <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
+        <div>
+          <div className="text-sm font-bold text-card-foreground">{t("Today's Route")}</div>
+          <div className="text-[10px] text-muted-foreground">
+            {paradas.length} {t(paradas.length === 1 ? "stop" : "stops")} · {fdate(hoy)}
+          </div>
+        </div>
+      </div>
+      {paradas.length === 0 ? (
+        <Empty text={t("No visits scheduled today")} />
+      ) : (
+        paradas.map((e, i) => {
+          const cl = clientes.find((c) => c.id === e.cliente_id);
+          const saldo = saldoCliente(cl?.nom);
+          // Ordenes abiertas del cliente (cli puede ser nombre o id segun la epoca)
+          const ordenesAbiertas = cl
+            ? ordenes.filter((o) => (o.cli === cl.nom || o.cli === cl.id) && o.estado !== "Completed")
+            : [];
+          const dir = [cl?.dir, cl?.ciudad].filter(Boolean).join(", ");
+          const acciones: string[] = [];
+          if (e.tipos.includes("collect_money")) acciones.push(`💰 ${t("Collect")}${saldo > 0.005 ? ` ${fmt(saldo)}` : ""}`);
+          for (const o of ordenesAbiertas.slice(0, 2)) acciones.push(`🚚 ${t("Deliver")} #${o.num}`);
+          if (e.tipos.includes("order_request")) acciones.push(`📋 ${t("Take order")}`);
+          if (e.tipos.includes("visit") && acciones.length === 0) acciones.push(`👋 ${t("Visit")}`);
+          return (
+            <div key={e.id} className={`flex items-start gap-3 px-4 py-2.5 border-b border-border last:border-b-0 ${e.completado ? "opacity-55" : ""}`}>
+              <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center text-[11px] font-extrabold shrink-0 mt-0.5" style={{ color: "var(--primary)" }}>
+                {i + 1}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-xs font-bold text-card-foreground leading-tight break-words">{cl?.nom || e.nota || "—"}</div>
+                {dir && (
+                  <a
+                    href={`https://maps.google.com/?q=${encodeURIComponent(`${dir}${cl?.estado_dir ? ", " + cl.estado_dir : ""}`)}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[10px] text-muted-foreground underline decoration-dotted"
+                  >
+                    📍 {dir}
+                  </a>
+                )}
+                {acciones.length > 0 && (
+                  <div className="text-[10px] text-green-700 font-semibold mt-0.5 leading-snug">{acciones.join(" · ")}</div>
+                )}
+                {e.nota && cl && <div className="text-[10px] text-muted-foreground italic mt-0.5">{e.nota}</div>}
+              </div>
+              {!readOnly && (
+                <button
+                  onClick={() => checkIn(e)}
+                  title={e.completado ? t("Visited") : t("Check in")}
+                  className={`w-8 h-8 rounded-lg border flex items-center justify-center text-sm font-bold shrink-0 transition-colors ${
+                    e.completado ? "bg-primary text-primary-foreground border-primary" : "bg-card text-muted-foreground border-border"
+                  }`}
+                >
+                  ✓
+                </button>
+              )}
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Smart Reorder (2026-07-27): compra sugerida cruzando stock minimo +
+// velocidad de venta de 30 dias + faltantes de picks. La seleccion se
+// comparte como texto (share sheet / portapapeles) para mandarla al
+// proveedor; al llegar la mercancia se registra en Purchases como siempre.
+// ══════════════════════════════════════════════════════════════════
+interface SugerenciaReorder {
+  p: Producto;
+  demanda: number;
+  minEff: number;
+  stock: number;
+  sugerido: number;
+}
+
+const calcReorder = (productos: Producto[], facturas: Factura[], faltantes: Faltante[], almacenes: Almacen[]): SugerenciaReorder[] => {
+  const d = new Date();
+  d.setDate(d.getDate() - 30);
+  const hace30 = d.toISOString().slice(0, 10);
+
+  const ventaSku: Record<string, number> = {};
+  const ventaNom: Record<string, number> = {};
+  for (const f of facturas) {
+    if ((f.fecha || "") < hace30) continue;
+    for (const l of f.lineas || []) {
+      const qty = Number(l.qty) || 0;
+      if (l.sku) {
+        const key = `${l.sku.trim().toLowerCase()}|${l.almacen || "palmhills"}`;
+        ventaSku[key] = (ventaSku[key] || 0) + qty;
+      }
+      ventaNom[l.prodNom] = (ventaNom[l.prodNom] || 0) + qty;
+    }
+  }
+  const faltProd: Record<string, number> = {};
+  for (const ft of faltantes) {
+    if ((ft.fecha || "") < hace30 || !ft.prod_id) continue;
+    faltProd[ft.prod_id] = (faltProd[ft.prod_id] || 0) + (Number(ft.qty) || 0);
+  }
+
+  const out: SugerenciaReorder[] = [];
+  for (const p of productos) {
+    if (!almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes)).lleva_stock) continue;
+    const key = `${(p.sku || "").trim().toLowerCase()}|${p.almacen || "palmhills"}`;
+    const demanda = (p.sku ? ventaSku[key] : undefined) ?? ventaNom[p.nom] ?? 0;
+    const demandaTotal = demanda + (faltProd[p.id] || 0);
+    const minEff = Number(p.min || 5);
+    const stock = Number(p.stock) || 0;
+    if (stock > minEff && demandaTotal <= stock) continue;
+    const sugerido = Math.max(minEff * 2, Math.ceil(demandaTotal)) - stock;
+    if (sugerido <= 0) continue;
+    out.push({ p, demanda: demandaTotal, minEff, stock, sugerido });
+  }
+  return out.sort((a, b) => a.stock / a.minEff - b.stock / b.minEff);
+};
+
+const ReorderModal = ({ onClose }: { onClose: () => void }) => {
+  const { productos, facturas, faltantes, almacenes, empresa } = useData();
+  const { t } = useLang();
+  const sugerencias = useMemo(() => calcReorder(productos, facturas, faltantes, almacenes), [productos, facturas, faltantes, almacenes]);
+  // Preseleccionados: los que ya estan en o bajo el minimo
+  const [sel, setSel] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(sugerencias.map((s) => [s.p.id, s.stock <= s.minEff]))
+  );
+
+  const seleccionados = sugerencias.filter((s) => sel[s.p.id]);
+
+  const compartir = async () => {
+    if (!seleccionados.length) return;
+    const lineas = seleccionados.map((s) => `• ${s.p.sku ? s.p.sku + " — " : ""}${s.p.nom.toUpperCase()} × ${s.sugerido}`);
+    const texto = `${t("Purchase order")} — ${empresa.nombre} — ${fdate(today())}\n(${t("suggested by sales & minimums")})\n\n${lineas.join("\n")}`;
+    try {
+      if (navigator.share) {
+        await navigator.share({ text: texto });
+        return;
+      }
+      throw new Error("no share");
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      try {
+        await navigator.clipboard.writeText(texto);
+        alert(t("Order copied — paste it to your supplier"));
+      } catch {
+        alert(texto);
+      }
+    }
+  };
+
+  return (
+    <Modal title={`📦 ${t("Suggested Purchase")}`} onClose={onClose}>
+      <div className="text-[11px] text-muted-foreground mb-2 -mt-1">{t("Based on minimums + 30-day sales")}</div>
+      {sugerencias.length === 0 ? (
+        <Empty text={`${t("No products need reordering")} 🎉`} />
+      ) : (
+        <>
+          <div className="border border-border rounded-2xl overflow-hidden mb-3">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                  <th className="pt-2.5 pb-2 pl-3 border-b-2 border-foreground" />
+                  <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">{t("Product")}</th>
+                  <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">{t("Stock")}</th>
+                  <th className="pt-2.5 pb-2 pl-2 pr-3 text-right border-b-2 border-foreground">{t("Buy")}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sugerencias.map((s, i) => (
+                  <tr key={s.p.id} className={i % 2 === 1 ? "bg-secondary/40" : ""}>
+                    <td className="py-2 pl-3 pr-1 align-middle w-8">
+                      <button
+                        onClick={() => setSel((prev) => ({ ...prev, [s.p.id]: !prev[s.p.id] }))}
+                        className={`w-5 h-5 rounded-md border-2 flex items-center justify-center text-[11px] font-extrabold transition-colors ${
+                          sel[s.p.id] ? "bg-primary border-primary text-primary-foreground" : "border-muted-foreground/40 text-transparent"
+                        }`}
+                      >
+                        ✓
+                      </button>
+                    </td>
+                    <td className="py-2 px-2 align-middle">
+                      <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{s.p.nom}</div>
+                      <div className="text-[9px] text-muted-foreground mt-0.5">
+                        {s.p.sku && <span className="font-mono">{s.p.sku} · </span>}
+                        {t("sells")} {Math.round(s.demanda)}{t("/mo")}
+                      </div>
+                    </td>
+                    <td className={`py-2 px-2 text-right align-middle text-[10px] tabular-nums whitespace-nowrap ${s.stock <= s.minEff ? "text-red-600 font-bold" : "text-muted-foreground"}`}>
+                      {s.stock} / {t("min")} {s.minEff}
+                    </td>
+                    <td className="py-2 pl-2 pr-3 text-right align-middle text-xs font-extrabold tabular-nums text-card-foreground">{s.sugerido}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button
+            onClick={compartir}
+            disabled={!seleccionados.length}
+            className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+          >
+            {t("Share order")} · {seleccionados.length} {t("items")}
+          </button>
+        </>
+      )}
+    </Modal>
+  );
+};
+
+// Widget resumen de Reorder para el Home: solo el conteo + acceso al modal
+const ReorderCard = ({ onOpen }: { onOpen: () => void }) => {
+  const { productos, almacenes } = useData();
+  const { t } = useLang();
+  const bajos = useMemo(
+    () => productos.filter((p) => almacenInfo(almacenes, p.almacen || almacenPrincipal(almacenes)).lleva_stock && Number(p.stock) <= Number(p.min || 5)).length,
+    [productos, almacenes]
+  );
+  return (
+    <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+      <button onClick={onOpen} className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:bg-muted transition-colors">
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-base shrink-0 ${bajos > 0 ? "bg-red-50" : "bg-secondary"}`}>📦</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-card-foreground">{t("Suggested Purchase")}</div>
+          <div className={`text-[10px] mt-0.5 ${bajos > 0 ? "text-red-600 font-semibold" : "text-muted-foreground"}`}>
+            {bajos > 0 ? `${bajos} ${t(bajos === 1 ? "product below minimum" : "products below minimum")}` : `${t("No products need reordering")} 🎉`}
+          </div>
+        </div>
+        <span className="text-[11px] font-bold px-2.5 py-1 rounded-full shrink-0" style={{ background: "var(--secondary)", color: "var(--primary)" }}>
+          {t("Reorder")}
+        </span>
+      </button>
+    </div>
+  );
+};
+
+// ── Configuracion de widgets del Home (2026-07-27) ──
+// Orden y visibilidad por dispositivo (localStorage), editable con el
+// "widget editor" del Home. IDs nuevos se agregan a WIDGET_ORDER_DEFAULT y
+// aparecen automaticamente al final para usuarios con config guardada vieja.
+const WIDGET_ORDER_DEFAULT = [
+  "briefing",
+  "goal",
+  "stats",
+  "todos",
+  "collections",
+  "route",
+  "topprod",
+  "topcli",
+  "reorder",
+  "activity",
+  "remitos",
+];
+
+interface WidgetsCfg {
+  order: string[];
+  hidden: string[];
+}
+
+const loadWidgetsCfg = (): WidgetsCfg => {
+  const def: WidgetsCfg = { order: [...WIDGET_ORDER_DEFAULT], hidden: [] };
+  if (typeof window === "undefined") return def;
+  try {
+    const raw = localStorage.getItem("ph_widgets_v1");
+    if (!raw) return def;
+    const cfg = JSON.parse(raw) as Partial<WidgetsCfg>;
+    const order = (cfg.order || []).filter((id) => WIDGET_ORDER_DEFAULT.includes(id));
+    for (const id of WIDGET_ORDER_DEFAULT) if (!order.includes(id)) order.push(id);
+    const hidden = (cfg.hidden || []).filter((id) => WIDGET_ORDER_DEFAULT.includes(id));
+    return { order, hidden };
+  } catch {
+    return def;
+  }
 };
 
 const Dashboard = () => {
@@ -1993,17 +2555,50 @@ const Dashboard = () => {
     return calcTopProductos(facturas, hace3meses.toISOString().slice(0, 10));
   }, [facturas]);
 
-  return (
-    <div>
+  // ── Widget editor (2026-07-27): el Home es una lista de widgets con orden
+  // y visibilidad configurables. `tr` (no `t`) para no chocar con el `t` de
+  // todos.map de abajo.
+  const { t: tr } = useLang();
+  const [widgetsCfg, setWidgetsCfg] = useState<WidgetsCfg>(loadWidgetsCfg);
+  const [editWidgets, setEditWidgets] = useState(false);
+  const [showReorder, setShowReorder] = useState(false);
+
+  const saveWidgetsCfg = (cfg: WidgetsCfg) => {
+    setWidgetsCfg(cfg);
+    try {
+      localStorage.setItem("ph_widgets_v1", JSON.stringify(cfg));
+    } catch { /* storage no disponible */ }
+  };
+  // Los widgets navegan entre tabs con un evento propio que AppContent escucha
+  // (Dashboard no recibe setTab como prop).
+  const goTab = (id: string) => window.dispatchEvent(new CustomEvent("ph:goto-tab", { detail: id }));
+  const moveWidget = (id: string, dir: -1 | 1) => {
+    const visibles = widgetsCfg.order.filter((w) => !widgetsCfg.hidden.includes(w));
+    const target = visibles[visibles.indexOf(id) + dir];
+    if (!target) return;
+    const order = [...widgetsCfg.order];
+    const a = order.indexOf(id);
+    const b = order.indexOf(target);
+    [order[a], order[b]] = [order[b], order[a]];
+    saveWidgetsCfg({ ...widgetsCfg, order });
+  };
+  const toggleWidget = (id: string, hide: boolean) => {
+    saveWidgetsCfg({
+      ...widgetsCfg,
+      hidden: hide ? [...widgetsCfg.hidden, id] : widgetsCfg.hidden.filter((w) => w !== id),
+    });
+  };
+
+  const goalWidget = (
       <div className="rounded-3xl p-5 mb-3 text-white shadow-sm bg-gradient-to-br from-[#82a175] via-primary to-[#3c5536]">
         <div className="flex items-center justify-between mb-3">
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-white/75">
-              Sales goal · {mesActualNombre()}
+              {tr("Sales goal")} · {mesActualNombre()}
             </div>
             {meta > 0 && (
               <div className="text-xs text-white/70 mt-0.5">
-                {statusLabel}
+                {tr(statusLabel)}
               </div>
             )}
           </div>
@@ -2015,7 +2610,7 @@ const Dashboard = () => {
                 setEditMeta(true);
               }}
             >
-              {meta > 0 ? "Change" : "+ Set goal"}
+              {meta > 0 ? tr("Change") : tr("+ Set goal")}
             </button>
           )}
         </div>
@@ -2024,7 +2619,7 @@ const Dashboard = () => {
             <div className="flex justify-between items-baseline mb-2.5">
               <div>
                 <span className="text-2xl font-extrabold tracking-tight">{fmt(totalVentas)}</span>
-                <span className="text-sm text-white/70 ml-1">of {fmt(meta)}</span>
+                <span className="text-sm text-white/70 ml-1">{tr("of")} {fmt(meta)}</span>
               </div>
               <span className="text-base font-extrabold bg-white/20 px-2.5 py-1 rounded-full">
                 {pct}%
@@ -2038,15 +2633,17 @@ const Dashboard = () => {
             </div>
             {pct < 100 && (
               <div className="text-xs text-white/75 text-right">
-                Remaining <strong className="text-white">{fmt(meta - totalVentas)}</strong>
+                {tr("Remaining")} <strong className="text-white">{fmt(meta - totalVentas)}</strong>
               </div>
             )}
           </>
         ) : (
-          <p className="text-sm text-white/80 text-center py-2">Tap &quot;+ Set goal&quot; for your target</p>
+          <p className="text-sm text-white/80 text-center py-2">{tr('Tap "+ Set goal" for your target')}</p>
         )}
       </div>
+  );
 
+  const statsWidget = (
       <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3.5">
         {[
           { icon: "💵", tint: "bg-primary/15", label: "Sales this month", val: fmt(totalVentas), warn: false },
@@ -2056,17 +2653,17 @@ const Dashboard = () => {
         ].map((row) => (
           <div key={row.label} className="flex items-center gap-3 px-4 py-3 border-b border-border last:border-b-0">
             <div className={`w-9 h-9 rounded-xl ${row.tint} flex items-center justify-center text-base shrink-0`}>{row.icon}</div>
-            <div className="flex-1 text-sm font-semibold text-card-foreground">{row.label}</div>
+            <div className="flex-1 text-sm font-semibold text-card-foreground">{tr(row.label)}</div>
             <div className={`text-base font-extrabold tabular-nums ${row.warn ? "text-destructive" : "text-card-foreground"}`}>{row.val}</div>
           </div>
         ))}
       </div>
+  );
 
-
-      {todos.length > 0 && (
+  const todosWidget = todos.length > 0 ? (
         <div className="bg-card rounded-3xl p-3.5 mb-3 border border-border">
           <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-            To-do · {todos.length} pending
+            {tr("To-do")} · {todos.length} {tr("pending")}
           </div>
           {todos.map((t) => (
             <div key={t.id} className="flex items-start gap-3 py-2.5 border-b border-border last:border-b-0">
@@ -2083,14 +2680,15 @@ const Dashboard = () => {
             </div>
           ))}
         </div>
-      )}
+  ) : null;
 
-      {/* ── TOP PRODUCTS (tabla zebra tipo documento, 2026-07-27) ── */}
+  // ── TOP PRODUCTS (tabla zebra tipo documento, 2026-07-27) ──
+  const topProductosWidget = (
       <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
         <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
           <div>
-            <div className="text-sm font-bold text-card-foreground">Top Products</div>
-            <div className="text-[10px] text-muted-foreground">Last 3 months · by revenue</div>
+            <div className="text-sm font-bold text-card-foreground">{tr("Top Products")}</div>
+            <div className="text-[10px] text-muted-foreground">{tr("Last 3 months · by revenue")}</div>
           </div>
           <div className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "var(--secondary)", color: "var(--primary)" }}>
             🏆 Top {Math.min(top15.length, 15)}
@@ -2098,15 +2696,15 @@ const Dashboard = () => {
         </div>
 
         {top15.length === 0 ? (
-          <Empty text="No invoices yet" />
+          <Empty text={tr("No invoices yet")} />
         ) : (
           <table className="w-full border-collapse">
             <thead>
               <tr className="text-[9px] font-extrabold uppercase tracking-wider text-muted-foreground">
                 <th className="pt-2.5 pb-2 pl-4 border-b-2 border-foreground" />
-                <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">Product</th>
-                <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">Qty</th>
-                <th className="pt-2.5 pb-2 pl-2 pr-4 text-right border-b-2 border-foreground">Revenue</th>
+                <th className="pt-2.5 pb-2 px-2 text-left border-b-2 border-foreground">{tr("Product")}</th>
+                <th className="pt-2.5 pb-2 px-2 text-right border-b-2 border-foreground">{tr("Qty")}</th>
+                <th className="pt-2.5 pb-2 pl-2 pr-4 text-right border-b-2 border-foreground">{tr("Revenue")}</th>
               </tr>
             </thead>
             <tbody>
@@ -2168,13 +2766,15 @@ const Dashboard = () => {
           </table>
         )}
       </div>
+  );
 
-      {/* Top clientes: volumen + comportamiento de pago (ver calcTopClientes) */}
+  // Top clientes: volumen + comportamiento de pago (ver calcTopClientes)
+  const topClientesWidget = (
       <div className="bg-card rounded-3xl overflow-hidden mb-3 border border-border">
         <div className="px-4 pt-4 pb-3 flex items-center justify-between border-b border-border">
           <div>
-            <div className="text-sm font-bold text-card-foreground">Top Clients</div>
-            <div className="text-[10px] text-muted-foreground">Last 6 months · volume + payment (30-day terms)</div>
+            <div className="text-sm font-bold text-card-foreground">{tr("Top Clients")}</div>
+            <div className="text-[10px] text-muted-foreground">{tr("Last 6 months · volume + payment (30-day terms)")}</div>
           </div>
           <div className="text-xs font-bold px-2.5 py-1 rounded-full" style={{ background: "var(--secondary)", color: "var(--primary)" }}>
             ⭐ Top 10
@@ -2182,10 +2782,12 @@ const Dashboard = () => {
         </div>
         <TopClientesLista facturas={facturas} />
       </div>
+  );
 
-      <div className="bg-card rounded-3xl p-3.5 border border-border">
+  const activityWidget = (
+      <div className="bg-card rounded-3xl p-3.5 mb-3 border border-border">
         <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2.5">
-          Recent activity
+          {tr("Recent activity")}
         </div>
         {logs.length ? (
           logs.slice(0, 6).map((l, i) => (
@@ -2204,20 +2806,22 @@ const Dashboard = () => {
           <Empty text="No activity" />
         )}
       </div>
+  );
 
-      {/* Remitos pendientes por enviar */}
-      <div className="bg-card rounded-3xl p-3.5 mt-3 border border-border">
+  // Remitos pendientes por enviar
+  const remitosWidget = (
+      <div className="bg-card rounded-3xl p-3.5 mb-3 border border-border">
         <div className="mb-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
-              📦 Remitos pending to send
+              📦 {tr("Remitos pending to send")}
             </div>
             {!readOnly && !editRemitoEmail && (
               <button
                 onClick={() => { setRemitoEmailInp(remitoEmail); setEditRemitoEmail(true); }}
                 className="text-[11px] font-semibold text-primary shrink-0"
               >
-                {remitoEmail ? "✏️ Edit email" : "＋ Set email"}
+                {remitoEmail ? `✏️ ${tr("Edit email")}` : `＋ ${tr("Set email")}`}
               </button>
             )}
           </div>
@@ -2248,7 +2852,7 @@ const Dashboard = () => {
               </button>
             </div>
           ) : remitoEmail ? (
-            <div className="text-[11px] text-muted-foreground mt-0.5">✉️ Send to: <span className="font-mono">{remitoEmail}</span></div>
+            <div className="text-[11px] text-muted-foreground mt-0.5">✉️ {tr("Send to:")} <span className="font-mono">{remitoEmail}</span></div>
           ) : null}
         </div>
         {remitos && remitos.filter((r) => !r.enviado).length > 0 ? (
@@ -2279,7 +2883,7 @@ const Dashboard = () => {
                         href={`/remitos/${r.id}`}
                         className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary text-primary-foreground hover:opacity-90 text-center"
                       >
-                        📄 View Remito
+                        📄 {tr("View Remito")}
                       </a>
                       {remitoEmail && (
                         <a
@@ -2293,10 +2897,10 @@ const Dashboard = () => {
                       )}
                       {!readOnly && (
                         <button
-                          onClick={() => { if (confirm("Confirm this remito was sent?")) marcarRemitoEnviado(r.id); }}
+                          onClick={() => { if (confirm(tr("Confirm this remito was sent?"))) marcarRemitoEnviado(r.id); }}
                           className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-secondary text-secondary-foreground border border-border hover:opacity-90"
                         >
-                          ✓ Sent
+                          ✓ {tr("Sent")}
                         </button>
                       )}
                     </div>
@@ -2305,10 +2909,101 @@ const Dashboard = () => {
               );
             })
         ) : (
-          <Empty text="No pending remitos" />
+          <Empty text={tr("No pending remitos")} />
         )}
       </div>
+  );
 
+  // ── Registry: cada widget del Home con su titulo (para el editor) ──
+  const WIDGET_DEFS: { id: string; title: string; node: ReactNode }[] = [
+    { id: "briefing", title: tr("Daily Briefing"), node: <BriefingCard onReorder={() => setShowReorder(true)} goTab={goTab} /> },
+    { id: "goal", title: tr("Sales goal"), node: goalWidget },
+    { id: "stats", title: tr("Key metrics"), node: statsWidget },
+    { id: "todos", title: tr("To-do"), node: todosWidget },
+    { id: "collections", title: tr("Collections"), node: <CollectionsCard /> },
+    { id: "route", title: tr("Today's Route"), node: <RutaHoyCard /> },
+    { id: "topprod", title: tr("Top Products"), node: topProductosWidget },
+    { id: "topcli", title: tr("Top Clients"), node: topClientesWidget },
+    { id: "reorder", title: tr("Suggested Purchase"), node: <ReorderCard onOpen={() => setShowReorder(true)} /> },
+    { id: "activity", title: tr("Recent activity"), node: activityWidget },
+    { id: "remitos", title: tr("Remitos pending to send"), node: remitosWidget },
+  ];
+  const defsById = Object.fromEntries(WIDGET_DEFS.map((d) => [d.id, d]));
+  const visibles = widgetsCfg.order.filter((id) => !widgetsCfg.hidden.includes(id));
+  const hiddenDefs = widgetsCfg.hidden
+    .map((id) => defsById[id])
+    .filter((d): d is { id: string; title: string; node: ReactNode } => Boolean(d));
+
+  return (
+    <div>
+      <div className="flex justify-end mb-2">
+        <button
+          onClick={() => setEditWidgets((v) => !v)}
+          className={`text-[11px] font-bold px-3 py-1.5 rounded-full transition-colors ${
+            editWidgets ? "bg-primary text-primary-foreground" : "bg-card border border-border text-muted-foreground"
+          }`}
+        >
+          {editWidgets ? `✓ ${tr("Done editing")}` : `⊞ ${tr("Edit widgets")}`}
+        </button>
+      </div>
+
+      {visibles.map((id, idx) => {
+        const def = defsById[id];
+        if (!def) return null;
+        if (!editWidgets) return <div key={id}>{def.node}</div>;
+        return (
+          <div key={id} className="mb-3 rounded-3xl border-2 border-dashed border-primary/40 overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2 bg-secondary">
+              <span className="text-xs font-bold text-secondary-foreground">{def.title}</span>
+              <div className="flex gap-1.5">
+                <button
+                  disabled={idx === 0}
+                  onClick={() => moveWidget(id, -1)}
+                  aria-label={tr("Move up")}
+                  className="w-7 h-7 rounded-lg bg-card border border-border text-sm font-bold text-card-foreground disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  disabled={idx === visibles.length - 1}
+                  onClick={() => moveWidget(id, 1)}
+                  aria-label={tr("Move down")}
+                  className="w-7 h-7 rounded-lg bg-card border border-border text-sm font-bold text-card-foreground disabled:opacity-30"
+                >
+                  ↓
+                </button>
+                <button
+                  onClick={() => toggleWidget(id, true)}
+                  className="h-7 px-2.5 rounded-lg bg-card border border-border text-[11px] font-bold text-red-600"
+                >
+                  {tr("Hide")}
+                </button>
+              </div>
+            </div>
+            <div className="p-2 pb-0 pointer-events-none opacity-90">{def.node}</div>
+          </div>
+        );
+      })}
+
+      {editWidgets && hiddenDefs.length > 0 && (
+        <div className="bg-card border border-border rounded-3xl p-3.5 mb-3">
+          <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">{tr("Hidden widgets")}</div>
+          {hiddenDefs.map((d) => (
+            <div key={d.id} className="flex items-center justify-between py-2 border-b border-border last:border-b-0">
+              <span className="text-sm font-semibold text-card-foreground">{d.title}</span>
+              <button
+                onClick={() => toggleWidget(d.id, false)}
+                className="h-7 px-3 rounded-lg bg-secondary text-[11px] font-bold"
+                style={{ color: "var(--primary)" }}
+              >
+                ＋ {tr("Show")}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showReorder && <ReorderModal onClose={() => setShowReorder(false)} />}
 
       {editMeta && (
         <Modal title={`Sales goal · ${mesActualNombre()}`} onClose={() => setEditMeta(false)}>
@@ -5377,32 +6072,60 @@ const EmpresaModal = ({ onClose }: { onClose: () => void }) => {
 // hooks/use-theme.ts) — NO vive en `empresa` (no es un dato de la empresa,
 // es local a este navegador/PWA). El modo oscuro ya existia en globals.css
 // (.dark) sin usarse; esto solo expone el toggle.
-const AppearanceModal = ({ theme, setTheme, onClose }: { theme: Theme; setTheme: (t: Theme) => void; onClose: () => void }) => (
-  <Modal title="Appearance" onClose={onClose}>
-    <p className="text-xs text-muted-foreground mb-3">Choose how Palm Hills looks on this device.</p>
-    <div className="grid grid-cols-2 gap-3">
-      {(["light", "dark"] as const).map((t) => (
-        <button
-          key={t}
-          onClick={() => setTheme(t)}
-          className={`rounded-2xl border-2 p-3 text-left transition-all ${theme === t ? "border-primary" : "border-border"}`}
-        >
-          <div
-            className="w-full h-16 rounded-xl mb-2.5 flex items-center overflow-hidden"
-            style={{ background: t === "dark" ? "#1a1a18" : "#f2f4ee" }}
+const AppearanceModal = ({ theme, setTheme, onClose }: { theme: Theme; setTheme: (t: Theme) => void; onClose: () => void }) => {
+  // Idioma (2026-07-27): misma pantalla que el tema — ambas son preferencias
+  // de ESTE dispositivo (localStorage), no datos de empresa.
+  const { lang, setLang, t } = useLang();
+  return (
+    <Modal title={t("Appearance")} onClose={onClose}>
+      <p className="text-xs text-muted-foreground mb-3">{t("Choose how the app looks on this device.")}</p>
+      <div className="grid grid-cols-2 gap-3">
+        {(["light", "dark"] as const).map((tm) => (
+          <button
+            key={tm}
+            onClick={() => setTheme(tm)}
+            className={`rounded-2xl border-2 p-3 text-left transition-all ${theme === tm ? "border-primary" : "border-border"}`}
           >
-            <div className="w-1/3 h-full" style={{ background: t === "dark" ? "#252520" : "#ffffff" }} />
-            <div className="flex-1 flex items-center justify-center">
-              <div className="w-7 h-7 rounded-lg" style={{ background: t === "dark" ? "#6aaa2a" : "#4a6741" }} />
+            <div
+              className="w-full h-16 rounded-xl mb-2.5 flex items-center overflow-hidden"
+              style={{ background: tm === "dark" ? "#1a1a18" : "#f2f4ee" }}
+            >
+              <div className="w-1/3 h-full" style={{ background: tm === "dark" ? "#252520" : "#ffffff" }} />
+              <div className="flex-1 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-lg" style={{ background: tm === "dark" ? "#6aaa2a" : "#4a6741" }} />
+              </div>
             </div>
-          </div>
-          <div className="text-sm font-bold text-card-foreground capitalize">{t}</div>
-          <div className="text-[10px] text-muted-foreground">{t === "dark" ? "Dark background, neon green accent" : "The current look"}</div>
-        </button>
-      ))}
-    </div>
-  </Modal>
-);
+            <div className="text-sm font-bold text-card-foreground">{t(tm === "dark" ? "Dark" : "Light")}</div>
+            <div className="text-[10px] text-muted-foreground">{t(tm === "dark" ? "Dark background, neon green accent" : "The current look")}</div>
+          </button>
+        ))}
+      </div>
+      <div className="mt-4">
+        <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">{t("Language")}</div>
+        <div className="grid grid-cols-2 gap-3">
+          {([
+            { id: "en" as const, label: "English", sub: "EN" },
+            { id: "es" as const, label: "Español", sub: "ES" },
+          ]).map((l) => (
+            <button
+              key={l.id}
+              onClick={() => setLang(l.id)}
+              className={`rounded-2xl border-2 p-3 text-left transition-all ${lang === l.id ? "border-primary" : "border-border"}`}
+            >
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-secondary flex items-center justify-center text-[11px] font-extrabold" style={{ color: "var(--primary)" }}>
+                  {l.sub}
+                </div>
+                <div className="text-sm font-bold text-card-foreground">{l.label}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+        <p className="text-[10px] text-muted-foreground mt-2">{t("Applies to the app on this device only.")}</p>
+      </div>
+    </Modal>
+  );
+};
 
 // Settings (2026-07-24): la ruedita del header abre este grid de "cuadros"
 // tipo catalogo (mismo lenguaje visual que las tarjetas de producto en
@@ -9748,7 +10471,9 @@ const primerDiaMes = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth
 
 const PLReport = () => {
   const { facturas, productos, gastos, compras, clientes, vendedores, addGasto, updateGasto, deleteGasto, readOnly } = useData();
+  const { t: tPl } = useLang();
   const [vista, setVista] = useState<"income" | "cash">("income");
+  const [showTaxPackage, setShowTaxPackage] = useState(false);
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(today());
   const [showGastoForm, setShowGastoForm] = useState(false);
@@ -10033,12 +10758,22 @@ const PLReport = () => {
       </div>
 
       {/* Toggle: dos reportes separados, cada uno con su propia logica */}
-      <div className="inline-flex bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
-        <button onClick={() => setVista("income")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vista === "income" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-          Income Statement
-        </button>
-        <button onClick={() => setVista("cash")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vista === "cash" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-          Cash Flow
+      <div className="flex items-center justify-between mb-3 gap-2">
+        <div className="inline-flex bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5">
+          <button onClick={() => setVista("income")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vista === "income" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+            {tPl("Income Statement")}
+          </button>
+          <button onClick={() => setVista("cash")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vista === "cash" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+            {tPl("Cash Flow")}
+          </button>
+        </div>
+        {/* Tax Package (2026-07-27): paquete trimestral/anual para el contador */}
+        <button
+          onClick={() => setShowTaxPackage(true)}
+          className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold text-white shadow-sm active:scale-95 transition-transform"
+          style={{ background: "#b09060" }}
+        >
+          🧾 {tPl("Tax Package")}
         </button>
       </div>
 
@@ -10209,6 +10944,8 @@ const PLReport = () => {
           </div>
         </Modal>
       )}
+
+      {showTaxPackage && <TaxPackageModal onClose={() => setShowTaxPackage(false)} />}
     </div>
   );
 };
@@ -10216,6 +10953,574 @@ const PLReport = () => {
 // ------------------------------
 // Main App
 // ------------------------------
+// ══════════════════════════════════════════════════════════════════
+// Payroll (2026-07-27): conecta la tabla `empleados` (existia huerfana en
+// Supabase desde el inicio) + historial en `pagos_nomina`. Cada pago de
+// Run Payroll registra ademas un Gasto categoria "Payroll" (pagado) — asi
+// fluye al P&L y al Cash Flow por el mecanismo existente sin logica nueva.
+// Las comisiones de VENTA siguen siendo territorio del reporte Salespeople;
+// un empleado tipo "commission" se paga con monto manual aqui.
+// ══════════════════════════════════════════════════════════════════
+const TIPO_PAGO_LABEL: Record<string, string> = { hourly: "Hourly", salary: "Salary", commission: "Commission" };
+const PERIODO_LABEL: Record<string, string> = { weekly: "Weekly", biweekly: "Biweekly", monthly: "Monthly" };
+
+const NominaModal = ({ onClose }: { onClose: () => void }) => {
+  const { addGasto, readOnly } = useData();
+  const { t } = useLang();
+  const supabase = useMemo(() => createClient(), []);
+  const [empleados, setEmpleados] = useState<Empleado[]>([]);
+  const [pagos, setPagos] = useState<PagoNomina[]>([]);
+  const [cargando, setCargando] = useState(true);
+
+  const cargar = async () => {
+    const [emps, pgs] = await Promise.all([
+      supabase.from("empleados").select("*").order("created_at"),
+      supabase.from("pagos_nomina").select("*").order("fecha_pago", { ascending: false }).limit(100),
+    ]);
+    setEmpleados((emps.data as Empleado[]) || []);
+    setPagos((pgs.data as PagoNomina[]) || []);
+    setCargando(false);
+  };
+  useEffect(() => {
+    cargar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Form de empleado ──
+  const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState<string | null>(null);
+  const [fNom, setFNom] = useState("");
+  const [fPuesto, setFPuesto] = useState("");
+  const [fTipo, setFTipo] = useState<"hourly" | "salary" | "commission">("hourly");
+  const [fSal, setFSal] = useState(0);
+  const [fDed, setFDed] = useState(0);
+  const [fPeriodo, setFPeriodo] = useState<"weekly" | "biweekly" | "monthly">("weekly");
+  const [fActivo, setFActivo] = useState(true);
+  const [guardando, setGuardando] = useState(false);
+
+  const abrirNuevo = () => {
+    setEditId(null);
+    setFNom("");
+    setFPuesto("");
+    setFTipo("hourly");
+    setFSal(0);
+    setFDed(0);
+    setFPeriodo("weekly");
+    setFActivo(true);
+    setShowForm(true);
+  };
+  const abrirEdit = (e: Empleado) => {
+    setEditId(e.id);
+    setFNom(e.nom);
+    setFPuesto(e.puesto || "");
+    setFTipo(e.tipo_pago || "salary");
+    setFSal(Number(e.sal) || 0);
+    setFDed(Number(e.ded) || 0);
+    setFPeriodo(e.periodo || "weekly");
+    setFActivo(e.estado === "Active");
+    setShowForm(true);
+  };
+  const guardarEmpleado = async () => {
+    if (!fNom.trim() || guardando) return;
+    setGuardando(true);
+    const payload = {
+      nom: fNom.trim(),
+      puesto: fPuesto.trim() || null,
+      tipo_pago: fTipo,
+      sal: fSal,
+      ded: fDed,
+      periodo: fPeriodo,
+      estado: fActivo ? "Active" : "Inactive",
+    };
+    const q = editId
+      ? supabase.from("empleados").update(payload).eq("id", editId)
+      : supabase.from("empleados").insert(payload);
+    const { error } = await q;
+    setGuardando(false);
+    if (error) {
+      alert("Error: " + error.message);
+      return;
+    }
+    setShowForm(false);
+    cargar();
+  };
+  const borrarEmpleado = async (id: string) => {
+    if (!confirm(t("Delete this employee?"))) return;
+    const { error } = await supabase.from("empleados").delete().eq("id", id);
+    if (error) alert("Error: " + error.message);
+    else cargar();
+  };
+
+  // ── Run payroll ──
+  const hoy = today();
+  const hace6 = (() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return d.toISOString().slice(0, 10);
+  })();
+  const [rDesde, setRDesde] = useState(hace6);
+  const [rHasta, setRHasta] = useState(hoy);
+  const [horas, setHoras] = useState<Record<string, number>>({});
+  const [montosManual, setMontosManual] = useState<Record<string, number | undefined>>({});
+  const [corriendo, setCorriendo] = useState(false);
+
+  const activos = empleados.filter((e) => e.estado === "Active");
+  const montoDe = (e: Empleado) => {
+    if (montosManual[e.id] !== undefined) return montosManual[e.id]!;
+    if (e.tipo_pago === "hourly") return Math.max(0, (horas[e.id] ?? 40) * Number(e.sal) - Number(e.ded));
+    if (e.tipo_pago === "salary") return Math.max(0, Number(e.sal) - Number(e.ded));
+    return 0; // commission: monto manual
+  };
+  const totalRun = activos.reduce((a, e) => a + montoDe(e), 0);
+
+  const runPayroll = async () => {
+    const conMonto = activos.map((e) => ({ e, monto: montoDe(e) })).filter((x) => x.monto > 0);
+    if (!conMonto.length || corriendo) return;
+    if (!confirm(`${t("Run payroll")}: ${fmt(totalRun)}?`)) return;
+    setCorriendo(true);
+    try {
+      for (const { e, monto } of conMonto) {
+        const detalle =
+          e.tipo_pago === "hourly"
+            ? `${horas[e.id] ?? 40}h × ${fmt(Number(e.sal))}`
+            : t(TIPO_PAGO_LABEL[e.tipo_pago] || "Salary");
+        const { error } = await supabase.from("pagos_nomina").insert({
+          empleado_id: e.id,
+          empleado_nom: e.nom,
+          desde: rDesde,
+          hasta: rHasta,
+          detalle,
+          monto,
+          fecha_pago: hoy,
+        });
+        if (error) throw error;
+        await addGasto({
+          categoria: "Payroll",
+          descripcion: `${e.nom} · ${fdate(rDesde)}–${fdate(rHasta)}`,
+          monto,
+          fecha: hoy,
+          pagado: true,
+          fecha_pago: hoy,
+        });
+      }
+      alert(t("Payroll registered"));
+      setMontosManual({});
+      await cargar();
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setCorriendo(false);
+    }
+  };
+
+  const yearStart = `${new Date().getFullYear()}-01-01`;
+  const totalYear = pagos.filter((p) => p.fecha_pago >= yearStart).reduce((a, p) => a + Number(p.monto), 0);
+
+  const inputCls =
+    "w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring";
+
+  return (
+    <Modal title={`💵 ${t("Payroll")}`} onClose={onClose}>
+      {cargando ? (
+        <Empty text="..." />
+      ) : showForm ? (
+        <>
+          <Field label={t("Name")}>
+            <input value={fNom} onChange={(e) => setFNom(e.target.value)} className={inputCls} autoFocus />
+          </Field>
+          <Field label={t("Position")}>
+            <input value={fPuesto} onChange={(e) => setFPuesto(e.target.value)} className={inputCls} />
+          </Field>
+          <Field label={t("Pay type")}>
+            <div className="flex gap-1.5">
+              {(["hourly", "salary", "commission"] as const).map((tp) => (
+                <button
+                  key={tp}
+                  onClick={() => setFTipo(tp)}
+                  className={`flex-1 px-2 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                    fTipo === tp ? "bg-secondary text-secondary-foreground border-primary" : "bg-muted text-muted-foreground border-border"
+                  }`}
+                >
+                  {t(TIPO_PAGO_LABEL[tp])}
+                </button>
+              ))}
+            </div>
+          </Field>
+          {fTipo !== "commission" && (
+            <Field label={`${t("Rate")} ($${fTipo === "hourly" ? ` ${t("per hour")}` : ""})`}>
+              <MoneyInput value={fSal} onChange={setFSal} className={inputCls} />
+            </Field>
+          )}
+          {fTipo === "salary" && (
+            <Field label={t("Period")}>
+              <div className="flex gap-1.5">
+                {(["weekly", "biweekly", "monthly"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setFPeriodo(p)}
+                    className={`flex-1 px-2 py-2 rounded-xl text-xs font-bold border transition-colors ${
+                      fPeriodo === p ? "bg-secondary text-secondary-foreground border-primary" : "bg-muted text-muted-foreground border-border"
+                    }`}
+                  >
+                    {t(PERIODO_LABEL[p])}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+          {fTipo !== "commission" && (
+            <Field label={t("Deductions")}>
+              <MoneyInput value={fDed} onChange={setFDed} className={inputCls} />
+            </Field>
+          )}
+          <Field label={t("Active")}>
+            <Switch checked={fActivo} onCheckedChange={setFActivo} />
+          </Field>
+          <div className="flex gap-2.5 mt-1">
+            <button onClick={() => setShowForm(false)} className={`flex-1 px-4 py-2.5 rounded-full font-medium text-sm ${GLASS_BTN}`}>
+              {t("Cancel")}
+            </button>
+            <button onClick={guardarEmpleado} disabled={guardando || !fNom.trim()} className={`flex-1 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}>
+              {guardando ? "..." : t("Save")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <>
+          {/* ── Empleados ── */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">
+              {t("Employees")} · {empleados.length}
+            </div>
+            {!readOnly && (
+              <button onClick={abrirNuevo} className="text-[11px] font-bold text-primary">
+                ＋ {t("Add employee")}
+              </button>
+            )}
+          </div>
+          <div className="border border-border rounded-2xl overflow-hidden mb-4">
+            {empleados.length === 0 ? (
+              <Empty text="—" />
+            ) : (
+              empleados.map((e) => (
+                <div key={e.id} className={`flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 ${e.estado !== "Active" ? "opacity-50" : ""}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-bold text-card-foreground">{e.nom}</div>
+                    <div className="text-[10px] text-muted-foreground">
+                      {[e.puesto, t(TIPO_PAGO_LABEL[e.tipo_pago] || "Salary")].filter(Boolean).join(" · ")}
+                      {e.tipo_pago !== "commission" && ` · ${fmt(Number(e.sal))}${e.tipo_pago === "hourly" ? "/h" : ` (${t(PERIODO_LABEL[e.periodo] || "Weekly").toLowerCase()})`}`}
+                    </div>
+                  </div>
+                  {!readOnly && (
+                    <>
+                      <button onClick={() => abrirEdit(e)} className="text-[11px] font-bold text-primary px-2 py-1">
+                        {t("Edit")}
+                      </button>
+                      <button onClick={() => borrarEmpleado(e.id)} className="text-[11px] font-bold text-red-600 px-1 py-1">
+                        ✕
+                      </button>
+                    </>
+                  )}
+                </div>
+              ))
+            )}
+          </div>
+
+          {/* ── Run payroll ── */}
+          {!readOnly && activos.length > 0 && (
+            <>
+              <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-2">{t("Run payroll")}</div>
+              <div className="border border-border rounded-2xl p-3 mb-4">
+                <div className="flex gap-2 mb-2.5">
+                  <label className="flex-1 text-[10px] font-bold text-muted-foreground uppercase">
+                    {t("From")}
+                    <input type="date" value={rDesde} onChange={(e) => setRDesde(e.target.value)} className={`${inputCls} mt-1 font-normal normal-case`} />
+                  </label>
+                  <label className="flex-1 text-[10px] font-bold text-muted-foreground uppercase">
+                    {t("To")}
+                    <input type="date" value={rHasta} onChange={(e) => setRHasta(e.target.value)} className={`${inputCls} mt-1 font-normal normal-case`} />
+                  </label>
+                </div>
+                {activos.map((e) => (
+                  <div key={e.id} className="flex items-center gap-2 py-2 border-t border-border">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-bold text-card-foreground">{e.nom}</div>
+                      <div className="text-[9px] text-muted-foreground">{t(TIPO_PAGO_LABEL[e.tipo_pago] || "Salary")}</div>
+                    </div>
+                    {e.tipo_pago === "hourly" && (
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        value={horas[e.id] ?? 40}
+                        onChange={(ev) => setHoras((prev) => ({ ...prev, [e.id]: Number(ev.target.value) || 0 }))}
+                        className="w-16 px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-xs text-right outline-none"
+                        title={t("Hours")}
+                      />
+                    )}
+                    <MoneyInput
+                      value={montoDe(e)}
+                      onChange={(n) => setMontosManual((prev) => ({ ...prev, [e.id]: n }))}
+                      className="w-24 px-2 py-1.5 rounded-lg border border-input bg-card text-card-foreground text-xs text-right font-bold outline-none"
+                    />
+                  </div>
+                ))}
+                <div className="flex items-center justify-between pt-2.5 border-t border-border mt-1">
+                  <div className="text-xs font-bold text-card-foreground">{t("Total payroll")}</div>
+                  <div className="text-base font-extrabold tabular-nums" style={{ color: "var(--primary)" }}>{fmt(totalRun)}</div>
+                </div>
+                <button
+                  onClick={runPayroll}
+                  disabled={corriendo || totalRun <= 0}
+                  className={`w-full mt-2.5 px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+                >
+                  {corriendo ? "..." : `${t("Run payroll")} · ${fmt(totalRun)}`}
+                </button>
+                <p className="text-[10px] text-muted-foreground text-center mt-2">
+                  {t("Each payment is saved as a 'Payroll' expense in the P&L")} · {t("For sales commissions see the Salespeople report")}
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* ── Historial ── */}
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-xs font-bold text-muted-foreground uppercase tracking-wider">{t("History")}</div>
+            <div className="text-[10px] text-muted-foreground">
+              {t("This year")}: <span className="font-bold tabular-nums">{fmt(totalYear)}</span>
+            </div>
+          </div>
+          <div className="border border-border rounded-2xl overflow-hidden">
+            {pagos.length === 0 ? (
+              <Empty text={t("No payroll payments yet")} />
+            ) : (
+              pagos.slice(0, 15).map((p) => (
+                <div key={p.id} className="flex items-center gap-2.5 px-3 py-2 border-b border-border last:border-b-0">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-card-foreground">{p.empleado_nom}</div>
+                    <div className="text-[9px] text-muted-foreground">
+                      {fdate(p.desde)}–{fdate(p.hasta)}
+                      {p.detalle ? ` · ${p.detalle}` : ""}
+                    </div>
+                  </div>
+                  <div className="text-right shrink-0">
+                    <div className="text-xs font-extrabold tabular-nums text-card-foreground">{fmt(Number(p.monto))}</div>
+                    <div className="text-[9px] text-muted-foreground">{fdate(p.fecha_pago)}</div>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </>
+      )}
+    </Modal>
+  );
+};
+
+// ══════════════════════════════════════════════════════════════════
+// Tax Package (2026-07-27): el paquete trimestral/anual para el contador.
+// Reutiliza los mismos criterios del P&L (Income Statement accrual + Cash
+// Flow) pero empaquetado por trimestre y exportable a Excel (3 hojas:
+// resumen, detalle de gastos, cash flow). Boton en el tab P&L.
+// ══════════════════════════════════════════════════════════════════
+const TaxPackageModal = ({ onClose }: { onClose: () => void }) => {
+  const { facturas, productos, gastos, compras, clientes, vendedores } = useData();
+  const { t } = useLang();
+  const nowY = new Date().getFullYear();
+  const [year, setYear] = useState(nowY);
+  const [rango, setRango] = useState<"Q1" | "Q2" | "Q3" | "Q4" | "year">(
+    () => `Q${Math.floor(new Date().getMonth() / 3) + 1}` as "Q1" | "Q2" | "Q3" | "Q4"
+  );
+  const [exportando, setExportando] = useState(false);
+
+  const { desde, hasta } = useMemo(() => {
+    if (rango === "year") return { desde: `${year}-01-01`, hasta: `${year}-12-31` };
+    const q = Number(rango[1]);
+    const m0 = (q - 1) * 3;
+    const last = new Date(year, m0 + 3, 0).getDate();
+    return {
+      desde: `${year}-${String(m0 + 1).padStart(2, "0")}-01`,
+      hasta: `${year}-${String(m0 + 3).padStart(2, "0")}-${String(last).padStart(2, "0")}`,
+    };
+  }, [year, rango]);
+
+  const calc = useMemo(() => {
+    const enR = (f?: string | null) => !!f && f >= desde && f <= hasta;
+    const bySku: Record<string, number> = {};
+    const byNom: Record<string, number> = {};
+    for (const p of productos) {
+      if (p.sku) bySku[`${p.sku.trim().toLowerCase()}|${p.almacen || "palmhills"}`] = Number(p.costo) || 0;
+      byNom[p.nom] = Number(p.costo) || 0;
+    }
+    let invoiced = 0,
+      cogs = 0,
+      cash = 0;
+    for (const f of facturas) {
+      for (const pago of f.pagos || []) if (enR(pago.fecha)) cash += Number(pago.monto) || 0;
+      if (enR(f.fecha)) {
+        invoiced += Number(f.total) || 0;
+        for (const l of f.lineas || []) {
+          const key = `${(l.sku || "").trim().toLowerCase()}|${l.almacen || "palmhills"}`;
+          cogs += Number(l.qty || 0) * (bySku[key] ?? byNom[l.prodNom] ?? 0);
+        }
+      }
+    }
+    // Comision de venta (accrual) — mismo criterio que el Income Statement
+    const nombresPorVendedor = new Map<string, Set<string>>();
+    for (const c of clientes) {
+      if (!c.vendedor_id) continue;
+      if (!nombresPorVendedor.has(c.vendedor_id)) nombresPorVendedor.set(c.vendedor_id, new Set());
+      nombresPorVendedor.get(c.vendedor_id)!.add(c.nom);
+    }
+    let comVenta = 0;
+    for (const v of vendedores) {
+      if (v.base_comision !== "venta" && v.base_comision !== "ambas") continue;
+      const noms = nombresPorVendedor.get(v.id) || new Set<string>();
+      let venta = 0;
+      for (const f of facturas) if (noms.has(f.cli) && enR(f.fecha)) venta += Number(f.total) || 0;
+      comVenta += venta * (v.comision_venta_pct / 100);
+    }
+    const gastosRango = gastos.filter((g) => enR(g.fecha));
+    const porCategoria = new Map<string, number>();
+    for (const g of gastosRango) porCategoria.set(g.categoria, (porCategoria.get(g.categoria) || 0) + Number(g.monto));
+    const payroll = porCategoria.get("Payroll") || 0;
+    const totalGastos = gastosRango.reduce((a, g) => a + Number(g.monto), 0);
+    const otros = totalGastos - payroll;
+    const gross = invoiced - cogs;
+    const net = gross - totalGastos - comVenta;
+    const comprasTotal = compras.filter((c) => enR(c.fecha)).reduce((a, c) => a + Number(c.total), 0);
+    const gastosPagados = gastos.filter((g) => g.pagado && enR(g.fecha_pago)).reduce((a, g) => a + Number(g.monto), 0);
+    return {
+      invoiced,
+      cogs,
+      gross,
+      payroll,
+      comVenta,
+      otros,
+      net,
+      cash,
+      comprasTotal,
+      gastosPagados,
+      porCategoria: Array.from(porCategoria.entries()).sort((a, b) => b[1] - a[1]),
+      gastosRango,
+    };
+  }, [facturas, productos, gastos, compras, clientes, vendedores, desde, hasta]);
+
+  const exportar = async () => {
+    if (exportando) return;
+    setExportando(true);
+    try {
+      const XLSX = await import("xlsx");
+      const inc: (string | number)[][] = [
+        [t("Income Statement"), `${fdate(desde)} — ${fdate(hasta)}`],
+        [],
+        [t("Revenue (invoiced)"), calc.invoiced],
+        [t("Cost of goods sold"), -calc.cogs],
+        [t("Gross profit"), calc.gross],
+        [],
+        [t("Payroll"), -calc.payroll],
+        [t("Sales commissions"), -calc.comVenta],
+        ...calc.porCategoria.filter(([c]) => c !== "Payroll").map(([c, v]): (string | number)[] => [c, -v]),
+        [],
+        [t("Net income"), calc.net],
+      ];
+      const cashRows: (string | number)[][] = [
+        [t("Cash Flow"), `${fdate(desde)} — ${fdate(hasta)}`],
+        [],
+        [t("Cash collected"), calc.cash],
+        [t("Inventory purchases"), -calc.comprasTotal],
+        [t("Expenses paid"), -calc.gastosPagados],
+        [t("Net cash flow"), calc.cash - calc.comprasTotal - calc.gastosPagados],
+      ];
+      const det: (string | number)[][] = [
+        [t("Date"), t("Category"), t("Description"), t("Amount"), t("Paid")],
+        ...calc.gastosRango.map((g): (string | number)[] => [g.fecha, g.categoria, g.descripcion || "", Number(g.monto), g.pagado ? "Yes" : "No"]),
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(inc), t("Income Statement").slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(cashRows), t("Cash Flow").slice(0, 31));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(det), t("Expenses detail").slice(0, 31));
+      XLSX.writeFile(wb, `Tax-Package-${year}-${rango === "year" ? "FY" : rango}.xlsx`);
+    } catch (err) {
+      alert("Error: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setExportando(false);
+    }
+  };
+
+  const linea = (label: string, monto: number, opts?: { bold?: boolean; neg?: boolean; accent?: boolean }) => (
+    <div className={`flex justify-between py-1.5 text-sm ${opts?.bold ? "font-extrabold" : ""}`}>
+      <span className={opts?.bold ? "text-card-foreground" : "text-muted-foreground"}>{label}</span>
+      <span className={`tabular-nums ${opts?.accent ? "font-extrabold" : ""}`} style={opts?.accent ? { color: "var(--primary)" } : undefined}>
+        {opts?.neg && monto > 0 ? "−" : ""}
+        {fmt(Math.abs(monto))}
+      </span>
+    </div>
+  );
+
+  return (
+    <Modal title={`🧾 ${t("Tax Package")}`} onClose={onClose}>
+      <div className="text-[11px] text-muted-foreground mb-2 -mt-1">{t("For your accountant")}</div>
+      <div className="flex gap-1.5 mb-2">
+        {[nowY - 1, nowY].map((y) => (
+          <button
+            key={y}
+            onClick={() => setYear(y)}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+              year === y ? "bg-secondary text-secondary-foreground border-primary" : "bg-muted text-muted-foreground border-border"
+            }`}
+          >
+            {y}
+          </button>
+        ))}
+      </div>
+      <div className="flex gap-1.5 mb-3 flex-wrap">
+        {(["Q1", "Q2", "Q3", "Q4", "year"] as const).map((r) => (
+          <button
+            key={r}
+            onClick={() => setRango(r)}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-colors ${
+              rango === r ? "bg-secondary text-secondary-foreground border-primary" : "bg-muted text-muted-foreground border-border"
+            }`}
+          >
+            {r === "year" ? t("Year") : r}
+          </button>
+        ))}
+      </div>
+
+      <div className="border border-border rounded-2xl p-3.5 mb-3">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{t("Income Statement")}</div>
+        {linea(t("Revenue (invoiced)"), calc.invoiced)}
+        {linea(t("Cost of goods sold"), calc.cogs, { neg: true })}
+        <div className="border-t border-border my-1" />
+        {linea(t("Gross profit"), calc.gross, { bold: true })}
+        {linea(t("Payroll"), calc.payroll, { neg: true })}
+        {calc.comVenta > 0.005 && linea(t("Sales commissions"), calc.comVenta, { neg: true })}
+        {linea(t("Operating expenses"), calc.otros, { neg: true })}
+        <div className="border-t-2 my-1" style={{ borderColor: "var(--primary)" }} />
+        {linea(t("Net income"), calc.net, { bold: true, accent: true })}
+      </div>
+
+      <div className="border border-border rounded-2xl p-3.5 mb-3.5">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{t("Cash Flow")}</div>
+        {linea(t("Cash collected"), calc.cash)}
+        {linea(t("Inventory purchases"), calc.comprasTotal, { neg: true })}
+        {linea(t("Expenses paid"), calc.gastosPagados, { neg: true })}
+        <div className="border-t border-border my-1" />
+        {linea(t("Net cash flow"), calc.cash - calc.comprasTotal - calc.gastosPagados, { bold: true })}
+      </div>
+
+      <button
+        onClick={exportar}
+        disabled={exportando}
+        className="w-full px-4 py-2.5 rounded-full font-bold text-sm text-white shadow-md active:scale-[0.97] transition-all disabled:opacity-50"
+        style={{ background: "#b09060" }}
+      >
+        {exportando ? "..." : `📤 ${t("Export Excel")}`}
+      </button>
+    </Modal>
+  );
+};
+
 const TITLES: Record<string, string> = {
   dash: "Dashboard",
   cal: "Calendar",
@@ -10466,7 +11771,9 @@ function AppContent() {
   const [showEmpresaGlobal, setShowEmpresaGlobal] = useState(false);
   const [showPlantillasGlobal, setShowPlantillasGlobal] = useState(false);
   const [showAppearanceGlobal, setShowAppearanceGlobal] = useState(false);
+  const [showNominaGlobal, setShowNominaGlobal] = useState(false);
   const { theme, setTheme } = useTheme();
+  const { t } = useLang();
   const mainRef = useRef<HTMLDivElement>(null);
   const didSyncUrlRef = useRef(false);
 
@@ -10558,6 +11865,17 @@ function AppContent() {
     if (role === "visitante" && tab === "usr") setTab("dash");
   }, [role, tab]);
 
+  // Los widgets del Home navegan entre tabs con este evento (Dashboard no
+  // recibe setTab como prop) — ver goTab en el Dashboard.
+  useEffect(() => {
+    const fn = (e: Event) => {
+      const id = (e as CustomEvent<string>).detail;
+      if (ALL_TAB_IDS.includes(id)) setTab(id);
+    };
+    window.addEventListener("ph:goto-tab", fn);
+    return () => window.removeEventListener("ph:goto-tab", fn);
+  }, []);
+
   const signOut = async () => {
     await supabase.auth.signOut();
     router.replace("/auth/login");
@@ -10581,16 +11899,19 @@ function AppContent() {
   // configuraciones") — Appearance/Company Profile/Document Templates/Manage
   // Users se movieron al grid de "Settings" (la ruedita), ver SETTINGS_ITEMS.
   const MORE_ITEMS = [
-    { id: "mej", label: "Improvements", icon: NAV_ICONS.mej },
-    { id: "ven", label: "Salespeople", icon: NAV_ICONS.ven },
-    { id: "alm", label: "Warehouses", icon: NAV_ICONS.alm },
+    { id: "mej", label: t("Improvements"), icon: NAV_ICONS.mej },
+    { id: "ven", label: t("Salespeople"), icon: NAV_ICONS.ven },
+    // Payroll (2026-07-27): tabla operativa como Salespeople, solo admin —
+    // los sueldos son el dato mas sensible de la app.
+    ...(role === "admin" ? [{ id: "pay", label: t("Payroll"), icon: NAV_ICONS.pay }] : []),
+    { id: "alm", label: t("Warehouses"), icon: NAV_ICONS.alm },
   ];
 
   const SETTINGS_ITEMS = [
-    { id: "thm", label: "Appearance", icon: NAV_ICONS.thm },
-    ...(role === "admin" ? [{ id: "emp", label: "Company Profile", icon: NAV_ICONS.emp }] : []),
-    ...(role === "admin" ? [{ id: "tpl", label: "Document Templates", icon: NAV_ICONS.tpl }] : []),
-    ...(role === "admin" ? [{ id: "usr", label: "Manage Users", icon: NAV_ICONS.usr }] : []),
+    { id: "thm", label: t("Appearance"), icon: NAV_ICONS.thm },
+    ...(role === "admin" ? [{ id: "emp", label: t("Company Profile"), icon: NAV_ICONS.emp }] : []),
+    ...(role === "admin" ? [{ id: "tpl", label: t("Document Templates"), icon: NAV_ICONS.tpl }] : []),
+    ...(role === "admin" ? [{ id: "usr", label: t("Manage Users"), icon: NAV_ICONS.usr }] : []),
   ];
 
   return (
@@ -10619,7 +11940,7 @@ function AppContent() {
         <div className="flex items-center gap-3">
           <div className="text-right hidden xs:block">
             <div className="text-xs text-muted-foreground font-medium">
-              {TITLES[tab]}
+              {t(TITLES[tab])}
             </div>
             {email && (
               <div className="text-[10px] text-muted-foreground/70 truncate max-w-[120px]">
@@ -10659,6 +11980,7 @@ function AppContent() {
                         setShowMoreMenu(false);
                         if (it.id === "ven") setShowVendedoresGlobal(true);
                         else if (it.id === "alm") setShowAlmacenesGlobal(true);
+                        else if (it.id === "pay") setShowNominaGlobal(true);
                         else setTab(it.id);
                       }}
                       className={`w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-sm hover:bg-muted border-b border-border last:border-b-0 ${tab === it.id ? "font-bold text-primary" : "text-card-foreground"}`}
@@ -10688,7 +12010,7 @@ function AppContent() {
       </header>
       {loading && (
         <div className="bg-secondary text-secondary-foreground text-center text-xs py-1.5">
-          Loading data...
+          {t("Loading data...")}
         </div>
       )}
       <main
@@ -10764,6 +12086,7 @@ function AppContent() {
       </main>
       <BottomNav active={tab} onSelect={setTab} hiddenTabs={role === "visitante" ? ["usr"] : []} />
       {showVendedoresGlobal && <VendedoresModal onClose={() => setShowVendedoresGlobal(false)} />}
+      {showNominaGlobal && <NominaModal onClose={() => setShowNominaGlobal(false)} />}
       {showAlmacenesGlobal && <AlmacenesModal onClose={() => setShowAlmacenesGlobal(false)} />}
       {showEmpresaGlobal && <EmpresaModal onClose={() => setShowEmpresaGlobal(false)} />}
       {showPlantillasGlobal && <PlantillasModal onClose={() => setShowPlantillasGlobal(false)} />}
