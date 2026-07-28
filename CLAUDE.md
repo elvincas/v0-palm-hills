@@ -92,7 +92,7 @@ supabase/
 - **Seed inicial**: "Stephanie Beltrán", prefijo `01`, 1%/1%, `ambas` — los 91 clientes existentes (todos ya usaban prefijo `01`) se le asignaron automáticamente en la migración.
 
 ### `productos`
-`id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `almacen` (palmhills | castillo | null), `categorias` (jsonb `{categoriaId: valores[]}`, ver `categorias` abajo)
+`id`, `nom`, `sku`, `barcode`, `fabricante`, `etiquetas` (string[]), `precio`, `costo`, `cajas`, `stock`, `min`, `foto` (base64), `foto_v` (int, versión de la foto — la incrementa un trigger, ver caché de fotos), `almacen` (palmhills | castillo | null), `categorias` (jsonb `{categoriaId: valores[]}`, ver `categorias` abajo), `liquidacion` (bool, 2026-07-28) + `precio_liquidacion` (numeric nullable) — interruptor "Clearance" en el form de producto: lo empuja en las sugerencias de New Order y, si tiene precio, ese precio se aplica solo al agregarlo a una orden (solo si mejora el que ya le tocaba al cliente por su lista). Chip 🏷️ sobre la foto en la tarjeta de Inventario.
 
 ### `facturas`
 `id`, `num` (empieza en 1001), `cli` (nombre string), `fecha`, `estado` (Pending/Partially Paid/Paid), `total`, `lineas` (LineaFactura[]), `pagos` ([{monto, fecha, nota?, metodo?}] — metodo: Cash/Zelle/Check/Card/Bank Transfer/Credit), `orden_id` (orden que la generó, para revertir)
@@ -204,7 +204,9 @@ Documento **completamente independiente de `ordenes`** — a propósito, para re
 ## Patrones Importantes
 
 ### Carga de fotos en segundo plano
-Las fotos (base64) se cargan en lotes de 20 para evitar timeouts de Supabase. El estado inicial se carga sin fotos.
+Las fotos (base64) se cargan en lotes para evitar timeouts de Supabase. El estado inicial se carga sin fotos.
+
+**Caché compartido (`lib/foto-cache.ts`, extraído el 2026-07-28):** los helpers de IndexedDB (`idbOpen`/`idbGetAll`/`idbPut`, base `ph-fotos-v1`, stores `prod`/`cli`) vivían dentro de `app/page.tsx` desde el incidente de Disk IO del 2026-07-13; ahora son un módulo compartido. Cada entrada guarda `{foto, v}` con la versión `foto_v` del servidor, así solo se re-descarga la foto que cambió. **Cualquier pantalla nueva que liste productos con foto DEBE usarlo** — `nueva-orden` no lo hacía y re-descargaba las 1.680 fotos (~160 MB, 479 peticiones de 5 productos) en cada apertura, exactamente el patrón que tumbó la base. Al ser la misma base IndexedDB, la foto que ya bajó el Home le sirve a New Order sin pedirla de nuevo.
 
 ### PostgREST pagination
 Tablas grandes usan `range()` manual (1000 filas por request).
@@ -298,6 +300,25 @@ Botón "📖 Catalog" en Inventario abre un modal (`CatalogoModal`) con 3 opcion
 - `DatosCatalogo.productos` (lista plana) se reemplazó por `grupos: GrupoCatalogo[]` (`{ marca, productos }[]`) — tanto el grid como la tabla iteran por grupo, cada uno con su propio encabezado de sección (banda `--secondary` con borde izquierdo verde + cantidad de items). Productos sin `fabricante` caen en el grupo `"Other Products"`, siempre al final (los demás, alfabético). El agrupado se arma en `CatalogoModal.generar` (`app/page.tsx`) con un `Map<marca, items[]>`; `scripts/test-catalogo.ts` tiene su propia función `agrupar()` que replica la misma lógica para el test.
 - Como la marca ya se anuncia en el encabezado de sección, se quitó la columna "Brand" de la tabla y el subtítulo de marca por tarjeta del grid (quedaban redundantes) — `ProductoCatalogo` volvió a ser solo `{ nom, sku, precio, foto }`, sin `fabricante`.
 - **Calidad de foto**: `compressCatalogPhoto` pasó de 160px/0.55 a **320px/0.72** + `imageSmoothingQuality: "high"` — las fotos se veían borrosas porque una tarjeta del grid mide ~2.3in de ancho, que a 150-200dpi de impresión son ~340-460px reales; 160px quedaba muy por debajo de eso. Archivo más pesado (~7MB para 24 fotos de prueba a tamaño completo sin comprimir, el escenario que exagera el test a propósito) pero manejable para catálogos reales ya comprimidos en el navegador.
+
+### New Order — toma de pedido en el punto de venta (2026-07-28)
+`app/clientes/[id]/nueva-orden/page.tsx` (mismo destino desde el perfil del cliente y desde el tab Orders). Rediseño aprobado por mockup (3 opciones de ubicación de las sugerencias; el usuario eligió la B, "cajón que se cierra solo").
+
+**Velocidad** — la pantalla bajaba las 1.680 fotos del catálogo en cada apertura y dibujaba las 2.393 tarjetas de una vez:
+- Usa el caché IndexedDB compartido (`lib/foto-cache.ts`): pinta las cacheadas al instante y solo pide las que faltan o cambiaron de `foto_v`.
+- **Cola de fotos con prioridad**: `pendientesRef` (Map id→v) con un solo consumidor (`drenarFotos`, lotes de 10). `priorizarFotos(ids)` reordena la cola poniendo al frente lo que está en pantalla — un efecto sobre `visibles` la llama en cada cambio de filtro/página. Un solo consumidor evita el doble fetch y garantiza avance (cada vuelta borra de la cola lo que va a pedir).
+- Grilla paginada de a 60 (`PAGE_SIZE`) con botón "Load more"; `page` se resetea al cambiar búsqueda/filtro/orden.
+- Buscador con retardo de 150 ms (`searchInput` para el input, `search` para el filtrado): `flexibleSearch` recorre 2.393 productos y trababa la escritura.
+
+**Sugerencias** (`sugerencias`, mezcla pedida por el usuario, máx. 8): `usual` = productos que ESTE cliente ya compra (facturas del último año resueltas a producto por SKU+almacén y si no por nombre — 99,8% de las líneas resuelven), ordenados por veces compradas; el "+" agrega su cantidad habitual (`qty/veces`). `clearance` = `productos.liquidacion`. `slow` = con stock en almacén con `lleva_stock` y sin ventas a NADIE en 90 días, ordenados por dinero parado. Cupos: 4 usual, 2 clearance, 2 slow, y lo que sobre se rellena con más usual. El orden se calcula SIN mirar `cantidades` (si no, la fila se reordena sola mientras se toma el pedido); lo ya agregado se filtra al dibujar. Se excluye lo que no se puede vender (`puedeVender`: disponible > 0 salvo almacenes sin stock).
+
+**Ubicación (opción B):** la barra de una línea (`💡 N suggestions · 4 usual · 2 slow ⌄`) es la última fila del header sticky, justo encima de su fila de tarjetas, que vive al principio del contenido scrolleable (así se va con el scroll y no le quita alto fijo al catálogo). Se pliega SOLA la primera vez que se toca el buscador o entra el primer producto (`colapsarSugerencias` + ref `autoColapsado`, una sola vez). Agregar DESDE una sugerencia no la cierra. Reabrir desde la barra hace `scrollTo({top:0})` para que la fila quede a la vista.
+
+**Foto a pantalla completa:** tocar cualquier miniatura (grilla o lista) abre la foto en overlay negro con nombre, el precio que le toca a ese cliente y el disponible, para enseñársela al cliente. Swipe ← → recorre los productos del resultado actual (`zoomIdx` es índice sobre `visibles`). `renderFoto` es una FUNCIÓN que devuelve JSX, no un componente declarado dentro del render: un componente nuevo por render remontaría todas las `<img>` base64.
+
+**Vista de lista compacta:** tercer modo junto a ▥2/▦3 (`vista: '2'|'3'|'list'`, mismo localStorage `ph_columnas_orden` que antes guardaba solo el número — se parsean los valores viejos). Una fila por producto con miniatura, precio tocable (abre el `MoneyInput` de ajuste en el sitio) y stepper − qty +.
+
+**"Lo compró antes":** cada tarjeta muestra `Last: 12u @ $4.50 · 3 wks ago` cuando ese cliente ya compró ese producto (`historialCliente`), para no cobrarle distinto que la vez pasada.
 
 ### Aging Report (2026-07-20)
 Botón junto al buscador de Invoices → `/reportes/facturas-pendientes`: lista facturas Pending/Partially Paid ordenadas por antigüedad (+30 días resaltadas en rojo), con toggle "By age" (plano) / "By client" (agrupado, clientes con la factura pendiente más vieja primero). PDF vía `/api/reportes/facturas-pendientes/pdf?groupBy=flat|client` (mismo patrón @react-pdf; al ser tabla que fluye no necesita la paginación manual de facturas/estimates). Test: `npx tsx scripts/test-reporte-cartera.ts`.

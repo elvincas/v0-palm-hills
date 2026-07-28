@@ -12,6 +12,7 @@ import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom
 import { proximaFechaEntrega } from "@/lib/delivery";
 import { MoneyInput } from "@/components/ui/money-input";
 import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
+import { idbOpen, idbGetAll, idbPut, type FotoCache } from "@/lib/foto-cache";
 import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 import { Switch } from "@/components/ui/switch";
 import { useTheme, type Theme } from "@/hooks/use-theme";
@@ -130,6 +131,10 @@ interface Producto {
   foto_v?: number;
   almacen?: string;
   categorias?: Record<string, string[]>;
+  // Liquidacion: el producto se empuja en las sugerencias de New Order y, si
+  // tiene precio_liquidacion, ese precio se aplica solo al agregarlo a la orden.
+  liquidacion?: boolean;
+  precio_liquidacion?: number | null;
 }
 
 interface LineaFactura {
@@ -691,46 +696,6 @@ interface DataContextType {
 
 const DataContext = createContext<DataContextType | null>(null);
 
-// ── IndexedDB cache para fotos (persiste entre sesiones en el dispositivo) ──
-const IDB_NAME = "ph-fotos-v1";
-const idbOpen = (): Promise<IDBDatabase | null> => {
-  if (typeof indexedDB === "undefined") return Promise.resolve(null);
-  return new Promise((resolve) => {
-    const req = indexedDB.open(IDB_NAME, 1);
-    req.onupgradeneeded = (e) => {
-      const db = (e.target as IDBOpenDBRequest).result;
-      if (!db.objectStoreNames.contains("prod")) db.createObjectStore("prod");
-      if (!db.objectStoreNames.contains("cli")) db.createObjectStore("cli");
-    };
-    req.onsuccess = (e) => resolve((e.target as IDBOpenDBRequest).result);
-    req.onerror = () => resolve(null);
-  });
-};
-// Cada entrada guarda la foto (o null si el registro no tiene) junto con la
-// version foto_v del servidor: asi solo se re-descarga una foto cuando su
-// version cambia. Entradas viejas (string suelto) se tratan como version 1.
-type FotoCache = { foto: string | null; v: number };
-const idbGetAll = (db: IDBDatabase, store: string): Promise<Map<string, FotoCache>> =>
-  new Promise((resolve) => {
-    const map = new Map<string, FotoCache>();
-    const req = db.transaction(store, "readonly").objectStore(store).openCursor();
-    req.onsuccess = (e) => {
-      const cur = (e.target as IDBRequest<IDBCursorWithValue | null>).result;
-      if (cur) {
-        if (cur.value != null) {
-          const val: FotoCache = typeof cur.value === "string" ? { foto: cur.value, v: 1 } : cur.value;
-          map.set(cur.key as string, val);
-        }
-        cur.continue();
-      }
-      else resolve(map);
-    };
-    req.onerror = () => resolve(map);
-  });
-const idbPut = (db: IDBDatabase, store: string, key: string, val: FotoCache) => {
-  try { db.transaction(store, "readwrite").objectStore(store).put(val, key); } catch { /* ignore */ }
-};
-
 const fmtTime = (iso: string) =>
   new Date(iso).toLocaleTimeString("en-US", {
     hour: "2-digit",
@@ -790,7 +755,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const CLIENTE_COLS =
     "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, lista_precio_id, vendedor_id, foto_local_v, created_at";
   const PRODUCTO_COLS =
-    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, categorias, created_at";
+    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, categorias, liquidacion, precio_liquidacion, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
   // timeout de la base de datos. Con fotos de hasta 500KB, 10 por request = ~5MB,
@@ -1107,6 +1072,13 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
           )
         : [],
       fabricante: (prod.fabricante || "").trim(),
+      liquidacion: !!prod.liquidacion,
+      // Sin precio de liquidacion se guarda null (no 0): significa "en
+      // liquidacion pero al precio normal", no "gratis".
+      precio_liquidacion:
+        prod.liquidacion && Number(prod.precio_liquidacion) > 0
+          ? Number(prod.precio_liquidacion)
+          : null,
     };
     delete (validated as { icon?: string }).icon;
     return validated;
@@ -7004,6 +6976,8 @@ const Inventario = () => {
     stock: "",
     min: "5",
     barcode: "",
+    liquidacion: false,
+    precioLiq: "",
   });
 
   const productosAlmacen = useMemo(
@@ -7139,6 +7113,8 @@ const Inventario = () => {
       stock: "",
       min: "5",
       barcode: "",
+      liquidacion: false,
+      precioLiq: "",
     });
     setMenuOpen(false);
     setShow(true);
@@ -7160,6 +7136,8 @@ const Inventario = () => {
       stock: String(p.stock),
       min: String(p.min),
       barcode: p.barcode || "",
+      liquidacion: !!p.liquidacion,
+      precioLiq: p.precio_liquidacion != null ? String(p.precio_liquidacion) : "",
     });
     setShow(true);
   };
@@ -7210,6 +7188,8 @@ const Inventario = () => {
       barcode: form.barcode,
       foto,
       almacen: formAlmacen,
+      liquidacion: form.liquidacion,
+      precio_liquidacion: form.liquidacion && Number(form.precioLiq) > 0 ? Number(form.precioLiq) : null,
     };
     try {
       if (editId) {
@@ -7773,6 +7753,13 @@ const Inventario = () => {
                     Edit
                   </button>
                 )}
+                {/* Liquidacion: chip sobre la foto (arriba a la izquierda, el
+                    lado libre) para no descuadrar la fila de precio/estado. */}
+                {p.liquidacion && (
+                  <span className="absolute top-2 left-2 z-[1] px-2 py-1 rounded-full text-[10px] font-bold bg-[#f5eee2] text-[#a3814e] border border-[#e6d9c2]">
+                    🏷️{p.precio_liquidacion ? ` ${fmt(p.precio_liquidacion)}` : ""}
+                  </span>
+                )}
                 <div
                   onClick={() => p.foto && setFotoAmpliada(p.foto)}
                   className={`w-full aspect-square rounded-xl overflow-hidden bg-white border border-border/60 flex items-center justify-center text-2xl mb-2.5 shrink-0 ${p.foto ? "cursor-pointer" : ""}`}
@@ -8247,6 +8234,34 @@ const Inventario = () => {
               </span>
             </div>
           )}
+          {/* Liquidacion: lo empuja en las sugerencias de New Order y, si se le
+              pone precio, ese precio entra solo al agregarlo a una orden. */}
+          <div className="rounded-xl border border-border bg-muted/40 px-3.5 py-2.5 mb-3">
+            <label className="flex items-center justify-between gap-2.5 cursor-pointer">
+              <span className="text-sm text-card-foreground">
+                🏷️ Clearance
+                <span className="block text-[11px] text-muted-foreground font-normal">
+                  Suggested first when taking an order
+                </span>
+              </span>
+              <Switch
+                checked={form.liquidacion}
+                onCheckedChange={(v) => setForm({ ...form, liquidacion: v })}
+              />
+            </label>
+            {form.liquidacion && (
+              <div className="mt-2.5 pt-2.5 border-t border-border">
+                <label className="text-[11px] text-muted-foreground block mb-1">
+                  Clearance price ($) — leave at 0 to keep the regular price
+                </label>
+                <MoneyInput
+                  value={Number(form.precioLiq) || 0}
+                  onChange={(n) => setForm({ ...form, precioLiq: String(n) })}
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                />
+              </div>
+            )}
+          </div>
           {almacenInfo(almacenes, formAlmacen).lleva_stock && (
             <>
               <Row2>
