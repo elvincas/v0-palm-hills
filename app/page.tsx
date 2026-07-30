@@ -135,6 +135,9 @@ interface Producto {
   // tiene precio_liquidacion, ese precio se aplica solo al agregarlo a la orden.
   liquidacion?: boolean;
   precio_liquidacion?: number | null;
+  // Ubicacion fisica dentro del almacen (texto libre: "A-01", "Estante 3").
+  // Ordena y agrupa la hoja de conteo para contar caminando los estantes.
+  ubicacion?: string | null;
 }
 
 interface LineaFactura {
@@ -755,7 +758,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const CLIENTE_COLS =
     "id, nom, codigo_cliente, tel, email, dir, ciudad, estado_dir, contacto, estado, abierto_sabados, telefonos, fax, notas_visita, lista_precio_id, vendedor_id, foto_local_v, created_at";
   const PRODUCTO_COLS =
-    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, categorias, liquidacion, precio_liquidacion, created_at";
+    "id, nom, sku, barcode, fabricante, etiquetas, precio, costo, cajas, stock, min, reservado, almacen, foto_v, categorias, liquidacion, precio_liquidacion, ubicacion, created_at";
 
   // Las fotos pesan varios MB en total: pedirlas todas de una vez supera el
   // timeout de la base de datos. Con fotos de hasta 500KB, 10 por request = ~5MB,
@@ -1079,6 +1082,9 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         prod.liquidacion && Number(prod.precio_liquidacion) > 0
           ? Number(prod.precio_liquidacion)
           : null,
+      // Vacia se guarda como null (no ""), asi "sin ubicacion" es un solo valor
+      // y el agrupado de la hoja de conteo no arma dos grupos distintos.
+      ubicacion: (prod.ubicacion || "").trim() || null,
     };
     delete (validated as { icon?: string }).icon;
     return validated;
@@ -5393,7 +5399,7 @@ type BulkRow = {
   _warning?: string;
 };
 
-type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku";
+type SortKey = "nom" | "precio" | "stock" | "fabricante" | "barcode" | "sku" | "ubicacion";
 
 type ClienteBulkRow = {
   nom: string;
@@ -5417,6 +5423,7 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
   { key: "fabricante", label: "Brand" },
   { key: "barcode", label: "Barcode" },
   { key: "sku", label: "SKU" },
+  { key: "ubicacion", label: "Location" },
 ];
 
 // Miniatura chica para el catalogo (no la foto completa que se guarda en
@@ -5585,6 +5592,237 @@ const CatalogoModal = ({ onClose }: { onClose: () => void }) => {
       >
         {generando ? `Preparing photos... ${progreso.hecho}/${progreso.total}` : "Generate PDF"}
       </button>
+    </Modal>
+  );
+};
+
+// Hoja de conteo fisico (2026-07-29). Solo aplica a almacenes que llevan stock
+// —un almacen de consignacion no tiene nada que contar—. Agrupa por ubicacion
+// para contar caminando los estantes; mientras las ubicaciones esten vacias
+// (arrancan asi para todo el catalogo) se puede agrupar por marca o A-Z y la
+// hoja trae la casilla de ubicacion en blanco para ir anotandolas.
+const ConteoModal = ({ onClose }: { onClose: () => void }) => {
+  const { productos, almacenes } = useData();
+  const almacenesConStock = useMemo(
+    () => almacenes.filter((a) => a.activo && a.lleva_stock),
+    [almacenes]
+  );
+  const [almacenSel, setAlmacenSel] = useState<string>(() => almacenesConStock[0]?.id || almacenPrincipal(almacenes));
+  const [alcance, setAlcance] = useState<"con_stock" | "todos" | "bajo">("con_stock");
+  const [agrupar, setAgrupar] = useState<"ubicacion" | "marca" | "nom">("ubicacion");
+  const [ubicacionSel, setUbicacionSel] = useState<string>("todas");
+  const [conSistema, setConSistema] = useState(false);
+  const [generando, setGenerando] = useState(false);
+
+  const delAlmacen = useMemo(
+    () => productos.filter((p) => (p.almacen || almacenPrincipal(almacenes)) === almacenSel),
+    [productos, almacenSel, almacenes]
+  );
+
+  const ubicaciones = useMemo(() => {
+    const set = new Set<string>();
+    delAlmacen.forEach((p) => {
+      const u = (p.ubicacion || "").trim();
+      if (u) set.add(u);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  }, [delAlmacen]);
+
+  // Sin ninguna ubicacion cargada, agrupar por ubicacion no dice nada: se
+  // arranca por marca y la hoja igual trae la casilla para anotarlas.
+  useEffect(() => {
+    setAgrupar(ubicaciones.length ? "ubicacion" : "marca");
+    setUbicacionSel("todas");
+  }, [ubicaciones.length, almacenSel]);
+
+  const filtrados = useMemo(
+    () =>
+      delAlmacen.filter((p) => {
+        const stock = Number(p.stock || 0);
+        if (alcance === "con_stock" && stock <= 0) return false;
+        if (alcance === "bajo" && stock > Number(p.min || 5)) return false;
+        if (ubicacionSel !== "todas" && (p.ubicacion || "").trim() !== ubicacionSel) return false;
+        return true;
+      }),
+    [delAlmacen, alcance, ubicacionSel]
+  );
+
+  const generar = async () => {
+    if (generando) return;
+    setGenerando(true);
+    try {
+      const porNombre = (a: Producto, b: Producto) => a.nom.localeCompare(b.nom, "en", { sensitivity: "base" });
+      const items = [...filtrados].sort(porNombre);
+
+      // Un grupo por ubicacion/marca; "Unassigned"/"Other Products" siempre al
+      // final. Sin agrupacion se manda un unico grupo sin titulo.
+      const SIN_UBIC = "Unassigned";
+      const SIN_MARCA = "Other Products";
+      let grupos: { titulo: string; productos: Producto[] }[];
+      if (agrupar === "nom") {
+        grupos = [{ titulo: "", productos: items }];
+      } else {
+        const sinTitulo = agrupar === "ubicacion" ? SIN_UBIC : SIN_MARCA;
+        const mapa = new Map<string, Producto[]>();
+        for (const p of items) {
+          const clave =
+            (agrupar === "ubicacion" ? (p.ubicacion || "").trim() : (p.fabricante || "").trim()) || sinTitulo;
+          if (!mapa.has(clave)) mapa.set(clave, []);
+          mapa.get(clave)!.push(p);
+        }
+        grupos = Array.from(mapa.keys())
+          .sort((a, b) => {
+            if (a === sinTitulo) return b === sinTitulo ? 0 : 1;
+            if (b === sinTitulo) return -1;
+            return a.localeCompare(b, "en", { numeric: true });
+          })
+          .map((titulo) => ({ titulo, productos: mapa.get(titulo)! }));
+      }
+
+      const payload = {
+        almacenLabel: almacenInfo(almacenes, almacenSel).nombre,
+        conSistema,
+        grupos: grupos.map((g) => ({
+          titulo: g.titulo,
+          productos: g.productos.map((p) => ({
+            nom: p.nom,
+            sku: p.sku || "",
+            ubicacion: (p.ubicacion || "").trim(),
+            cajas: Number(p.cajas || 0),
+            stock: Number(p.stock || 0),
+          })),
+        })),
+      };
+
+      const res = await fetch("/api/reportes/conteo/pdf", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) throw new Error(`Error ${res.status}`);
+      const blob = await res.blob();
+      const file = new File([blob], "Physical-Count.pdf", { type: "application/pdf" });
+      // Mismo fallback que el resto de los PDF: si iOS ya revoco el gesto que
+      // habilita navigator.share(), el archivo se abre en vez de dar error.
+      let compartido = false;
+      if (typeof navigator.canShare === "function" && navigator.canShare({ files: [file] })) {
+        try {
+          await navigator.share({ files: [file] });
+          compartido = true;
+        } catch (shareErr) {
+          if (shareErr instanceof DOMException && shareErr.name === "AbortError") compartido = true;
+        }
+      }
+      if (!compartido) window.open(URL.createObjectURL(blob), "_blank");
+      onClose();
+    } catch (err) {
+      alert("Could not generate the count sheet: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setGenerando(false);
+    }
+  };
+
+  const seg = (activo: boolean) =>
+    `flex-1 py-2 rounded-lg text-sm font-bold transition-all ${
+      activo ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
+    }`;
+  // ~20 filas por hoja con el alto de fila y las bandas de seccion del PDF.
+  const hojas = Math.max(1, Math.ceil(filtrados.length / 20));
+  const sinCajas = filtrados.filter((p) => !Number(p.cajas || 0)).length;
+
+  return (
+    <Modal title="Count Sheet" onClose={onClose}>
+      {almacenesConStock.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          No warehouse tracks stock right now. Turn on "Tracks stock" for a warehouse in Warehouses.
+        </p>
+      ) : (
+        <>
+          {almacenesConStock.length > 1 && (
+            <Field label="Warehouse">
+              <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+                {almacenesConStock.map((a) => (
+                  <button key={a.id} onClick={() => setAlmacenSel(a.id)} className={seg(almacenSel === a.id)}>
+                    {a.icono} {a.nombre}
+                  </button>
+                ))}
+              </div>
+            </Field>
+          )}
+
+          <Field label="What to count">
+            <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+              <button onClick={() => setAlcance("con_stock")} className={seg(alcance === "con_stock")}>With stock</button>
+              <button onClick={() => setAlcance("todos")} className={seg(alcance === "todos")}>Everything</button>
+              <button onClick={() => setAlcance("bajo")} className={seg(alcance === "bajo")}>Low stock</button>
+            </div>
+          </Field>
+
+          <Field label="Group by">
+            <div className="flex gap-1.5 p-1 bg-muted rounded-xl">
+              <button
+                onClick={() => ubicaciones.length && setAgrupar("ubicacion")}
+                disabled={!ubicaciones.length}
+                className={`${seg(agrupar === "ubicacion")} disabled:opacity-40`}
+              >
+                📍 Location
+              </button>
+              <button onClick={() => setAgrupar("marca")} className={seg(agrupar === "marca")}>🏭 Brand</button>
+              <button onClick={() => setAgrupar("nom")} className={seg(agrupar === "nom")}>A–Z</button>
+            </div>
+            {!ubicaciones.length && (
+              <div className="text-[11px] text-muted-foreground mt-1.5">
+                No locations set yet — the sheet has a blank box in every row so you can write them
+                down while you count, then load them from the product screen.
+              </div>
+            )}
+          </Field>
+
+          {ubicaciones.length > 0 && (
+            <Field label="Location">
+              <select
+                value={ubicacionSel}
+                onChange={(e) => setUbicacionSel(e.target.value)}
+                className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+              >
+                <option value="todas">All locations</option>
+                {ubicaciones.map((u) => (
+                  <option key={u} value={u}>{u}</option>
+                ))}
+              </select>
+            </Field>
+          )}
+
+          <div className="flex items-center justify-between bg-muted rounded-xl px-3.5 py-2.5 mb-3">
+            <div>
+              <div className="text-sm font-semibold text-card-foreground">Show system stock</div>
+              <div className="text-[11px] text-muted-foreground">
+                Off = blind count: you write what you find, not what the app expects
+              </div>
+            </div>
+            <Switch checked={conSistema} onCheckedChange={setConSistema} />
+          </div>
+
+          <div className="rounded-xl border border-border bg-card px-3.5 py-2.5 mb-4">
+            <div className="text-sm font-bold text-card-foreground">
+              {filtrados.length} product{filtrados.length === 1 ? "" : "s"} · ~{hojas} sheet{hojas === 1 ? "" : "s"}
+            </div>
+            {sinCajas > 0 && (
+              <div className="text-[11px] text-muted-foreground mt-1">
+                {sinCajas} without units per box — those rows print a blank box to write it in.
+              </div>
+            )}
+          </div>
+
+          <button
+            disabled={generando || !filtrados.length}
+            onClick={generar}
+            className={`w-full px-4 py-2.5 rounded-full font-bold text-sm ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+          >
+            {generando ? "Generating..." : "Generate PDF"}
+          </button>
+        </>
+      )}
     </Modal>
   );
 };
@@ -6146,6 +6384,7 @@ const INV_TOOL_ITEMS = [
   { id: "catalog", label: "Catalog", emoji: "📖" },
   { id: "categories", label: "Categories", emoji: "🗂️" },
   { id: "brands", label: "Brands", emoji: "🏭" },
+  { id: "count", label: "Count", emoji: "📋" },
 ] as const;
 
 const InventoryToolsModal = ({ onSelect, onClose }: { onSelect: (id: string) => void; onClose: () => void }) => (
@@ -6936,6 +7175,7 @@ const Inventario = () => {
   const [showCatalogo, setShowCatalogo] = useState(false);
   const [showCategorias, setShowCategorias] = useState(false);
   const [showMarcas, setShowMarcas] = useState(false);
+  const [showConteo, setShowConteo] = useState(false);
   const [showInvTools, setShowInvTools] = useState(false);
   const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
   const [topAlmacenFiltro, setTopAlmacenFiltro] = useState<string>("todos");
@@ -6978,6 +7218,7 @@ const Inventario = () => {
     barcode: "",
     liquidacion: false,
     precioLiq: "",
+    ubicacion: "",
   });
 
   const productosAlmacen = useMemo(
@@ -6992,6 +7233,18 @@ const Inventario = () => {
     productosAlmacen.forEach((p) => (p.etiquetas || []).forEach((t) => set.add(t)));
     return Array.from(set).sort((a, b) => a.localeCompare(b, "en"));
   }, [productosAlmacen]);
+
+  // Ubicaciones ya usadas en el almacen del formulario, para ofrecerlas como
+  // pastillas al editar un producto (evita variantes del mismo estante).
+  const ubicacionesDelAlmacen = useMemo(() => {
+    const set = new Set<string>();
+    productos.forEach((p) => {
+      if ((p.almacen || almacenPrincipal(almacenes)) !== formAlmacen) return;
+      const u = (p.ubicacion || "").trim();
+      if (u) set.add(u);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "en", { numeric: true }));
+  }, [productos, formAlmacen, almacenes]);
 
   // Texto buscable por producto: nombre, sku, barcode y tags. flexibleSearch
   // tokeniza el query y matchea cada palabra sin importar el orden, con
@@ -7045,6 +7298,14 @@ const Inventario = () => {
       );
     } else if (sortBy === "nom") {
       sorted.sort((a, b) => textCmp(a.nom, b.nom));
+    } else if (sortBy === "ubicacion") {
+      // Los sin ubicacion al final: es justo lo que hay que ir a llenar.
+      sorted.sort(
+        (a, b) =>
+          blankLast(a.ubicacion || "") - blankLast(b.ubicacion || "") ||
+          textCmp(a.ubicacion || "", b.ubicacion || "") ||
+          textCmp(a.nom, b.nom)
+      );
     } else if (sortBy === "sku" || !hasQuery) {
       // SKU A-Z: se aplica siempre que el usuario lo elija explicitamente,
       // o como default cuando no hay busqueda activa (para no pisar relevancia).
@@ -7115,6 +7376,7 @@ const Inventario = () => {
       barcode: "",
       liquidacion: false,
       precioLiq: "",
+      ubicacion: "",
     });
     setMenuOpen(false);
     setShow(true);
@@ -7138,6 +7400,7 @@ const Inventario = () => {
       barcode: p.barcode || "",
       liquidacion: !!p.liquidacion,
       precioLiq: p.precio_liquidacion != null ? String(p.precio_liquidacion) : "",
+      ubicacion: p.ubicacion || "",
     });
     setShow(true);
   };
@@ -7190,6 +7453,7 @@ const Inventario = () => {
       almacen: formAlmacen,
       liquidacion: form.liquidacion,
       precio_liquidacion: form.liquidacion && Number(form.precioLiq) > 0 ? Number(form.precioLiq) : null,
+      ubicacion: form.ubicacion,
     };
     try {
       if (editId) {
@@ -7675,6 +7939,7 @@ const Inventario = () => {
             else if (id === "catalog") setShowCatalogo(true);
             else if (id === "categories") setShowCategorias(true);
             else if (id === "brands") setShowMarcas(true);
+            else if (id === "count") setShowConteo(true);
           }}
         />
       )}
@@ -7682,6 +7947,7 @@ const Inventario = () => {
       {showCatalogo && <CatalogoModal onClose={() => setShowCatalogo(false)} />}
       {showCategorias && <CategoriasModal onClose={() => setShowCategorias(false)} />}
       {showMarcas && <MarcasModal onClose={() => setShowMarcas(false)} />}
+      {showConteo && <ConteoModal onClose={() => setShowConteo(false)} />}
       {showTopProductos && (
         <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
           <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
@@ -7802,6 +8068,9 @@ const Inventario = () => {
                   {almacenInfo(almacenes, almacen).lleva_stock && (
                     <div className="text-xs text-muted-foreground mt-1">
                       Stock: {stock} units
+                      {p.ubicacion && (
+                        <span className="ml-1 font-mono font-bold text-primary">· 📍{p.ubicacion}</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -8298,6 +8567,39 @@ const Inventario = () => {
                   autoComplete="off"
                   className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
                 />
+              </Field>
+              {/* Ubicacion: texto libre con la nomenclatura del negocio. Las
+                  pastillas ofrecen las que ya existen en este almacen para no
+                  terminar con "A-1", "A01" y "a-1" siendo la misma repisa. */}
+              <Field label="📍 Location in warehouse">
+                <input
+                  value={form.ubicacion}
+                  onChange={(e) => setForm({ ...form, ubicacion: e.target.value })}
+                  placeholder="E.g. A-01, Shelf 3, Aisle B / level 2..."
+                  autoComplete="off"
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                />
+                {ubicacionesDelAlmacen.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mt-2">
+                    {ubicacionesDelAlmacen.map((u) => (
+                      <button
+                        key={u}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, ubicacion: f.ubicacion === u ? "" : u }))}
+                        className={`px-2.5 py-1 rounded-full text-xs font-mono font-bold border transition-all ${
+                          form.ubicacion === u
+                            ? "bg-primary text-primary-foreground border-primary"
+                            : "bg-secondary text-secondary-foreground border-transparent"
+                        }`}
+                      >
+                        {u}
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div className="text-[11px] text-muted-foreground mt-1.5">
+                  Groups the printed count sheet so you count one shelf at a time.
+                </div>
               </Field>
             </>
           )}

@@ -15,3 +15,6 @@ node_modules
 .next/
 .DS_Store
 .vercel
+
+# PDFs generados por los scripts de prueba
+scripts/*.pdf
