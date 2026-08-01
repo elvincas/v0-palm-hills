@@ -410,6 +410,11 @@ const fmt = (n: number) =>
     maximumFractionDigits: 2,
   });
 
+// Monto sin centavos, para cifras estimadas (pronostico de ventas) donde los
+// decimales son ruido: "$1,367 /day" se lee mejor que "$1,366.67 /day".
+const fmt0 = (n: number) =>
+  "$" + Math.round(Number(n)).toLocaleString("en-US", { maximumFractionDigits: 0 });
+
 const today = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -2511,6 +2516,34 @@ const Dashboard = () => {
   );
   const pct = meta > 0 ? Math.min(100, Math.round((totalVentas / meta) * 100)) : 0;
 
+  // ── Pronostico de ventas del mes (2026-08-01) ──
+  // Ritmo = vendido / dias transcurridos; proyeccion = ritmo x dias del mes.
+  // Dias NATURALES (no habiles) — criterio elegido explicitamente por el
+  // usuario. Los primeros dias del mes el numero es ruido puro (una sola
+  // factura grande proyecta el mes entero), asi que hasta el dia 3 se muestra
+  // como "estimado temprano" en vez de dar un veredicto de cumplimiento.
+  const pronostico = useMemo(() => {
+    const hoy = new Date();
+    const diasMes = new Date(hoy.getFullYear(), hoy.getMonth() + 1, 0).getDate();
+    const diaActual = hoy.getDate();
+    const diasRestantes = diasMes - diaActual;
+    const ritmo = totalVentas / diaActual;
+    const proyeccion = ritmo * diasMes;
+    // Ritmo que haria falta en los dias que quedan para llegar a la meta. El
+    // ultimo dia del mes ya no queda margen, ahi deja de tener sentido.
+    const ritmoNecesario = diasRestantes > 0 ? Math.max(0, meta - totalVentas) / diasRestantes : 0;
+    return {
+      diasMes,
+      diaActual,
+      diasRestantes,
+      ritmo,
+      proyeccion,
+      ritmoNecesario,
+      diferencia: proyeccion - meta,
+      temprano: diaActual <= 3,
+    };
+  }, [totalVentas, meta]);
+
   const statusLabel =
     pct >= 100 ? "Goal reached!" : pct >= 70 ? "Almost there!" : pct >= 40 ? "On track" : "Getting started";
 
@@ -2614,6 +2647,47 @@ const Dashboard = () => {
                 {tr("Remaining")} <strong className="text-white">{fmt(meta - totalVentas)}</strong>
               </div>
             )}
+
+            {/* Pronostico: ritmo actual + proyeccion de cierre + veredicto */}
+            <div className="mt-4 pt-3.5 border-t border-white/20">
+              <div className="flex">
+                <div className="flex-1 pr-3.5">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-white/65 mb-1">
+                    {tr("Pace")}
+                  </div>
+                  <div className="text-[17px] font-extrabold tracking-tight tabular-nums">
+                    {fmt0(pronostico.ritmo)}
+                    <span className="text-[11px] font-bold text-white/65"> /{tr("day")}</span>
+                  </div>
+                </div>
+                <div className="flex-1 pl-3.5 border-l border-white/20">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-white/65 mb-1">
+                    {tr("Forecast")}
+                  </div>
+                  <div className="text-[17px] font-extrabold tracking-tight tabular-nums">
+                    {fmt0(pronostico.proyeccion)}
+                  </div>
+                </div>
+              </div>
+              <div className="inline-flex items-center gap-1.5 mt-2 text-[11.5px] font-extrabold px-2.5 py-1 rounded-full bg-white/[0.16]">
+                {pronostico.temprano ? (
+                  <span className="text-white/85">
+                    ◷ {tr("Early estimate")} · {tr("day")} {pronostico.diaActual} {tr("of")} {pronostico.diasMes}
+                  </span>
+                ) : pronostico.diferencia >= 0 ? (
+                  <span className="text-[#d5f5b8]">
+                    ✓ {fmt0(pronostico.diferencia)} {tr("over goal")} · {tr("on pace")}
+                  </span>
+                ) : (
+                  <span className="text-[#ffd9a3]">
+                    ⚠ {fmt0(-pronostico.diferencia)} {tr("short")}
+                    {pronostico.diasRestantes > 0 && (
+                      <> · {tr("need")} {fmt0(pronostico.ritmoNecesario)}/{tr("day")}</>
+                    )}
+                  </span>
+                )}
+              </div>
+            </div>
           </>
         ) : (
           <p className="text-sm text-white/80 text-center py-2">{tr('Tap "+ Set goal" for your target')}</p>
