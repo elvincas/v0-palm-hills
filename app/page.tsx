@@ -141,6 +141,11 @@ interface Producto {
 }
 
 interface LineaFactura {
+  // 2026-08-01: las lineas nuevas guardan el id del producto. Las historicas
+  // no lo tienen y se siguen resolviendo por sku+almacen o nombre (ver
+  // resolverProducto) — no es retroactivo, solo deja de ser fragil de aqui en
+  // adelante para los reportes que agrupan por marca/categoria.
+  prodId?: string;
   prodNom: string;
   sku?: string;
   barcode?: string;
@@ -3756,6 +3761,7 @@ const Facturas = () => {
     const lineasDetalle: LineaFactura[] = items.map((l) => {
       const p = productos.find((x) => x.id === l.prodId)!;
       return {
+        prodId: p.id,
         prodNom: p.nom,
         sku: p.sku || "",
         barcode: p.barcode || "",
@@ -7251,13 +7257,6 @@ const Inventario = () => {
   const [showMarcas, setShowMarcas] = useState(false);
   const [showConteo, setShowConteo] = useState(false);
   const [showInvTools, setShowInvTools] = useState(false);
-  const [topPeriodoMeses, setTopPeriodoMeses] = useState<1 | 3>(1);
-  const [topAlmacenFiltro, setTopAlmacenFiltro] = useState<string>("todos");
-  const topProductosModal = useMemo(() => {
-    const d = new Date();
-    d.setMonth(d.getMonth() - topPeriodoMeses);
-    return calcTopProductos(facturas, d.toISOString().slice(0, 10), 15, topAlmacenFiltro);
-  }, [facturas, topPeriodoMeses, topAlmacenFiltro]);
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -8022,57 +8021,8 @@ const Inventario = () => {
       {showCategorias && <CategoriasModal onClose={() => setShowCategorias(false)} />}
       {showMarcas && <MarcasModal onClose={() => setShowMarcas(false)} />}
       {showConteo && <ConteoModal onClose={() => setShowConteo(false)} />}
-      {showTopProductos && (
-        <Modal title="Top Products" onClose={() => setShowTopProductos(false)}>
-          <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
-            {([1, 3] as const).map((m) => (
-              <button
-                key={m}
-                onClick={() => setTopPeriodoMeses(m)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${topPeriodoMeses === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
-              >
-                {m === 1 ? "This month" : "3 months"}
-              </button>
-            ))}
-          </div>
-          <div className="flex flex-wrap gap-1.5 p-1 bg-muted rounded-xl mb-3">
-            {[{ id: "todos", label: "All" }, ...almacenes.filter((x) => x.activo).map((x) => ({ id: x.id, label: `${x.icono} ${x.nombre}` }))].map((a) => (
-              <button
-                key={a.id}
-                onClick={() => setTopAlmacenFiltro(a.id)}
-                className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${topAlmacenFiltro === a.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
-              >
-                {a.label}
-              </button>
-            ))}
-          </div>
-          {topProductosModal.length ? (
-            <div className="border border-border rounded-3xl overflow-hidden">
-              {topProductosModal.map((p, i) => {
-                const maxMonto = topProductosModal[0]?.monto || 1;
-                return (
-                  <div key={p.sku || p.nom} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
-                    <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{p.nom}</div>
-                      {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
-                      <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
-                        <div className="h-full rounded-full" style={{ width: `${Math.round((p.monto / maxMonto) * 100)}%`, background: "var(--primary)" }} />
-                      </div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-xs font-bold text-card-foreground tabular-nums">{fmt(p.monto)}</div>
-                      <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <Empty text="No sales in this period." />
-          )}
-        </Modal>
-      )}
+      {/* El mismo modal que usa el hub de Reports (2026-08-01) */}
+      {showTopProductos && <TopProductosModal onClose={() => setShowTopProductos(false)} />}
       <div className={`grid gap-2.5 mb-3 ${invColumnas === 3 ? "grid-cols-3" : "grid-cols-2"}`}>
         {visibleProductos.length ? (
           visibleProductos.map((p) => {
@@ -9195,6 +9145,7 @@ const Ordenes = () => {
       const facturaLineas: LineaFactura[] = pickItems
         .filter((it) => (it.qtyEnviada ?? it.qty) > 0)
         .map((it) => ({
+          prodId: it.prodId,
           prodNom: it.prodNom,
           sku: it.sku,
           barcode: it.barcode,
@@ -10860,10 +10811,13 @@ const compressComprobante = (file: File): Promise<string> =>
 
 const primerDiaMes = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
 
-const PLReport = () => {
+// vistaInicial (2026-08-01): el hub de Reports tiene un cuadro para el Income
+// Statement y otro para el Cash Flow, y cada uno abre este mismo reporte ya
+// parado en su pestaña.
+const PLReport = ({ vistaInicial = "income" }: { vistaInicial?: "income" | "cash" }) => {
   const { facturas, productos, gastos, compras, clientes, vendedores, addGasto, updateGasto, deleteGasto, readOnly } = useData();
   const { t: tPl } = useLang();
-  const [vista, setVista] = useState<"income" | "cash">("income");
+  const [vista, setVista] = useState<"income" | "cash">(vistaInicial);
   const [showTaxPackage, setShowTaxPackage] = useState(false);
   const [desde, setDesde] = useState(primerDiaMes());
   const [hasta, setHasta] = useState(today());
@@ -11912,6 +11866,1231 @@ const TaxPackageModal = ({ onClose }: { onClose: () => void }) => {
   );
 };
 
+// ══════════════════════════════════════════════════════════════════════════
+// REPORTS (2026-08-01) — hub central de reportes
+// Reemplaza al tab "P&L" en el bottom nav. El P&L no desaparece: pasa a ser
+// un reporte mas dentro del hub, junto a los otros 10 que vivian
+// desperdigados (Invoices/Orders/Inventory Tools/Clientes/More/Home) y a los
+// reportes de analisis nuevos. Los existentes se ENLAZAN, no se reescriben.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Baja un .xlsx con una o mas hojas. Cada reporte arma sus filas como matriz
+// y esto hace el resto. xlsx ya venia instalado (Tax Package) y se importa
+// dinamico para no cargarlo en el bundle inicial.
+const bajarExcel = async (archivo: string, hojas: { nombre: string; filas: (string | number)[][] }[]) => {
+  const XLSX = await import("xlsx");
+  const wb = XLSX.utils.book_new();
+  for (const h of hojas) XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(h.filas), h.nombre.slice(0, 31));
+  XLSX.writeFile(wb, `${archivo}.xlsx`);
+};
+
+const BotonExcel = ({ onClick }: { onClick: () => void }) => {
+  const { t } = useLang();
+  const [busy, setBusy] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        if (busy) return;
+        setBusy(true);
+        try { await onClick(); } catch (e) { alert("Export failed: " + (e as Error).message); }
+        setBusy(false);
+      }}
+      disabled={busy}
+      className="w-full px-4 py-2.5 rounded-full font-bold text-sm text-white shadow-md active:scale-[0.97] transition-all disabled:opacity-50 mt-3"
+      style={{ background: "#b09060" }}
+    >
+      {busy ? "..." : `📤 ${t("Export Excel")}`}
+    </button>
+  );
+};
+
+// Monto compacto para etiquetas de grafica: $42.4k / $1.2M
+const fmtK = (n: number) => {
+  const a = Math.abs(n);
+  if (a >= 1000000) return "$" + (n / 1000000).toFixed(1).replace(/\.0$/, "") + "M";
+  if (a >= 1000) return "$" + (n / 1000).toFixed(1).replace(/\.0$/, "") + "k";
+  return fmt0(n);
+};
+
+// Las lineas de factura historicas no guardan prodId (solo sku/nombre/almacen),
+// asi que para agrupar por marca hay que resolverlas contra el catalogo. Mismo
+// criterio que el P&L y calcTopProductos: prodId si existe (lineas nuevas,
+// 2026-08-01), luego sku+almacen, y nombre como ultimo respaldo.
+const indexarProductos = (productos: Producto[]) => {
+  const porId = new Map<string, Producto>();
+  const porSku = new Map<string, Producto>();
+  const porNom = new Map<string, Producto>();
+  for (const p of productos) {
+    porId.set(p.id, p);
+    if (p.sku) porSku.set(`${p.sku.trim().toLowerCase()}|${p.almacen || "palmhills"}`, p);
+    porNom.set(p.nom, p);
+  }
+  return { porId, porSku, porNom };
+};
+type IndiceProductos = ReturnType<typeof indexarProductos>;
+const resolverProducto = (
+  idx: IndiceProductos,
+  l: { prodId?: string; sku?: string; prodNom: string; almacen?: string }
+) =>
+  (l.prodId ? idx.porId.get(l.prodId) : undefined) ||
+  idx.porSku.get(`${(l.sku || "").trim().toLowerCase()}|${l.almacen || "palmhills"}`) ||
+  idx.porNom.get(l.prodNom);
+
+// Mes "2026-07" -> "Jul 2026"
+const nombreMes = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString("en-US", { month: "short", year: "numeric" });
+};
+// Suma de una factura a nivel linea (para dimensiones de producto). Sin
+// impuestos, el total de la factura es la suma de sus lineas.
+const montoLinea = (l: LineaFactura) => Number(l.qty || 0) * Number(l.precio || 0);
+
+type DimId = "month" | "product" | "client" | "salesperson" | "brand" | "warehouse";
+// nivel "factura": el monto sale de facturas.total (el numero exacto del
+// documento). nivel "linea": hay que abrir las lineas para saber a que
+// producto/marca/almacen pertenece cada dolar.
+const DIMENSIONES: { id: DimId; label: string; nivel: "factura" | "linea" }[] = [
+  { id: "month", label: "Month", nivel: "factura" },
+  { id: "product", label: "Product", nivel: "linea" },
+  { id: "client", label: "Client", nivel: "factura" },
+  { id: "salesperson", label: "Salesperson", nivel: "factura" },
+  { id: "brand", label: "Brand", nivel: "linea" },
+  { id: "warehouse", label: "Warehouse", nivel: "linea" },
+];
+
+type FilaAnalisis = { key: string; nom: string; sub?: string; monto: number; qty: number; docs: number };
+type CtxAnalisis = {
+  idx: IndiceProductos;
+  vendedorPorCliente: Map<string, string>; // nombre de cliente -> nombre de vendedor
+  codigoPorCliente: Map<string, string>;
+  almacenes: Almacen[];
+};
+
+// Agrupa las facturas de un rango por la dimension pedida. Se usa dos veces
+// por render: una para el periodo elegido y otra para el periodo anterior
+// (la comparativa "vs prev"), por eso vive fuera del componente.
+const agruparVentas = (
+  facturas: Factura[],
+  dim: DimId,
+  desde: string,
+  hasta: string,
+  ctx: CtxAnalisis
+): Map<string, FilaAnalisis> => {
+  const out = new Map<string, FilaAnalisis>();
+  const push = (key: string, nom: string, monto: number, qty: number, docs: number, sub?: string) => {
+    const prev = out.get(key);
+    if (prev) {
+      prev.monto += monto;
+      prev.qty += qty;
+      prev.docs += docs;
+    } else {
+      out.set(key, { key, nom, sub, monto, qty, docs });
+    }
+  };
+  for (const f of facturas) {
+    const fecha = f.fecha || "";
+    if (fecha < desde || fecha > hasta) continue;
+    const lineas = f.lineas || [];
+    const unidades = lineas.reduce((a, l) => a + Number(l.qty || 0), 0);
+    if (dim === "month") {
+      const ym = fecha.slice(0, 7);
+      push(ym, nombreMes(ym), Number(f.total) || 0, unidades, 1);
+    } else if (dim === "client") {
+      push(f.cli, f.cli, Number(f.total) || 0, unidades, 1, ctx.codigoPorCliente.get(f.cli));
+    } else if (dim === "salesperson") {
+      const v = ctx.vendedorPorCliente.get(f.cli) || "Unassigned";
+      push(v, v, Number(f.total) || 0, unidades, 1);
+    } else {
+      for (const l of lineas) {
+        const monto = montoLinea(l);
+        const qty = Number(l.qty || 0);
+        if (dim === "product") {
+          const key = `${(l.sku || "").trim().toLowerCase()}|${l.prodNom}`;
+          push(key, l.prodNom, monto, qty, 1, l.sku || undefined);
+        } else if (dim === "brand") {
+          const p = resolverProducto(ctx.idx, l);
+          const marca = (p?.fabricante || "").trim() || "Other";
+          push(marca, marca, monto, qty, 1);
+        } else {
+          const slug = l.almacen || "palmhills";
+          const info = almacenInfo(ctx.almacenes, slug);
+          push(slug, `${info.icono} ${info.nombre}`, monto, qty, 1);
+        }
+      }
+    }
+  }
+  return out;
+};
+
+// Rango inmediatamente anterior, del mismo largo — para el "vs prev" de cada
+// fila. Funciona con cualquier periodo (mes, trimestre, rango a mano).
+const rangoAnterior = (desde: string, hasta: string) => {
+  const d = new Date(desde + "T00:00:00");
+  const h = new Date(hasta + "T00:00:00");
+  const dias = Math.max(1, Math.round((h.getTime() - d.getTime()) / 86400000) + 1);
+  const prevHasta = new Date(d.getTime() - 86400000);
+  const prevDesde = new Date(prevHasta.getTime() - (dias - 1) * 86400000);
+  const iso = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, "0")}-${String(x.getDate()).padStart(2, "0")}`;
+  return { desde: iso(prevDesde), hasta: iso(prevHasta) };
+};
+
+// Selector de periodo compartido por los reportes nuevos (mismos presets que
+// el P&L, mas un rango a mano que se despliega solo si lo piden).
+const SelectorPeriodo = ({
+  desde, hasta, setDesde, setHasta,
+}: { desde: string; hasta: string; setDesde: (v: string) => void; setHasta: (v: string) => void }) => {
+  const { t } = useLang();
+  const [abierto, setAbierto] = useState(false);
+  const aplicar = (p: "month" | "lastMonth" | "quarter" | "year") => {
+    const now = new Date();
+    if (p === "month") { setDesde(primerDiaMes(now)); setHasta(today()); }
+    else if (p === "lastMonth") {
+      const lm = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const ld = new Date(now.getFullYear(), now.getMonth(), 0);
+      setDesde(primerDiaMes(lm));
+      setHasta(`${ld.getFullYear()}-${String(ld.getMonth() + 1).padStart(2, "0")}-${String(ld.getDate()).padStart(2, "0")}`);
+    } else if (p === "quarter") {
+      setDesde(primerDiaMes(new Date(now.getFullYear(), Math.floor(now.getMonth() / 3) * 3, 1)));
+      setHasta(today());
+    } else {
+      setDesde(`${now.getFullYear()}-01-01`);
+      setHasta(today());
+    }
+  };
+  return (
+    <div className="mb-3">
+      <div className="flex gap-1.5 flex-wrap">
+        {([
+          { id: "month", label: "This Month" },
+          { id: "lastMonth", label: "Last Month" },
+          { id: "quarter", label: "This Quarter" },
+          { id: "year", label: "This Year" },
+        ] as const).map((p) => (
+          <button key={p.id} onClick={() => aplicar(p.id)} className="px-3 py-1.5 rounded-full text-xs font-bold bg-muted text-muted-foreground active:scale-95 transition-transform">
+            {t(p.label)}
+          </button>
+        ))}
+        <button onClick={() => setAbierto((v) => !v)} className="px-3 py-1.5 rounded-full text-xs font-bold bg-muted text-muted-foreground">
+          {abierto ? "⌃" : "⌄"} {t("Custom")}
+        </button>
+      </div>
+      {abierto && (
+        <Row2>
+          <Field label={t("From")}>
+            <input type="date" value={desde} onChange={(e) => setDesde(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+          <Field label={t("To")}>
+            <input type="date" value={hasta} onChange={(e) => setHasta(e.target.value)} className="w-full px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+          </Field>
+        </Row2>
+      )}
+      <div className="text-[11px] text-muted-foreground mt-1.5 px-1">
+        {fdate(desde)} — {fdate(hasta)}
+      </div>
+    </div>
+  );
+};
+
+// Delta porcentual contra el periodo anterior. null = no habia con que comparar.
+const Delta = ({ actual, previo }: { actual: number; previo: number }) => {
+  if (!previo) return <span className="text-[11px] text-muted-foreground">—</span>;
+  const pct = Math.round(((actual - previo) / previo) * 100);
+  if (pct === 0) return <span className="text-[11px] text-muted-foreground">0%</span>;
+  return (
+    <span className={`text-[11.5px] font-extrabold tabular-nums ${pct > 0 ? "text-primary" : "text-destructive"}`}>
+      {pct > 0 ? "▲" : "▼"}{Math.abs(pct)}%
+    </span>
+  );
+};
+
+// ── SALES ANALYSIS ────────────────────────────────────────────────────────
+// La pieza nueva: una sola pantalla que responde "ventas por mes / SKU /
+// cliente / vendedor / marca / almacen" cambiando el agrupador, con la
+// grafica de 12 meses arriba (opcion B del mockup, elegida por el usuario).
+const SalesAnalysis = () => {
+  const { facturas, productos, clientes, vendedores, almacenes } = useData();
+  const { t } = useLang();
+  const [dim, setDim] = useState<DimId>("month");
+  const [desde, setDesde] = useState(primerDiaMes());
+  const [hasta, setHasta] = useState(today());
+  const [detalle, setDetalle] = useState<FilaAnalisis | null>(null);
+
+  const ctx = useMemo<CtxAnalisis>(() => {
+    const vendedorPorId = new Map(vendedores.map((v) => [v.id, v.nombre]));
+    const vendedorPorCliente = new Map<string, string>();
+    const codigoPorCliente = new Map<string, string>();
+    for (const c of clientes) {
+      if (c.vendedor_id && vendedorPorId.has(c.vendedor_id)) vendedorPorCliente.set(c.nom, vendedorPorId.get(c.vendedor_id)!);
+      if (c.codigo_cliente) codigoPorCliente.set(c.nom, c.codigo_cliente);
+    }
+    return { idx: indexarProductos(productos), vendedorPorCliente, codigoPorCliente, almacenes };
+  }, [productos, clientes, vendedores, almacenes]);
+
+  // Serie de los ultimos 12 meses (independiente del periodo elegido): es la
+  // respuesta directa a "quiero ver las ventas de los otros meses".
+  const serie12 = useMemo(() => {
+    const now = new Date();
+    const meses: { ym: string; label: string; monto: number; docs: number }[] = [];
+    for (let i = 11; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      meses.push({ ym, label: d.toLocaleDateString("en-US", { month: "narrow" }), monto: 0, docs: 0 });
+    }
+    const pos = new Map(meses.map((m, i) => [m.ym, i]));
+    for (const f of facturas) {
+      const i = pos.get((f.fecha || "").slice(0, 7));
+      if (i === undefined) continue;
+      meses[i].monto += Number(f.total) || 0;
+      meses[i].docs += 1;
+    }
+    return meses;
+  }, [facturas]);
+
+  // El mes destacado en la grafica es el que cae dentro del periodo elegido
+  // (el ultimo), asi tocar una barra y cambiar el periodo se sienten lo mismo.
+  const mesFoco = hasta.slice(0, 7);
+  const idxFoco = serie12.findIndex((m) => m.ym === mesFoco);
+  const foco = idxFoco >= 0 ? serie12[idxFoco] : serie12[serie12.length - 1];
+  const focoPrev = idxFoco > 0 ? serie12[idxFoco - 1] : null;
+  const maxSerie = Math.max(...serie12.map((m) => m.monto), 1);
+
+  const filas = useMemo(() => {
+    const act = agruparVentas(facturas, dim, desde, hasta, ctx);
+    const prevRango = rangoAnterior(desde, hasta);
+    const prev = agruparVentas(facturas, dim, prevRango.desde, prevRango.hasta, ctx);
+    const arr = Array.from(act.values()).map((f) => ({ ...f, previo: prev.get(f.key)?.monto || 0 }));
+    // El mes se lee en orden de tiempo (lo mas reciente arriba); el resto por
+    // dinero, que es lo que se quiere rankear.
+    if (dim === "month") arr.sort((a, b) => b.key.localeCompare(a.key));
+    else arr.sort((a, b) => b.monto - a.monto);
+    return arr;
+  }, [facturas, dim, desde, hasta, ctx]);
+
+  const totalPeriodo = filas.reduce((a, f) => a + f.monto, 0);
+  const dimActual = DIMENSIONES.find((d) => d.id === dim)!;
+  const esLinea = dimActual.nivel === "linea";
+
+  // Desglose de una fila por su dimension secundaria natural.
+  const desglose = useMemo(() => {
+    if (!detalle) return [];
+    const sub: DimId = dim === "client" || dim === "brand" || dim === "warehouse" ? "product" : dim === "product" ? "client" : "client";
+    const out = new Map<string, { nom: string; monto: number; qty: number }>();
+    for (const f of facturas) {
+      const fecha = f.fecha || "";
+      if (fecha < desde || fecha > hasta) continue;
+      // ¿Esta factura pertenece a la fila que se toco?
+      if (dim === "month" && fecha.slice(0, 7) !== detalle.key) continue;
+      if (dim === "client" && f.cli !== detalle.key) continue;
+      if (dim === "salesperson" && (ctx.vendedorPorCliente.get(f.cli) || "Unassigned") !== detalle.key) continue;
+      for (const l of f.lineas || []) {
+        if (dim === "product" && `${(l.sku || "").trim().toLowerCase()}|${l.prodNom}` !== detalle.key) continue;
+        if (dim === "brand" && ((resolverProducto(ctx.idx, l)?.fabricante || "").trim() || "Other") !== detalle.key) continue;
+        if (dim === "warehouse" && (l.almacen || "palmhills") !== detalle.key) continue;
+        const nom = sub === "product" ? l.prodNom : f.cli;
+        const cur = out.get(nom) || { nom, monto: 0, qty: 0 };
+        cur.monto += montoLinea(l);
+        cur.qty += Number(l.qty || 0);
+        out.set(nom, cur);
+      }
+    }
+    return Array.from(out.values()).sort((a, b) => b.monto - a.monto).slice(0, 20);
+  }, [detalle, dim, facturas, desde, hasta, ctx]);
+
+  const exportar = () =>
+    bajarExcel(`sales-${dim}-${desde}_${hasta}`, [
+      {
+        nombre: dimActual.label,
+        filas: [
+          [t("Sales Analysis"), `${fdate(desde)} — ${fdate(hasta)}`],
+          [t("Group by"), t(dimActual.label)],
+          [],
+          [t(dimActual.label), esLinea ? t("Qty") : t("Invoices"), t("Revenue"), t("% of total"), t("Previous period")],
+          ...filas.map((f): (string | number)[] => [
+            f.nom + (f.sub ? ` (${f.sub})` : ""),
+            esLinea ? f.qty : f.docs,
+            Number(f.monto.toFixed(2)),
+            totalPeriodo ? Number(((f.monto / totalPeriodo) * 100).toFixed(1)) : 0,
+            Number(f.previo.toFixed(2)),
+          ]),
+          [],
+          [t("Total"), "", Number(totalPeriodo.toFixed(2))],
+        ],
+      },
+      {
+        nombre: t("Last 12 months"),
+        filas: [
+          [t("Month"), t("Invoices"), t("Revenue")],
+          ...serie12.map((m): (string | number)[] => [nombreMes(m.ym), m.docs, Number(m.monto.toFixed(2))]),
+        ],
+      },
+    ]);
+
+  return (
+    <div>
+      {/* Grafica de 12 meses: tocar una barra salta a ese mes completo */}
+      <div className="bg-card border border-border rounded-3xl p-3.5 mb-3">
+        <div className="flex items-start justify-between mb-3">
+          <div>
+            <div className="text-[22px] font-extrabold tracking-tight tabular-nums text-card-foreground">{fmt0(foco?.monto || 0)}</div>
+            <div className="text-[11px] text-muted-foreground font-semibold">
+              {foco ? nombreMes(foco.ym) : ""} · {foco?.docs || 0} {t("invoices")}
+            </div>
+          </div>
+          {focoPrev && (
+            <div className="text-right">
+              <Delta actual={foco?.monto || 0} previo={focoPrev.monto} />
+              <div className="text-[10px] text-muted-foreground">{t("vs")} {nombreMes(focoPrev.ym)}</div>
+            </div>
+          )}
+        </div>
+        <div className="flex items-end gap-1 h-[104px]">
+          {serie12.map((m) => {
+            const activo = m.ym === mesFoco;
+            return (
+              <button
+                key={m.ym}
+                onClick={() => {
+                  const [y, mm] = m.ym.split("-").map(Number);
+                  const ld = new Date(y, mm, 0);
+                  setDesde(`${m.ym}-01`);
+                  setHasta(`${m.ym}-${String(ld.getDate()).padStart(2, "0")}`);
+                }}
+                className="flex-1 h-full flex flex-col justify-end items-center gap-1 group"
+                title={`${nombreMes(m.ym)}: ${fmt0(m.monto)}`}
+              >
+                <div
+                  className={`w-full rounded-t-md transition-colors ${activo ? "bg-primary" : "bg-secondary group-active:bg-primary/40"}`}
+                  style={{ height: `${Math.max(2, Math.round((m.monto / maxSerie) * 100))}%` }}
+                />
+                <span className={`text-[8.5px] font-bold ${activo ? "text-primary" : "text-muted-foreground"}`}>{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <SelectorPeriodo desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
+
+      <div className="text-[10.5px] font-bold uppercase tracking-wider text-muted-foreground mb-1.5 px-1">{t("Group by")}</div>
+      <div className="flex flex-wrap gap-1.5 mb-3">
+        {DIMENSIONES.map((d) => (
+          <button
+            key={d.id}
+            onClick={() => setDim(d.id)}
+            className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors border ${
+              dim === d.id ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"
+            }`}
+          >
+            {t(d.label)}
+          </button>
+        ))}
+      </div>
+
+      {filas.length ? (
+        <div className="bg-card border border-border rounded-3xl overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-foreground text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+            <span className="w-5 text-center shrink-0">#</span>
+            <span className="flex-1 min-w-0">{t(dimActual.label)}</span>
+            <span className="w-11 text-right shrink-0">{esLinea ? t("Qty") : t("Inv")}</span>
+            <span className="w-[72px] text-right shrink-0">{t("Revenue")}</span>
+            <span className="w-12 text-right shrink-0">{t("vs prev")}</span>
+          </div>
+          {filas.map((f, i) => (
+            <button
+              key={f.key}
+              onClick={() => setDetalle(f)}
+              className={`w-full flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 text-left active:bg-secondary/60 transition-colors ${
+                i % 2 === 1 ? "bg-secondary/40" : ""
+              }`}
+            >
+              <span className="w-5 text-center text-[11px] font-extrabold text-muted-foreground shrink-0">{i + 1}</span>
+              <span className="flex-1 min-w-0">
+                <span className={`block text-[13px] font-bold text-card-foreground leading-tight break-words ${esLinea && dim === "product" ? "uppercase" : ""}`}>
+                  {f.nom}
+                </span>
+                {f.sub && <span className="block text-[10px] font-mono text-muted-foreground mt-0.5">{f.sub}</span>}
+                {totalPeriodo > 0 && (
+                  <span className="block text-[10px] text-muted-foreground mt-0.5">
+                    {((f.monto / totalPeriodo) * 100).toFixed(1)}% {t("of total")}
+                  </span>
+                )}
+              </span>
+              <span className="w-11 text-right text-[12px] font-bold tabular-nums text-card-foreground shrink-0">
+                {esLinea ? f.qty.toLocaleString() : f.docs}
+              </span>
+              <span className="w-[72px] text-right text-[13px] font-extrabold tabular-nums text-card-foreground shrink-0">{fmt0(f.monto)}</span>
+              <span className="w-12 text-right shrink-0"><Delta actual={f.monto} previo={f.previo} /></span>
+            </button>
+          ))}
+          {/* Mismas anchuras de columna que el header y las filas, para que el
+              total caiga exactamente debajo de la columna Revenue */}
+          <div className="flex items-center gap-2 px-3 py-2.5 border-t-2 border-foreground bg-secondary/60">
+            <span className="w-5 shrink-0" />
+            <span className="flex-1 text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">{t("Total")}</span>
+            <span className="w-11 shrink-0" />
+            <span className="w-[72px] text-right text-[14px] font-extrabold tabular-nums text-card-foreground shrink-0">{fmt0(totalPeriodo)}</span>
+            <span className="w-12 shrink-0" />
+          </div>
+        </div>
+      ) : (
+        <Empty text={t("No sales in this period.")} />
+      )}
+
+      <BotonExcel onClick={exportar} />
+
+      {detalle && (
+        <Modal title={detalle.nom} onClose={() => setDetalle(null)}>
+          <div className="text-xs text-muted-foreground mb-3">
+            {fmt(detalle.monto)} · {fdate(desde)} — {fdate(hasta)}
+          </div>
+          {desglose.length ? (
+            <div className="border border-border rounded-2xl overflow-hidden">
+              {desglose.map((d, i) => (
+                <div key={d.nom} className={`flex items-center gap-2 px-3 py-2 border-b border-border last:border-b-0 ${i % 2 === 1 ? "bg-secondary/40" : ""}`}>
+                  <span className="flex-1 min-w-0 text-[12px] font-semibold text-card-foreground uppercase break-words leading-tight">{d.nom}</span>
+                  <span className="w-10 text-right text-[11px] tabular-nums text-muted-foreground shrink-0">{d.qty}</span>
+                  <span className="w-[68px] text-right text-[12px] font-bold tabular-nums text-card-foreground shrink-0">{fmt0(d.monto)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty text={t("No detail available.")} />
+          )}
+        </Modal>
+      )}
+    </div>
+  );
+};
+
+// ── Historial de compra por cliente, base de Dormant y Frequency ──────────
+type HistCliente = {
+  cli: string;
+  fechas: string[];      // fechas de factura, ascendente
+  total: number;
+  ultima: string;
+  silencio: number;      // dias desde la ultima compra
+  intervalo: number;     // promedio de dias entre compras (0 si compro una vez)
+  mensual: number;       // promedio facturado por mes activo
+};
+const calcHistorialClientes = (facturas: Factura[]): HistCliente[] => {
+  const m = new Map<string, { fechas: string[]; total: number }>();
+  for (const f of facturas) {
+    if (!f.fecha) continue;
+    const cur = m.get(f.cli) || { fechas: [], total: 0 };
+    cur.fechas.push(f.fecha);
+    cur.total += Number(f.total) || 0;
+    m.set(f.cli, cur);
+  }
+  const out: HistCliente[] = [];
+  for (const [cli, v] of m) {
+    const fechas = v.fechas.sort();
+    const ultima = fechas[fechas.length - 1];
+    const primera = fechas[0];
+    let intervalo = 0;
+    if (fechas.length > 1) {
+      let suma = 0;
+      for (let i = 1; i < fechas.length; i++) {
+        suma += (new Date(fechas[i] + "T00:00:00").getTime() - new Date(fechas[i - 1] + "T00:00:00").getTime()) / 86400000;
+      }
+      intervalo = suma / (fechas.length - 1);
+    }
+    const meses = Math.max(1, (new Date(ultima + "T00:00:00").getTime() - new Date(primera + "T00:00:00").getTime()) / 86400000 / 30.4);
+    out.push({ cli, fechas, total: v.total, ultima, silencio: diasDesde(ultima), intervalo, mensual: v.total / meses });
+  }
+  return out;
+};
+
+// ── DORMANT CLIENTS ───────────────────────────────────────────────────────
+const DormantClients = () => {
+  const { facturas, clientes, addEvento, readOnly, empresa } = useData();
+  const { t } = useLang();
+  const [umbral, setUmbral] = useState(60);
+
+  const filas = useMemo(
+    () =>
+      calcHistorialClientes(facturas)
+        .filter((h) => h.silencio >= umbral && h.fechas.length >= 2)
+        .sort((a, b) => b.mensual - a.mensual),
+    [facturas, umbral]
+  );
+
+  const whatsapp = (h: HistCliente) => {
+    const cl = clientes.find((c) => c.nom === h.cli);
+    const tel = (cl?.tel || "").replace(/\D/g, "");
+    if (!tel) { alert(t("This client has no phone number saved")); return; }
+    const full = tel.length === 10 ? "1" + tel : tel;
+    const msg = `${t("Hello")} ${h.cli}, ${empresa.nombre}. ${t("We haven't heard from you in a while — can we bring you an order this week?")}`;
+    window.open(`https://wa.me/${full}?text=${encodeURIComponent(msg)}`, "_blank");
+  };
+
+  const agendar = async (h: HistCliente) => {
+    const fecha = prompt(`${t("Visit date:")} (YYYY-MM-DD)`, today());
+    if (!fecha || !/^\d{4}-\d{2}-\d{2}$/.test(fecha)) return;
+    const cl = clientes.find((c) => c.nom === h.cli);
+    try {
+      await addEvento({ fecha, tipos: ["visit"], cliente_id: cl?.id ?? null, nota: `${t("Win back")}: ${h.cli}` });
+      alert(t("Visit scheduled"));
+    } catch (e) {
+      alert("Error: " + (e as Error).message);
+    }
+  };
+
+  return (
+    <div>
+      <p className="text-[11px] text-muted-foreground mb-3 leading-snug px-1">
+        {t("Clients who used to buy regularly and stopped. Sorted by how much they used to spend per month — the biggest loss first.")}
+      </p>
+      <div className="flex gap-1.5 mb-3">
+        {[60, 90, 120].map((d) => (
+          <button
+            key={d}
+            onClick={() => setUmbral(d)}
+            className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors border ${
+              umbral === d ? "bg-primary text-primary-foreground border-primary" : "bg-card text-card-foreground border-border"
+            }`}
+          >
+            {d}+ {t("days")}
+          </button>
+        ))}
+      </div>
+      {filas.length ? (
+        <div className="bg-card border border-border rounded-3xl overflow-hidden">
+          {filas.map((h, i) => (
+            <div key={h.cli} className={`px-3 py-2.5 border-b border-border last:border-b-0 ${i % 2 === 1 ? "bg-secondary/40" : ""}`}>
+              <div className="flex items-center gap-2">
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13px] font-bold text-card-foreground break-words leading-tight">{h.cli}</div>
+                  <div className="text-[10.5px] text-muted-foreground mt-0.5">
+                    {t("Last")}: {fdate(h.ultima)} · {h.fechas.length} {t("orders")}
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-[13px] font-extrabold tabular-nums text-destructive">{h.silencio}d</div>
+                  <div className="text-[10.5px] text-muted-foreground tabular-nums">{fmt0(h.mensual)}/{t("mo")}</div>
+                </div>
+              </div>
+              {!readOnly && (
+                <div className="flex gap-1.5 mt-2">
+                  <button onClick={() => whatsapp(h)} className="flex-1 py-1.5 rounded-full text-[11px] font-bold bg-secondary text-secondary-foreground active:scale-95 transition-transform">
+                    💬 {t("WhatsApp")}
+                  </button>
+                  <button onClick={() => agendar(h)} className="flex-1 py-1.5 rounded-full text-[11px] font-bold bg-secondary text-secondary-foreground active:scale-95 transition-transform">
+                    📅 {t("Schedule visit")}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Empty text={t("No dormant clients — everyone is buying.")} />
+      )}
+      {filas.length > 0 && (
+        <BotonExcel
+          onClick={() =>
+            bajarExcel(`dormant-clients-${umbral}d`, [
+              {
+                nombre: t("Dormant Clients"),
+                filas: [
+                  [t("Client"), t("Last order"), t("Days silent"), t("Orders"), t("Was buying (per month)"), t("Lifetime")],
+                  ...filas.map((h): (string | number)[] => [h.cli, h.ultima, h.silencio, h.fechas.length, Number(h.mensual.toFixed(2)), Number(h.total.toFixed(2))]),
+                ],
+              },
+            ])
+          }
+        />
+      )}
+    </div>
+  );
+};
+
+// ── BUYING FREQUENCY ──────────────────────────────────────────────────────
+const BuyingFrequency = () => {
+  const { facturas } = useData();
+  const { t } = useLang();
+  const filas = useMemo(() => {
+    return calcHistorialClientes(facturas)
+      .filter((h) => h.fechas.length >= 3) // con menos de 3 compras el promedio no dice nada
+      .map((h) => ({ ...h, vence: Math.round(h.intervalo - h.silencio) }))
+      .sort((a, b) => a.vence - b.vence);
+  }, [facturas]);
+
+  return (
+    <div>
+      <p className="text-[11px] text-muted-foreground mb-3 leading-snug px-1">
+        {t("How often each client buys, and who is already late. Only clients with 3+ orders — with fewer, the average means nothing.")}
+      </p>
+      {filas.length ? (
+        <div className="bg-card border border-border rounded-3xl overflow-hidden">
+          <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-foreground text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+            <span className="flex-1">{t("Client")}</span>
+            <span className="w-14 text-right shrink-0">{t("Every")}</span>
+            <span className="w-16 text-right shrink-0">{t("Status")}</span>
+          </div>
+          {filas.map((h, i) => (
+            <div key={h.cli} className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 ${i % 2 === 1 ? "bg-secondary/40" : ""}`}>
+              <div className="flex-1 min-w-0">
+                <div className="text-[13px] font-bold text-card-foreground break-words leading-tight">{h.cli}</div>
+                <div className="text-[10.5px] text-muted-foreground mt-0.5">
+                  {t("Last")}: {fdate(h.ultima)} · {h.fechas.length} {t("orders")}
+                </div>
+              </div>
+              <div className="w-14 text-right text-[12px] font-bold tabular-nums text-card-foreground shrink-0">
+                {Math.round(h.intervalo)}d
+              </div>
+              <div className="w-16 text-right shrink-0">
+                {h.vence < 0 ? (
+                  <span className="text-[11px] font-extrabold text-destructive">{Math.abs(h.vence)}d {t("late")}</span>
+                ) : h.vence <= 3 ? (
+                  <span className="text-[11px] font-extrabold" style={{ color: "#b8722a" }}>{t("due now")}</span>
+                ) : (
+                  <span className="text-[11px] font-bold text-muted-foreground">{t("in")} {h.vence}d</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <Empty text={t("Not enough purchase history yet.")} />
+      )}
+      {filas.length > 0 && (
+        <BotonExcel
+          onClick={() =>
+            bajarExcel("buying-frequency", [
+              {
+                nombre: t("Buying Frequency"),
+                filas: [
+                  [t("Client"), t("Buys every (days)"), t("Last order"), t("Days silent"), t("Orders"), t("Due in (days)")],
+                  ...filas.map((h): (string | number)[] => [h.cli, Math.round(h.intervalo), h.ultima, h.silencio, h.fechas.length, h.vence]),
+                ],
+              },
+            ])
+          }
+        />
+      )}
+    </div>
+  );
+};
+
+// ── BEST DAY ──────────────────────────────────────────────────────────────
+const BestDay = () => {
+  const { facturas } = useData();
+  const { t } = useLang();
+  const [desde, setDesde] = useState(`${new Date().getFullYear()}-01-01`);
+  const [hasta, setHasta] = useState(today());
+
+  const dias = useMemo(() => {
+    const nombres = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const acc = nombres.map((n) => ({ nom: n, monto: 0, docs: 0 }));
+    for (const f of facturas) {
+      const fecha = f.fecha || "";
+      if (fecha < desde || fecha > hasta) continue;
+      // Fecha local a mediodia: evita que el timezone corra el dia de la semana
+      const d = new Date(fecha + "T12:00:00");
+      acc[d.getDay()].monto += Number(f.total) || 0;
+      acc[d.getDay()].docs += 1;
+    }
+    return acc;
+  }, [facturas, desde, hasta]);
+
+  const total = dias.reduce((a, d) => a + d.monto, 0);
+  const max = Math.max(...dias.map((d) => d.monto), 1);
+  const mejor = dias.reduce((a, b) => (b.monto > a.monto ? b : a), dias[0]);
+
+  return (
+    <div>
+      <p className="text-[11px] text-muted-foreground mb-3 leading-snug px-1">
+        {t("Which day of the week actually sells. Useful to plan the route and the deliveries.")}
+      </p>
+      <SelectorPeriodo desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
+      {total > 0 ? (
+        <>
+          <div className="bg-card border border-border rounded-3xl p-3.5 mb-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground mb-1">{t("Best day")}</div>
+            <div className="text-[22px] font-extrabold tracking-tight text-card-foreground">{t(mejor.nom)}</div>
+            <div className="text-[11px] text-muted-foreground mb-3">
+              {fmt0(mejor.monto)} · {mejor.docs} {t("invoices")}
+            </div>
+            <div className="flex items-end gap-1.5 h-24">
+              {dias.map((d) => (
+                <div key={d.nom} className="flex-1 h-full flex flex-col justify-end items-center gap-1">
+                  <div
+                    className={`w-full rounded-t-md ${d.nom === mejor.nom ? "bg-primary" : "bg-secondary"}`}
+                    style={{ height: `${Math.max(2, Math.round((d.monto / max) * 100))}%` }}
+                  />
+                  <span className={`text-[9px] font-bold ${d.nom === mejor.nom ? "text-primary" : "text-muted-foreground"}`}>{t(d.nom).slice(0, 3)}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="bg-card border border-border rounded-3xl overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-foreground text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+              <span className="flex-1">{t("Day")}</span>
+              <span className="w-10 text-right shrink-0">{t("Inv")}</span>
+              <span className="w-[72px] text-right shrink-0">{t("Revenue")}</span>
+              <span className="w-12 text-right shrink-0">%</span>
+            </div>
+            {dias.map((d, i) => (
+              <div key={d.nom} className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 ${i % 2 === 1 ? "bg-secondary/40" : ""}`}>
+                <span className="flex-1 text-[13px] font-bold text-card-foreground">{t(d.nom)}</span>
+                <span className="w-10 text-right text-[12px] tabular-nums text-card-foreground shrink-0">{d.docs}</span>
+                <span className="w-[72px] text-right text-[13px] font-extrabold tabular-nums text-card-foreground shrink-0">{fmt0(d.monto)}</span>
+                <span className="w-12 text-right text-[11px] tabular-nums text-muted-foreground shrink-0">{((d.monto / total) * 100).toFixed(0)}%</span>
+              </div>
+            ))}
+          </div>
+          <BotonExcel
+            onClick={() =>
+              bajarExcel(`best-day-${desde}_${hasta}`, [
+                {
+                  nombre: t("Best Day"),
+                  filas: [
+                    [t("Best Day"), `${fdate(desde)} — ${fdate(hasta)}`],
+                    [],
+                    [t("Day"), t("Invoices"), t("Revenue"), t("% of total")],
+                    ...dias.map((d): (string | number)[] => [
+                      d.nom,
+                      d.docs,
+                      Number(d.monto.toFixed(2)),
+                      total ? Number(((d.monto / total) * 100).toFixed(1)) : 0,
+                    ]),
+                  ],
+                },
+              ])
+            }
+          />
+        </>
+      ) : (
+        <Empty text={t("No sales in this period.")} />
+      )}
+    </div>
+  );
+};
+
+// ── WHO BUYS THIS ─────────────────────────────────────────────────────────
+const WhoBuys = () => {
+  const { facturas, productos } = useData();
+  const { t } = useLang();
+  const [q, setQ] = useState("");
+  const [sel, setSel] = useState<Producto | null>(null);
+
+  const encontrados = useMemo(() => {
+    if (!q.trim()) return [];
+    return flexibleSearch(productos, q, (p) => `${p.nom} ${p.sku || ""} ${p.fabricante || ""}`, (p) => p.nom).slice(0, 20);
+  }, [productos, q]);
+
+  const compradores = useMemo(() => {
+    if (!sel) return [];
+    const skuKey = (sel.sku || "").trim().toLowerCase();
+    const m = new Map<string, { cli: string; qty: number; monto: number; veces: number; ultima: string }>();
+    for (const f of facturas) {
+      for (const l of f.lineas || []) {
+        const coincide =
+          (l as LineaFactura & { prodId?: string }).prodId === sel.id ||
+          (skuKey && (l.sku || "").trim().toLowerCase() === skuKey) ||
+          l.prodNom === sel.nom;
+        if (!coincide) continue;
+        const cur = m.get(f.cli) || { cli: f.cli, qty: 0, monto: 0, veces: 0, ultima: "" };
+        cur.qty += Number(l.qty || 0);
+        cur.monto += montoLinea(l);
+        cur.veces += 1;
+        if ((f.fecha || "") > cur.ultima) cur.ultima = f.fecha || "";
+        m.set(f.cli, cur);
+      }
+    }
+    return Array.from(m.values()).sort((a, b) => b.qty - a.qty);
+  }, [sel, facturas]);
+
+  return (
+    <div>
+      <p className="text-[11px] text-muted-foreground mb-3 leading-snug px-1">
+        {t("Pick a product and see exactly who buys it, how much and when they last did.")}
+      </p>
+      <input
+        value={q}
+        onChange={(e) => { setQ(e.target.value); setSel(null); }}
+        placeholder={t("Search product by name, SKU or brand")}
+        className="w-full px-4 py-2.5 rounded-full border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring mb-3"
+      />
+      {!sel && encontrados.length > 0 && (
+        <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+          {encontrados.map((p) => (
+            <button key={p.id} onClick={() => { setSel(p); setQ(p.nom); }} className="w-full flex items-center gap-2.5 px-3 py-2.5 border-b border-border last:border-b-0 text-left active:bg-secondary/60">
+              <span className="flex-1 min-w-0">
+                <span className="block text-[12.5px] font-bold uppercase text-card-foreground break-words leading-tight">{p.nom}</span>
+                {p.sku && <span className="block text-[10px] font-mono text-muted-foreground mt-0.5">{p.sku}</span>}
+              </span>
+              <span className="text-[12px] font-bold tabular-nums text-card-foreground shrink-0">{fmt0(Number(p.precio))}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      {sel && (
+        <>
+          <div className="bg-secondary/60 border border-border rounded-2xl px-3.5 py-2.5 mb-3">
+            <div className="text-[13px] font-extrabold uppercase text-card-foreground leading-tight break-words">{sel.nom}</div>
+            <div className="text-[10.5px] text-muted-foreground mt-0.5 font-mono">{sel.sku || "—"}</div>
+          </div>
+          {compradores.length ? (
+            <div className="bg-card border border-border rounded-3xl overflow-hidden">
+              <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-foreground text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+                <span className="flex-1">{t("Client")}</span>
+                <span className="w-10 text-right shrink-0">{t("Qty")}</span>
+                <span className="w-[68px] text-right shrink-0">{t("Revenue")}</span>
+              </div>
+              {compradores.map((c, i) => (
+                <div key={c.cli} className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 ${i % 2 === 1 ? "bg-secondary/40" : ""}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-card-foreground break-words leading-tight">{c.cli}</div>
+                    <div className="text-[10.5px] text-muted-foreground mt-0.5">
+                      {c.veces}× · {t("last")} {fdate(c.ultima)}
+                    </div>
+                  </div>
+                  <span className="w-10 text-right text-[12px] font-bold tabular-nums text-card-foreground shrink-0">{c.qty}</span>
+                  <span className="w-[68px] text-right text-[13px] font-extrabold tabular-nums text-card-foreground shrink-0">{fmt0(c.monto)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty text={t("Nobody has bought this product yet.")} />
+          )}
+          {compradores.length > 0 && (
+            <BotonExcel
+              onClick={() =>
+                bajarExcel(`who-buys-${(sel.sku || sel.nom).slice(0, 20)}`, [
+                  {
+                    nombre: t("Who buys this"),
+                    filas: [
+                      [sel.nom, sel.sku || ""],
+                      [],
+                      [t("Client"), t("Qty"), t("Revenue"), t("Times"), t("Last order")],
+                      ...compradores.map((c): (string | number)[] => [c.cli, c.qty, Number(c.monto.toFixed(2)), c.veces, c.ultima]),
+                    ],
+                  },
+                ])
+              }
+            />
+          )}
+        </>
+      )}
+    </div>
+  );
+};
+
+// ── SALES VS COLLECTED ────────────────────────────────────────────────────
+const SalesVsCollected = () => {
+  const { facturas, clientes, vendedores } = useData();
+  const { t } = useLang();
+  const [por, setPor] = useState<"salesperson" | "client">("salesperson");
+  const [desde, setDesde] = useState(primerDiaMes());
+  const [hasta, setHasta] = useState(today());
+
+  const filas = useMemo(() => {
+    const vendedorPorId = new Map(vendedores.map((v) => [v.id, v.nombre]));
+    const vendedorPorCliente = new Map<string, string>();
+    for (const c of clientes) {
+      if (c.vendedor_id && vendedorPorId.has(c.vendedor_id)) vendedorPorCliente.set(c.nom, vendedorPorId.get(c.vendedor_id)!);
+    }
+    const m = new Map<string, { nom: string; facturado: number; cobrado: number; docs: number }>();
+    for (const f of facturas) {
+      const key = por === "client" ? f.cli : vendedorPorCliente.get(f.cli) || "Unassigned";
+      const cur = m.get(key) || { nom: key, facturado: 0, cobrado: 0, docs: 0 };
+      if ((f.fecha || "") >= desde && (f.fecha || "") <= hasta) {
+        cur.facturado += Number(f.total) || 0;
+        cur.docs += 1;
+      }
+      for (const p of f.pagos || []) {
+        if ((p.fecha || "") >= desde && (p.fecha || "") <= hasta) cur.cobrado += Number(p.monto) || 0;
+      }
+      m.set(key, cur);
+    }
+    return Array.from(m.values())
+      .filter((x) => x.facturado > 0 || x.cobrado > 0)
+      .sort((a, b) => b.facturado - a.facturado);
+  }, [facturas, clientes, vendedores, por, desde, hasta]);
+
+  const totFact = filas.reduce((a, f) => a + f.facturado, 0);
+  const totCob = filas.reduce((a, f) => a + f.cobrado, 0);
+
+  return (
+    <div>
+      <p className="text-[11px] text-muted-foreground mb-3 leading-snug px-1">
+        {t("Invoiced vs actually collected in the period. Selling is not the same as getting paid.")}
+      </p>
+      <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
+        {([{ id: "salesperson", label: "By salesperson" }, { id: "client", label: "By client" }] as const).map((o) => (
+          <button
+            key={o.id}
+            onClick={() => setPor(o.id)}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${por === o.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+          >
+            {t(o.label)}
+          </button>
+        ))}
+      </div>
+      <SelectorPeriodo desde={desde} hasta={hasta} setDesde={setDesde} setHasta={setHasta} />
+      {filas.length ? (
+        <>
+          <div className="bg-card border border-border rounded-3xl overflow-hidden">
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b-2 border-foreground text-[10px] font-extrabold uppercase tracking-wider text-muted-foreground">
+              <span className="flex-1">{t(por === "client" ? "Client" : "Salesperson")}</span>
+              <span className="w-[68px] text-right shrink-0">{t("Invoiced")}</span>
+              <span className="w-[68px] text-right shrink-0">{t("Collected")}</span>
+              <span className="w-10 text-right shrink-0">%</span>
+            </div>
+            {filas.map((f, i) => {
+              const pct = f.facturado ? Math.round((f.cobrado / f.facturado) * 100) : 0;
+              return (
+                <div key={f.nom} className={`flex items-center gap-2 px-3 py-2.5 border-b border-border last:border-b-0 ${i % 2 === 1 ? "bg-secondary/40" : ""}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[13px] font-bold text-card-foreground break-words leading-tight">{f.nom}</div>
+                    <div className="text-[10.5px] text-muted-foreground mt-0.5">{f.docs} {t("invoices")}</div>
+                  </div>
+                  <span className="w-[68px] text-right text-[12.5px] font-extrabold tabular-nums text-card-foreground shrink-0">{fmt0(f.facturado)}</span>
+                  <span className="w-[68px] text-right text-[12.5px] font-extrabold tabular-nums text-primary shrink-0">{fmt0(f.cobrado)}</span>
+                  <span className={`w-10 text-right text-[11px] font-extrabold tabular-nums shrink-0 ${pct >= 80 ? "text-primary" : pct >= 50 ? "text-card-foreground" : "text-destructive"}`}>
+                    {pct}%
+                  </span>
+                </div>
+              );
+            })}
+            <div className="flex items-center gap-2 px-3 py-2.5 border-t-2 border-foreground bg-secondary/60">
+              <span className="flex-1 text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground">{t("Total")}</span>
+              <span className="w-[68px] text-right text-[13px] font-extrabold tabular-nums text-card-foreground shrink-0">{fmt0(totFact)}</span>
+              <span className="w-[68px] text-right text-[13px] font-extrabold tabular-nums text-primary shrink-0">{fmt0(totCob)}</span>
+              <span className="w-10 shrink-0" />
+            </div>
+          </div>
+          <p className="text-[10.5px] text-muted-foreground mt-2 px-1 leading-snug">
+            {t("Note: collected counts every payment received in the period, including payments for invoices billed earlier — so the % can go over 100.")}
+          </p>
+          <BotonExcel
+            onClick={() =>
+              bajarExcel(`sales-vs-collected-${desde}_${hasta}`, [
+                {
+                  nombre: t("Sales vs Collected"),
+                  filas: [
+                    [t("Sales vs Collected"), `${fdate(desde)} — ${fdate(hasta)}`],
+                    [],
+                    [t(por === "client" ? "Client" : "Salesperson"), t("Invoices"), t("Invoiced"), t("Collected"), "%"],
+                    ...filas.map((f): (string | number)[] => [
+                      f.nom, f.docs, Number(f.facturado.toFixed(2)), Number(f.cobrado.toFixed(2)),
+                      f.facturado ? Math.round((f.cobrado / f.facturado) * 100) : 0,
+                    ]),
+                    [],
+                    [t("Total"), "", Number(totFact.toFixed(2)), Number(totCob.toFixed(2))],
+                  ],
+                },
+              ])
+            }
+          />
+        </>
+      ) : (
+        <Empty text={t("No sales in this period.")} />
+      )}
+    </div>
+  );
+};
+
+// ── TOP PRODUCTS (extraido de Inventario para compartirlo con Reports) ────
+const TopProductosModal = ({ onClose }: { onClose: () => void }) => {
+  const { facturas, almacenes } = useData();
+  const [meses, setMeses] = useState<1 | 3>(1);
+  const [almacenFiltro, setAlmacenFiltro] = useState<string>("todos");
+  const lista = useMemo(() => {
+    const d = new Date();
+    d.setMonth(d.getMonth() - meses);
+    return calcTopProductos(facturas, d.toISOString().slice(0, 10), 15, almacenFiltro);
+  }, [facturas, meses, almacenFiltro]);
+  return (
+    <Modal title="Top Products" onClose={onClose}>
+      <div className="flex gap-1.5 p-1 bg-muted rounded-xl mb-3">
+        {([1, 3] as const).map((m) => (
+          <button
+            key={m}
+            onClick={() => setMeses(m)}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${meses === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+          >
+            {m === 1 ? "This month" : "3 months"}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap gap-1.5 p-1 bg-muted rounded-xl mb-3">
+        {[{ id: "todos", label: "All" }, ...almacenes.filter((x) => x.activo).map((x) => ({ id: x.id, label: `${x.icono} ${x.nombre}` }))].map((a) => (
+          <button
+            key={a.id}
+            onClick={() => setAlmacenFiltro(a.id)}
+            className={`flex-1 py-2 rounded-lg text-sm font-bold transition-all ${almacenFiltro === a.id ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+          >
+            {a.label}
+          </button>
+        ))}
+      </div>
+      {lista.length ? (
+        <div className="border border-border rounded-3xl overflow-hidden">
+          {lista.map((p, i) => {
+            const maxMonto = lista[0]?.monto || 1;
+            return (
+              <div key={p.sku || p.nom} className="flex items-center gap-2.5 px-4 py-2.5 border-b border-border last:border-b-0">
+                <div className="w-5 text-center text-xs font-bold text-muted-foreground shrink-0">{i + 1}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-card-foreground uppercase break-words leading-tight">{p.nom}</div>
+                  {p.sku && <div className="text-[9px] font-mono text-primary/60 truncate leading-none mb-1">{p.sku}</div>}
+                  <div className="mt-1 h-1 rounded-full overflow-hidden bg-secondary">
+                    <div className="h-full rounded-full" style={{ width: `${Math.round((p.monto / maxMonto) * 100)}%`, background: "var(--primary)" }} />
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-xs font-bold text-card-foreground tabular-nums">{fmt(p.monto)}</div>
+                  <div className="text-[9px] text-muted-foreground">{p.qty.toLocaleString()} u</div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty text="No sales in this period." />
+      )}
+    </Modal>
+  );
+};
+
+// ── EL HUB ────────────────────────────────────────────────────────────────
+// Opcion A del mockup: cuadros por categoria, mismo lenguaje visual que
+// Settings e Inventory Tools. Cada cuadro abre una sub-pantalla (con back),
+// una modal ya existente, o navega a una ruta.
+type ItemReporte = { id: string; em: string; label: string; tipo: "sub" | "modal" | "ruta"; destacado?: boolean };
+const SECCIONES_REPORTES: { titulo: string; items: ItemReporte[] }[] = [
+  {
+    titulo: "Sales",
+    items: [
+      { id: "sales", em: "📈", label: "Sales Analysis", tipo: "sub", destacado: true },
+      { id: "topprod", em: "🏆", label: "Top Products", tipo: "modal" },
+      { id: "topcli", em: "👑", label: "Top Clients", tipo: "modal" },
+      { id: "dormant", em: "😴", label: "Dormant Clients", tipo: "sub" },
+      { id: "freq", em: "🔁", label: "Buying Frequency", tipo: "sub" },
+      { id: "bestday", em: "📅", label: "Best Day", tipo: "sub" },
+      { id: "whobuys", em: "🔎", label: "Who Buys This", tipo: "sub" },
+    ],
+  },
+  {
+    titulo: "Money",
+    items: [
+      { id: "pl", em: "📊", label: "Income Statement", tipo: "sub" },
+      { id: "cash", em: "💵", label: "Cash Flow", tipo: "sub" },
+      { id: "tax", em: "🧾", label: "Tax Package", tipo: "modal" },
+      { id: "aging", em: "⏳", label: "Aging Report", tipo: "ruta" },
+      { id: "com", em: "🤝", label: "Commissions", tipo: "modal" },
+      { id: "vscol", em: "💳", label: "Sales vs Collected", tipo: "sub" },
+    ],
+  },
+  {
+    titulo: "Inventory",
+    items: [
+      { id: "missing", em: "📉", label: "Missing Stock", tipo: "modal" },
+      { id: "reorder", em: "🔄", label: "Smart Reorder", tipo: "modal" },
+      { id: "count", em: "📋", label: "Count Sheet", tipo: "modal" },
+      { id: "catalog", em: "📖", label: "Catalog", tipo: "modal" },
+    ],
+  },
+];
+
+const TITULOS_SUB: Record<string, string> = {
+  sales: "Sales Analysis",
+  dormant: "Dormant Clients",
+  freq: "Buying Frequency",
+  bestday: "Best Day",
+  whobuys: "Who Buys This",
+  pl: "Income Statement",
+  cash: "Cash Flow",
+  vscol: "Sales vs Collected",
+};
+
+const Reportes = ({ subInicial }: { subInicial?: string | null }) => {
+  const { t } = useLang();
+  const router = useRouter();
+  const [sub, setSub] = useState<string | null>(subInicial || null);
+  const [modal, setModal] = useState<string | null>(null);
+
+  // Un link viejo ?tab=pl entra directo al Income Statement.
+  useEffect(() => {
+    if (subInicial) setSub(subInicial);
+  }, [subInicial]);
+
+  const abrir = (it: ItemReporte) => {
+    if (it.tipo === "sub") setSub(it.id);
+    else if (it.tipo === "modal") setModal(it.id);
+    else if (it.id === "aging") router.push("/reportes/facturas-pendientes");
+  };
+
+  if (sub) {
+    return (
+      <div>
+        <button
+          onClick={() => setSub(null)}
+          className="flex items-center gap-1.5 mb-3 text-sm font-bold text-muted-foreground active:scale-95 transition-transform"
+        >
+          ‹ {t("Reports")}
+        </button>
+        <h2 className="text-xl font-extrabold tracking-tight text-foreground mb-3">{t(TITULOS_SUB[sub] || "")}</h2>
+        {sub === "sales" && <SalesAnalysis />}
+        {sub === "dormant" && <DormantClients />}
+        {sub === "freq" && <BuyingFrequency />}
+        {sub === "bestday" && <BestDay />}
+        {sub === "whobuys" && <WhoBuys />}
+        {sub === "vscol" && <SalesVsCollected />}
+        {(sub === "pl" || sub === "cash") && <PLReport vistaInicial={sub === "cash" ? "cash" : "income"} />}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      {SECCIONES_REPORTES.map((sec) => (
+        <div key={sec.titulo} className="mb-4">
+          <div className="text-[11px] font-extrabold uppercase tracking-wider text-muted-foreground mb-2 px-1">{t(sec.titulo)}</div>
+          <div className="grid grid-cols-3 gap-2">
+            {sec.items.map((it) => (
+              <button
+                key={it.id}
+                onClick={() => abrir(it)}
+                className={`rounded-3xl px-1.5 py-3 flex flex-col items-center justify-center gap-1.5 min-h-[86px] border active:scale-95 transition-transform ${
+                  it.destacado
+                    ? "border-transparent text-white bg-gradient-to-br from-[#82a175] via-primary to-[#3c5536]"
+                    : "bg-card border-border text-card-foreground"
+                }`}
+              >
+                <span className="text-[21px] leading-none">{it.em}</span>
+                <span className="text-[10.5px] font-bold leading-tight text-center px-0.5">{t(it.label)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ))}
+
+      {modal === "topprod" && <TopProductosModal onClose={() => setModal(null)} />}
+      {modal === "topcli" && <TopClientesModal onClose={() => setModal(null)} />}
+      {modal === "tax" && <TaxPackageModal onClose={() => setModal(null)} />}
+      {modal === "com" && <VendedoresModal onClose={() => setModal(null)} />}
+      {modal === "missing" && <FaltantesModal onClose={() => setModal(null)} />}
+      {modal === "reorder" && <ReorderModal onClose={() => setModal(null)} />}
+      {modal === "count" && <ConteoModal onClose={() => setModal(null)} />}
+      {modal === "catalog" && <CatalogoModal onClose={() => setModal(null)} />}
+    </div>
+  );
+};
+
+// Top Clients: la lista ya existia como componente compartido, aqui solo se
+// envuelve en una modal igual que en el tab Clientes.
+const TopClientesModal = ({ onClose }: { onClose: () => void }) => {
+  const { facturas } = useData();
+  return (
+    <Modal title="Top 10 Clients" onClose={onClose}>
+      <TopClientesLista facturas={facturas} />
+    </Modal>
+  );
+};
+
 const TITLES: Record<string, string> = {
   dash: "Dashboard",
   cal: "Calendar",
@@ -11921,6 +13100,7 @@ const TITLES: Record<string, string> = {
   ord: "Orders",
   mej: "Improvements",
   usr: "Manage Users",
+  rep: "Reports",
   pl: "P&L Report",
   com: "Purchases",
 };
@@ -12151,6 +13331,9 @@ const GestionarUsuarios = () => {
 
 function AppContent() {
   const [tab, setTab] = useState("dash");
+  // Sub-reporte con el que abrir el hub de Reports (solo lo usa el redirect
+  // de ?tab=pl; entrar por el bottom nav abre el hub en su grid).
+  const [repSub, setRepSub] = useState<string | null>(null);
   const { loading, role, refreshAll, empresa } = useData();
   const router = useRouter();
   const supabase = useMemo(() => createClient(), []);
@@ -12213,12 +13396,17 @@ function AppContent() {
     }
   };
 
-  // Leer parámetro de URL para establecer el tab
+  // Leer parámetro de URL para establecer el tab. "pl" ya no es una pestaña
+  // propia (2026-08-01): los links viejos abren Reports parado en el Income
+  // Statement, para no romper screenshots ni enlaces guardados.
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get("tab");
-      if (tabParam && ALL_TAB_IDS.includes(tabParam)) {
+      if (tabParam === "pl") {
+        setTab("rep");
+        setRepSub("pl");
+      } else if (tabParam && ALL_TAB_IDS.includes(tabParam)) {
         setTab(tabParam);
       }
     }
@@ -12256,11 +13444,20 @@ function AppContent() {
     if (role === "visitante" && tab === "usr") setTab("dash");
   }, [role, tab]);
 
+  // El sub-reporte del redirect ?tab=pl se consume una sola vez: al salir de
+  // Reports se olvida, para que volver a la pestaña abra el hub y no rebote
+  // al Income Statement cada vez (solo se renderiza el panel activo, asi que
+  // salir de la pestaña desmonta Reportes y perderia su estado interno).
+  useEffect(() => {
+    if (tab !== "rep" && repSub) setRepSub(null);
+  }, [tab, repSub]);
+
   // Los widgets del Home navegan entre tabs con este evento (Dashboard no
   // recibe setTab como prop) — ver goTab en el Dashboard.
   useEffect(() => {
     const fn = (e: Event) => {
       const id = (e as CustomEvent<string>).detail;
+      if (id === "pl") { setTab("rep"); setRepSub("pl"); return; }
       if (ALL_TAB_IDS.includes(id)) setTab(id);
     };
     window.addEventListener("ph:goto-tab", fn);
@@ -12281,7 +13478,7 @@ function AppContent() {
     ord: <Ordenes />,
     mej: <Mejoras />,
     usr: role === "admin" ? <GestionarUsuarios /> : <Dashboard />,
-    pl: <PLReport />,
+    rep: <Reportes subInicial={repSub} />,
     com: <Compras />,
   };
 

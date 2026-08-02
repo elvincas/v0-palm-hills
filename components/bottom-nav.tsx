@@ -14,6 +14,7 @@ export const NAV_ICONS: Record<string, string> = {
   mej: "M12 19V5M5 12l7-7 7 7",
   usr: "M12 2c5.523 0 10 4.477 10 10s-4.477 10-10 10S2 17.523 2 12 6.477 2 12 2zm0 9c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3zm0 1c2.21 0 4 1.79 4 4v2c0 1.1-.9 2-2 2h-4c-1.1 0-2-.9-2-2v-2c0-2.21 1.79-4 4-4z",
   pl: "M3 3v18h18 M7 15l4-6 3 4 5-8",
+  rep: "M3 3v18h18 M7 15l4-6 3 4 5-8",
   com: "M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z M3.27 6.96 12 12l8.73-5.04 M12 22V12 M12 2v5 M9.5 3.5l5 3",
   ven: "M19 5L5 19 M7.5 9a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3zM16.5 18a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3z",
   alm: "M3 21h18 M5 21V9l7-5 7 5v12 M9 21v-6h6v6",
@@ -34,13 +35,18 @@ export const NAV_TABS = [
   { id: "cli", label: "Clients" },
   { id: "inv", label: "Inventory" },
   { id: "ord", label: "Orders" },
-  { id: "pl", label: "P&L" },
+  // 2026-08-01: "Reports" reemplaza a "P&L" aqui. El P&L no se fue, es un
+  // reporte mas dentro del hub (junto a los otros 10 que vivian desperdigados
+  // por la app). Ver SECCIONES_REPORTES en page.tsx.
+  { id: "rep", label: "Reports" },
   { id: "com", label: "Purchases" },
 ];
 
 // Todas las pestañas validas (incluye las que ya no estan en el bottom nav
 // pero siguen siendo destinos validos via el menu "More" o un link directo).
-export const ALL_TAB_IDS = [...NAV_TABS.map((t) => t.id), "mej", "usr"];
+// "pl" se queda aqui a proposito: los links viejos ?tab=pl siguen sirviendo,
+// abren Reports directo en el Income Statement (ver AppContent).
+export const ALL_TAB_IDS = [...NAV_TABS.map((t) => t.id), "mej", "usr", "pl"];
 
 // Memoria de navegacion por pestaña: al salir de una sub-pagina (ej. el perfil
 // de un cliente) hacia otra pestaña, se recuerda donde quedo el usuario para
