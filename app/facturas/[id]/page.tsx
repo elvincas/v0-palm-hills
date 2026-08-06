@@ -25,6 +25,9 @@ interface Pago {
   fecha: string;
   nota?: string;
   metodo?: string; // Card | Bank Transfer | Zelle | Cash | Check
+  // Recibo ya emitido por este pago (tabla `recibos`). Se guarda en el pago
+  // mismo y no por indice: borrar otro pago no debe reapuntar el recibo.
+  recibo_id?: string;
 }
 
 const METODOS_PAGO = ["Cash", "Zelle", "Check", "Card", "Bank Transfer"] as const;
@@ -56,6 +59,7 @@ interface LineaOrdenRev {
 }
 
 interface Cliente {
+  id?: string;
   nom: string;
   codigo_cliente?: string;
   dir?: string;
@@ -393,7 +397,7 @@ export default function FacturaPage() {
 
       const { data: c } = await supabase
         .from("clientes")
-        .select("nom, codigo_cliente, dir, ciudad, estado_dir, tel, email")
+        .select("id, nom, codigo_cliente, dir, ciudad, estado_dir, tel, email")
         .eq("nom", (f as Factura).cli)
         .maybeSingle();
       if (c) setCliente(c as Cliente);
@@ -618,6 +622,93 @@ export default function FacturaPage() {
     setPagoFull(false);
     setShowPagoForm(false);
     setSavingPago(false);
+    // Ofrecer el recibo en el momento, que es cuando el cliente esta enfrente
+    setReciboPrompt(newPagos.length - 1);
+  };
+
+  // --- Recibo de pago (2026-08-04) ---
+  // El dinero ya quedo registrado en facturas.pagos; el recibo es el DOCUMENTO
+  // que se le entrega al cliente: numeracion propia (desde 7001) y un SNAPSHOT
+  // del estado de cuenta al emitirlo, para que reimprimirlo mas adelante
+  // devuelva el mismo papel y no uno actualizado.
+  const [reciboPrompt, setReciboPrompt] = useState<number | null>(null);
+  const [emitiendoRecibo, setEmitiendoRecibo] = useState<number | null>(null);
+
+  const emitirRecibo = async (idx: number) => {
+    if (!factura || emitiendoRecibo !== null) return;
+    const pago = (factura.pagos || [])[idx];
+    if (!pago) return;
+    if (pago.recibo_id) {
+      router.push(`/recibos/${pago.recibo_id}`);
+      return;
+    }
+    setEmitiendoRecibo(idx);
+    try {
+      // Numero consultado a la base al insertar (mismo criterio que el resto de
+      // los documentos), no del estado local.
+      const { data: ult } = await supabase.from("recibos").select("num").order("num", { ascending: false }).limit(1);
+      const num = Math.max(7000, ult && ult.length ? Number(ult[0].num) || 0 : 0) + 1;
+
+      // Lo que la factura debia justo antes de este pago
+      const previos = (factura.pagos || []).slice(0, idx).reduce((acc, p) => acc + p.monto, 0);
+      const balanceAntes = +(factura.total - previos).toFixed(2);
+
+      // Estado de cuenta: todas las facturas del cliente que siguen abiertas
+      // ahora (este pago ya esta aplicado).
+      const { data: fs } = await supabase
+        .from("facturas")
+        .select("num, fecha, total, pagos")
+        .eq("cli", factura.cli)
+        .order("fecha", { ascending: true });
+      const pendientes = ((fs || []) as { num: number; fecha: string; total: number; pagos?: Pago[] }[])
+        .map((f) => ({
+          num: f.num,
+          fecha: f.fecha,
+          saldo: +(Number(f.total) - (f.pagos || []).reduce((acc, p) => acc + p.monto, 0)).toFixed(2),
+        }))
+        .filter((f) => f.saldo > 0.009);
+      const totalPendiente = +pendientes.reduce((acc, f) => acc + f.saldo, 0).toFixed(2);
+
+      const { data: rec, error } = await supabase
+        .from("recibos")
+        .insert({
+          num,
+          cli: factura.cli,
+          cliente_id: cliente?.id || null,
+          fecha: pago.fecha,
+          monto: pago.monto,
+          metodo: pago.metodo || null,
+          nota: pago.nota || null,
+          lineas: [
+            {
+              factura_id: factura.id,
+              factura_num: factura.num,
+              fecha: factura.fecha,
+              balance_antes: balanceAntes,
+              aplicado: pago.monto,
+            },
+          ],
+          pendientes,
+          total_pendiente: totalPendiente,
+        })
+        .select()
+        .single();
+      if (error) throw new Error(error.message);
+
+      // La referencia queda en el pago: evita emitir dos recibos del mismo dinero
+      const newPagos = (factura.pagos || []).map((p, i) => (i === idx ? { ...p, recibo_id: rec.id as string } : p));
+      const { error: fErr } = await supabase.from("facturas").update({ pagos: newPagos }).eq("id", facturaId);
+      if (fErr) throw new Error(fErr.message);
+      setFactura((f) => (f ? { ...f, pagos: newPagos } : f));
+      await supabase.from("actividad").insert({
+        msg: `Receipt #${String(num).padStart(4, "0")} → ${factura.cli} — ${fmt(pago.monto)}`,
+      });
+      router.push(`/recibos/${rec.id}`);
+    } catch (err) {
+      alert("Could not create the receipt: " + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setEmitiendoRecibo(null);
+    }
   };
 
   const handleDeletePago = async (idx: number) => {
@@ -885,6 +976,32 @@ export default function FacturaPage() {
         </div>
       )}
 
+      {/* Recibo recien registrado el pago: es cuando el cliente esta enfrente */}
+      {reciboPrompt !== null && pagos[reciboPrompt] && !readOnly && (
+        <div className="print:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-5 text-center">
+            <div className="w-11 h-11 rounded-full bg-green-100 text-green-700 grid place-items-center mx-auto mb-3">
+              <Icon d={IC.check} className="w-5 h-5" />
+            </div>
+            <h2 className="text-base font-bold text-[#1a1a18]">Payment recorded</h2>
+            <p className="text-xs text-gray-500 mt-1">
+              {fmt(pagos[reciboPrompt].monto)}
+              {pagos[reciboPrompt].metodo ? ` · ${pagos[reciboPrompt].metodo}` : ""} · Balance {fmt(Math.max(0, saldo))}
+            </p>
+            <div className="flex gap-2.5 mt-5">
+              <button onClick={() => setReciboPrompt(null)} className={`flex-1 ${GLASS_BTN}`}>Not now</button>
+              <button
+                onClick={() => { const i = reciboPrompt; setReciboPrompt(null); emitirRecibo(i); }}
+                disabled={emitiendoRecibo !== null}
+                className={`flex-1 ${GLASS_BTN_PRIMARY} disabled:opacity-50`}
+              >
+                {emitiendoRecibo !== null ? "..." : "Send receipt"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Payment history (screen only) */}
       {pagos.length > 0 && (
         <div className="print:hidden max-w-3xl mx-auto px-4 sm:px-8 pt-4">
@@ -906,9 +1023,21 @@ export default function FacturaPage() {
                   </div>
                   <div className="text-xs text-gray-400">{fdate(p.fecha)}{p.nota ? ` · ${p.nota}` : ""}</div>
                 </div>
-                {!readOnly && (
-                  <button onClick={() => handleDeletePago(i)} className="text-gray-300 hover:text-red-500 text-lg leading-none px-1 transition-colors">×</button>
-                )}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Un visitante puede reimprimir un recibo ya emitido, pero no emitirlo */}
+                  {(p.recibo_id || !readOnly) && (
+                    <button
+                      onClick={() => emitirRecibo(i)}
+                      disabled={emitiendoRecibo !== null}
+                      className="border border-[#e9dcc4] bg-[#f5eee2] text-[#a3814e] rounded-full px-2.5 py-1 text-[11px] font-bold active:scale-[0.97] transition-all disabled:opacity-50"
+                    >
+                      {emitiendoRecibo === i ? "..." : "Receipt"}
+                    </button>
+                  )}
+                  {!readOnly && (
+                    <button onClick={() => handleDeletePago(i)} className="text-gray-300 hover:text-red-500 text-lg leading-none px-1 transition-colors">×</button>
+                  )}
+                </div>
               </div>
             ))}
             <div className="px-4 py-2.5 bg-gray-50 flex justify-between text-sm font-bold">

@@ -194,6 +194,22 @@ interface NotaCredito {
   aplicada_fecha?: string;
 }
 
+// Recibo de pago (2026-08-04). Se emite desde la factura (app/facturas/[id]),
+// no desde aqui: el DataContext solo lo lista. `lineas` es un array desde el
+// dia uno para el recibo multi-factura, aunque hoy lleve una sola entrada.
+interface Recibo {
+  id: string;
+  num: number;
+  cli: string;
+  fecha: string;
+  monto: number;
+  metodo?: string | null;
+  nota?: string | null;
+  lineas?: { factura_id?: string; factura_num: number; fecha: string; balance_antes: number; aplicado: number }[];
+  pendientes?: { num: number; fecha: string; saldo: number }[];
+  total_pendiente?: number;
+}
+
 interface Remito {
   id: string;
   num: number;
@@ -657,6 +673,8 @@ interface DataContextType {
   updateOrden: (id: string, o: Orden) => Promise<void>;
   addRemito: (r: Omit<Remito, "id" | "num">) => Promise<void>;
   marcarRemitoEnviado: (id: string) => Promise<void>;
+  recibos: Recibo[];
+  deleteRecibo: (id: string) => Promise<void>;
   ajustarInventario: (
     cambios: { prodId: string; deltaReservado?: number; deltaStock?: number }[]
   ) => Promise<void>;
@@ -726,6 +744,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   const [notasCredito, setNotasCredito] = useState<NotaCredito[]>([]);
   const [ordenes, setOrdenes] = useState<Orden[]>([]);
   const [remitos, setRemitos] = useState<Remito[]>([]);
+  const [recibos, setRecibos] = useState<Recibo[]>([]);
   const [todos, setTodos] = useState<Todo[]>([]);
   const [mejoras, setMejoras] = useState<Mejora[]>([]);
   const [gastos, setGastos] = useState<Gasto[]>([]);
@@ -864,7 +883,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
 
   const loadAll = async () => {
     try {
-      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm, emp, cotz] = await Promise.all([
+      const [c, p, f, nc, o, r, e, ev, lp, ga, co, cat, ven, falt, alm, emp, cotz, rec] = await Promise.all([
         selectAll<Cliente>("clientes", CLIENTE_COLS, "created_at", false),
         selectAll<Producto>("productos", PRODUCTO_COLS, "created_at", false),
         selectAll<Factura>("facturas", "*", "num", false),
@@ -882,6 +901,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
         selectAll<Almacen>("almacenes", "*", "orden", true),
         supabase.from("empresa").select("*").eq("id", 1).maybeSingle(),
         selectAll<Cotizacion>("cotizaciones", "*", "num", false),
+        selectAll<Recibo>("recibos", "*", "num", false),
       ]);
       setClientes(c);
       setProductos(p.map((row) => ({ ...row, etiquetas: row.etiquetas || [], categorias: row.categorias || {} })));
@@ -900,6 +920,7 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       setAlmacenes(alm);
       if (emp.data) setEmpresa(emp.data as Empresa);
       setCotizaciones(cotz.map((row) => ({ ...row, lineas: row.lineas || [] })));
+      setRecibos(rec.map((row) => ({ ...row, lineas: row.lineas || [], pendientes: row.pendientes || [] })));
       await refreshLogs();
 
       // Abrir IndexedDB y aplicar fotos cacheadas al instante (sin esperar red)
@@ -1261,6 +1282,31 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
       )
     );
     await logAct(`Remito marked as sent`);
+  };
+
+  // --- Recibos de pago ---
+  // Se emiten desde la factura (app/facturas/[id]); aqui solo se listan y se
+  // pueden anular. Borrar el recibo NO toca el pago: el dinero sigue
+  // registrado en su factura, lo que se anula es el comprobante emitido.
+  const deleteRecibo = async (id: string) => {
+    const rec = recibos.find((r) => r.id === id);
+    const { error } = await supabase.from("recibos").delete().eq("id", id);
+    if (error) throw new Error(error.message);
+    setRecibos((prev) => prev.filter((r) => r.id !== id));
+    // Soltar la referencia guardada en el pago, para que la factura vuelva a
+    // ofrecer emitirlo.
+    const facturaId = rec?.lineas?.[0]?.factura_id;
+    if (facturaId) {
+      const { data: f } = await supabase.from("facturas").select("pagos").eq("id", facturaId).maybeSingle();
+      if (f?.pagos) {
+        const pagos = (f.pagos as { recibo_id?: string }[]).map((p) =>
+          p.recibo_id === id ? { ...p, recibo_id: undefined } : p
+        );
+        await supabase.from("facturas").update({ pagos }).eq("id", facturaId);
+        setFacturas((prev) => prev.map((fx) => (fx.id === facturaId ? { ...fx, pagos: pagos as Factura["pagos"] } : fx)));
+      }
+    }
+    await logAct(`Receipt #${String(rec?.num ?? "?").padStart(4, "0")} deleted`);
   };
 
   const deleteFactura = async (id: string) => {
@@ -1735,6 +1781,8 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     updateOrden,
     addRemito,
     marcarRemitoEnviado,
+    recibos,
+    deleteRecibo,
     ajustarInventario,
     addMejora,
     deleteMejora,
@@ -3653,7 +3701,7 @@ const Calendario = () => {
 // Facturas
 // ------------------------------
 const Facturas = () => {
-  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, readOnly, listasPrecios, almacenes } =
+  const { facturas, clientes, productos, proximasFechasEntrega, addFactura, deleteFactura, notasCredito, addNotaCredito, deleteNotaCredito, remitos, recibos, deleteRecibo, readOnly, listasPrecios, almacenes } =
     useData();
   const router = useRouter();
   // Prefetch del codigo de la pagina de detalle: sin esto, el primer tap a una
@@ -3662,7 +3710,7 @@ const Facturas = () => {
   useEffect(() => {
     if (facturas[0]) router.prefetch(`/facturas/${facturas[0].id}`);
   }, [facturas.length > 0]);
-  const [subTab, setSubTab] = useState<"invoices" | "creditos" | "remitos">("invoices");
+  const [subTab, setSubTab] = useState<"invoices" | "creditos" | "recibos" | "remitos">("invoices");
   const [q, setQ] = useState("");
   const [show, setShow] = useState(false);
   const [lineas, setLineas] = useState([{ prodId: "", qty: 1 }]);
@@ -3682,6 +3730,7 @@ const Facturas = () => {
   const [ncLineas, setNcLineas] = useState<{ prodSearch: string; prodId: string; qty: number; precio: string }[]>([{ prodSearch: "", prodId: "", qty: 1, precio: "" }]);
   const [ncProdOpen, setNcProdOpen] = useState<number | null>(null);
   const [ncQ, setNcQ] = useState("");
+  const [recQ, setRecQ] = useState("");
   const [saving, setSaving] = useState(false);
 
   const clienteCodigo = (nom: string) =>
@@ -3796,14 +3845,19 @@ const Facturas = () => {
   return (
     <div>
       {/* Sub-tab toggle */}
-      <div className="inline-flex backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-4">
-        <button onClick={() => setSubTab("invoices")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "invoices" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+      {/* 4 sub-tabs no caben como pildoras sueltas a 390px: la fila pasa a
+          ancho completo con botones iguales (flex-1), que ademas queda parejo. */}
+      <div className="flex w-full backdrop-blur-md bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-4">
+        <button onClick={() => setSubTab("invoices")} className={`flex-1 px-2 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all ${subTab === "invoices" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
           🧾 Invoices
         </button>
-        <button onClick={() => setSubTab("creditos")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "creditos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
-          📋 Credit Notes
+        <button onClick={() => setSubTab("creditos")} className={`flex-1 px-2 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all ${subTab === "creditos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          📋 Credits
         </button>
-        <button onClick={() => setSubTab("remitos")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${subTab === "remitos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+        <button onClick={() => setSubTab("recibos")} className={`flex-1 px-2 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all ${subTab === "recibos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          💵 Receipts
+        </button>
+        <button onClick={() => setSubTab("remitos")} className={`flex-1 px-2 py-1.5 rounded-full text-[11px] font-bold whitespace-nowrap transition-all ${subTab === "remitos" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
           📦 Remitos
         </button>
       </div>
@@ -4019,6 +4073,65 @@ const Facturas = () => {
               </button>
             </Modal>
           )}
+        </div>
+      ) : subTab === "recibos" ? (
+        <div>
+          {/* Los recibos no se crean aqui: se emiten desde el pago de la
+              factura. Esta lista es para buscar y reimprimir uno. */}
+          <div className="flex items-center gap-2 mb-3">
+            <div className="relative flex-1">
+              <input value={recQ} onChange={(e) => setRecQ(e.target.value)} placeholder="Search by client..." className="w-full px-3 py-2.5 pr-8 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring" />
+              {recQ && <button onClick={() => setRecQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-card-foreground text-xl leading-none">×</button>}
+            </div>
+          </div>
+          {(() => {
+            const recs = recibos
+              .filter((r) => !recQ || r.cli.toLowerCase().includes(recQ.toLowerCase()) || String(r.num).includes(recQ))
+              .sort((a, b) => b.num - a.num);
+            return recs.length ? (
+              <div className="bg-card border border-border rounded-3xl overflow-hidden mb-3">
+                {recs.map((r, i) => (
+                  <div
+                    key={r.id}
+                    onClick={() => router.push(`/recibos/${r.id}`)}
+                    className={`grid grid-cols-[auto_1fr_auto] items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-secondary/30 group ${i > 0 ? "border-t border-border" : ""}`}
+                  >
+                    <div className="shrink-0">
+                      <div className="text-xs font-mono font-semibold text-[#a3814e] whitespace-nowrap">RC #{String(r.num).padStart(4, "0")}</div>
+                      <div className="text-[11px] text-muted-foreground whitespace-nowrap">{fdate(r.fecha)}</div>
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-card-foreground truncate tracking-tight">{r.cli}</div>
+                      <div className="text-[11px] text-muted-foreground truncate">
+                        {(r.lineas || []).map((l) => `#${String(l.factura_num).padStart(4, "0")}`).join(", ") || "—"}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2.5 shrink-0">
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-sm font-bold tabular-nums text-card-foreground">{fmt(r.monto)}</span>
+                        {r.metodo && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-secondary text-secondary-foreground">{r.metodo}</span>
+                        )}
+                      </div>
+                      {!readOnly && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); if (confirm("Delete this receipt? The payment stays recorded on its invoice.")) deleteRecibo(r.id); }}
+                          className="opacity-0 group-hover:opacity-100 text-destructive text-sm px-1"
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="bg-card rounded-3xl p-3.5 border border-border mb-3">
+                <p className="text-sm text-muted-foreground text-center">No receipts yet.</p>
+                <p className="text-xs text-muted-foreground/70 text-center mt-1">Open a paid invoice and tap “Receipt” next to a payment.</p>
+              </div>
+            );
+          })()}
         </div>
       ) : subTab === "remitos" ? (
         <div>
@@ -6498,6 +6611,7 @@ const PLANTILLA_DOCS = [
   { key: "mensaje_cotizacion", label: "Quotation" },
   { key: "mensaje_remito", label: "Packing Slip" },
   { key: "mensaje_nota_credito", label: "Credit Note" },
+  { key: "mensaje_recibo", label: "Receipt" },
 ] as const;
 
 const PlantillasModal = ({ onClose }: { onClose: () => void }) => {

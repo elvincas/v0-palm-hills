@@ -26,6 +26,7 @@ export interface Empresa {
   mensaje_cotizacion?: string | null;
   mensaje_remito?: string | null;
   mensaje_nota_credito?: string | null;
+  mensaje_recibo?: string | null;
   // Opciones de layout de documentos (2026-07-24, fase B2) — no es un editor
   // visual libre (eso queda para mas adelante, ver memoria de sesion), son
   // presets: posicion del logo, escala de tipografia, color de acento, y
@@ -56,6 +57,7 @@ export const EMPRESA_DEFAULT: Empresa = {
   mensaje_cotizacion: null,
   mensaje_remito: null,
   mensaje_nota_credito: null,
+  mensaje_recibo: null,
   doc_logo_pos: "left",
   doc_font_scale: "normal",
   doc_accent_color: "#4a6741",
