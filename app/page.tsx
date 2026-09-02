@@ -192,6 +192,9 @@ interface NotaCredito {
   aplicada?: boolean;
   aplicada_en?: string; // descripcion libre: a que factura se aplico
   aplicada_fecha?: string;
+  // Factura contra la que se aplico. La NC deja un pago "Credit" dentro de esa
+  // factura, asi que borrarla tiene que ir a limpiarlo.
+  aplicada_factura_id?: string | null;
 }
 
 // Recibo de pago (2026-08-04). Se emite desde la factura (app/facturas/[id]),
@@ -1325,11 +1328,31 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
     await logAct(`Credit note #${num} → ${nota.cli} — $${nota.monto}`);
   };
 
+  // Una NC aplicada dejo un pago "Credit" dentro de su factura. Hay que soltarlo
+  // antes de borrar: un pago huerfano deja la factura cobrada con dinero que ya
+  // no existe. Mismo criterio que app/notas-credito/[id].
   const deleteNotaCredito = async (id: string) => {
+    const nota = notasCredito.find((n) => n.id === id);
+    if (nota?.aplicada_factura_id) {
+      const { data: f } = await supabase
+        .from("facturas")
+        .select("id, total, pagos")
+        .eq("id", nota.aplicada_factura_id)
+        .maybeSingle();
+      if (f) {
+        const marca = `Credit Note #${nota.num}`;
+        const pagos = ((f.pagos || []) as { monto: number; nota?: string }[]).filter((pg) => pg.nota !== marca);
+        const pagado = pagos.reduce((acc, pg) => acc + pg.monto, 0);
+        const estado = pagado >= Number(f.total) - 0.009 ? "Paid" : pagado > 0 ? "Partially Paid" : "Pending";
+        const { error: fErr } = await supabase.from("facturas").update({ pagos, estado }).eq("id", f.id);
+        if (fErr) throw new Error(fErr.message);
+        setFacturas((prev) => prev.map((fx) => (fx.id === f.id ? { ...fx, pagos: pagos as Factura["pagos"], estado } : fx)));
+      }
+    }
     const { error } = await supabase.from("notas_credito").delete().eq("id", id);
     if (error) throw new Error(error.message);
     setNotasCredito((prev) => prev.filter((n) => n.id !== id));
-    await logAct(`Credit note deleted`);
+    await logAct(`Credit note #${nota?.num ?? "?"} deleted`);
   };
 
   // Marca/desmarca una NC como aplicada. Una NC aplicada ya se uso contra una
@@ -3908,7 +3931,7 @@ const Facturas = () => {
                           <Badge e="Active" />
                         )}
                       </div>
-                      {!readOnly && <button onClick={(e) => { e.stopPropagation(); if (confirm("Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-sm px-1">×</button>}
+                      {!readOnly && <button onClick={(e) => { e.stopPropagation(); if (confirm(n.aplicada && n.aplicada_factura_id ? `Delete credit note #${n.num}? The ${fmt(n.monto)} credit payment will also be removed from ${n.aplicada_en || "its invoice"}, and that invoice will go back to owing it.` : "Delete this credit note?")) deleteNotaCredito(n.id); }} className="opacity-0 group-hover:opacity-100 text-destructive text-sm px-1">×</button>}
                     </div>
                   </div>
                 ))}

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { BackButton } from '@/components/back-button'
+import { MoneyInput } from '@/components/ui/money-input'
 import { type Empresa, EMPRESA_DEFAULT } from '@/lib/empresa'
 
 interface LineaNC {
@@ -44,6 +45,27 @@ const fmt = (n: number) =>
 const fdate = (s: string) => {
   const [y, m, d] = s.split('-')
   return `${m}/${d}/${y}`
+}
+
+// Toolbar de documento: botones identicos que llenan el ancho (icono arriba,
+// etiqueta abajo), mismo patron que factura y recibo. Aqui van sobre la barra
+// oscura de la nota de credito, asi que el tinte es translucido.
+const TAB_BTN =
+  'flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 h-12 rounded-xl border active:scale-[0.97] transition-all'
+const TAB_LBL = 'text-[9px] font-bold leading-none truncate max-w-full px-0.5'
+
+const Icon = ({ d }: { d: string }) => (
+  <svg width={15} height={15} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    {d.split('|').map((p, i) => <path key={i} d={p} />)}
+  </svg>
+)
+const IC = {
+  back: 'M15 18l-6-6 6-6',
+  edit: 'M12 20h9|M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
+  check: 'M20 6L9 17l-5-5',
+  revert: 'M9 14l-5-5 5-5|M4 9h10a6 6 0 0 1 0 12h-3',
+  print: 'M6 9V4h12v5|M6 13h12v8H6z|M6 17H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2',
+  trash: 'M3 6h18|M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2|M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6',
 }
 
 export default function NotaCreditoPage() {
@@ -180,6 +202,129 @@ export default function NotaCreditoPage() {
     }
   }
 
+  // ── Editar / borrar ──
+  // Una NC aplicada ya dejo un pago "Credit" dentro de su factura. Editarla
+  // desincronizaria ese pago, asi que primero hay que desaplicarla (el boton
+  // esta en esta misma barra y ya sabe quitar el pago). Borrar SI se permite
+  // estando aplicada: limpia el pago de la factura antes de borrar, porque
+  // dejarlo huerfano seria peor.
+  const [showEdit, setShowEdit] = useState(false)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [clientesLista, setClientesLista] = useState<{ id: string; nom: string; codigo_cliente?: string }[]>([])
+  const [editCli, setEditCli] = useState('')
+  const [editFecha, setEditFecha] = useState('')
+  const [editMotivo, setEditMotivo] = useState('')
+  const [editMonto, setEditMonto] = useState(0)
+  const [editLineas, setEditLineas] = useState<LineaNC[]>([])
+  const [prodSearch, setProdSearch] = useState('')
+  const [prodResultados, setProdResultados] = useState<{ id: string; nom: string; sku?: string; precio: number }[]>([])
+
+  const abrirEdit = async () => {
+    if (!nota) return
+    if (nota.aplicada) {
+      alert(
+        `This credit is already applied${nota.aplicada_en ? ` to ${nota.aplicada_en}` : ''}. Tap "Unmark" first to edit it — that removes the credit payment from the invoice, so the numbers stay in sync.`
+      )
+      return
+    }
+    setEditCli(nota.cli)
+    setEditFecha(nota.fecha)
+    setEditMotivo(nota.motivo || '')
+    setEditMonto(nota.monto)
+    setEditLineas(nota.lineas ? nota.lineas.map((l) => ({ ...l })) : [])
+    setProdSearch('')
+    setProdResultados([])
+    setShowEdit(true)
+    if (!clientesLista.length) {
+      const supabase = createClient()
+      const { data } = await supabase.from('clientes').select('id, nom, codigo_cliente').order('nom')
+      setClientesLista((data as { id: string; nom: string; codigo_cliente?: string }[]) || [])
+    }
+  }
+
+  // Busqueda contra la base (esta pantalla no vive dentro del DataContext, no
+  // tiene el catalogo en memoria).
+  const buscarProductos = async (texto: string) => {
+    setProdSearch(texto)
+    const q = texto.trim()
+    if (q.length < 2) { setProdResultados([]); return }
+    const supabase = createClient()
+    const { data } = await supabase
+      .from('productos')
+      .select('id, nom, sku, precio')
+      .or(`nom.ilike.%${q}%,sku.ilike.%${q}%`)
+      .limit(8)
+    setProdResultados((data as { id: string; nom: string; sku?: string; precio: number }[]) || [])
+  }
+
+  const esProducto = nota?.tipo === 'product'
+  const totalEdit = esProducto ? editLineas.reduce((s, l) => s + l.precio * l.qty, 0) : editMonto
+
+  const guardarEdit = async () => {
+    if (!nota || savingEdit) return
+    if (!editCli) { alert('Select a client'); return }
+    const monto = +Number(totalEdit).toFixed(2)
+    if (!monto || monto <= 0) { alert('Enter a valid amount'); return }
+    setSavingEdit(true)
+    try {
+      const supabase = createClient()
+      const cambios = {
+        cli: editCli,
+        fecha: editFecha,
+        motivo: editMotivo,
+        monto,
+        ...(esProducto ? { lineas: editLineas } : {}),
+      }
+      const { error } = await supabase.from('notas_credito').update(cambios).eq('id', nota.id)
+      if (error) throw new Error(error.message)
+      setNota({ ...nota, ...cambios })
+      setShowEdit(false)
+      await supabase.from('actividad').insert({ msg: `Credit note #${nota.num} edited — ${fmt(monto)}` })
+    } catch (err) {
+      alert('Could not save: ' + (err instanceof Error ? err.message : String(err)))
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    if (!nota || deleting) return
+    const ligada = nota.aplicada && nota.aplicada_factura_id
+    const aviso = ligada
+      ? `Delete credit note #${nota.num}? The ${fmt(nota.monto)} credit payment will also be removed from ${nota.aplicada_en || 'its invoice'}, and that invoice will go back to owing it.`
+      : `Delete credit note #${nota.num}? This cannot be undone.`
+    if (!confirm(aviso)) return
+    setDeleting(true)
+    try {
+      const supabase = createClient()
+      // Primero soltar el pago-credito de la factura, si lo habia: un pago
+      // huerfano en una factura es peor que no borrar nada.
+      if (nota.aplicada_factura_id) {
+        const { data: f } = await supabase
+          .from('facturas')
+          .select('id, total, pagos')
+          .eq('id', nota.aplicada_factura_id)
+          .maybeSingle()
+        if (f) {
+          const marca = `Credit Note #${nota.num}`
+          const newPagos = ((f.pagos || []) as { monto: number; nota?: string }[]).filter((p) => p.nota !== marca)
+          const totalPagado = newPagos.reduce((a, p) => a + p.monto, 0)
+          const newEstado = totalPagado >= Number(f.total) - 0.009 ? 'Paid' : totalPagado > 0 ? 'Partially Paid' : 'Pending'
+          const { error: fErr } = await supabase.from('facturas').update({ pagos: newPagos, estado: newEstado }).eq('id', f.id)
+          if (fErr) throw new Error(fErr.message)
+        }
+      }
+      const { error } = await supabase.from('notas_credito').delete().eq('id', nota.id)
+      if (error) throw new Error(error.message)
+      await supabase.from('actividad').insert({ msg: `Credit note #${nota.num} deleted` })
+      router.push('/?tab=fact')
+    } catch (err) {
+      alert('Could not delete: ' + (err instanceof Error ? err.message : String(err)))
+      setDeleting(false)
+    }
+  }
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -216,31 +361,207 @@ export default function NotaCreditoPage() {
         }
       `}</style>
 
-      {/* Toolbar */}
-      <div className="no-print sticky top-0 z-10 bg-[#3a4252]/90 backdrop-blur-md border-b border-white/10 px-4 py-3 flex items-center gap-3"
-        style={{ paddingTop: 'calc(0.75rem + env(safe-area-inset-top))' }}>
-        <BackButton fallback="/?tab=fact" />
-        <div className="flex-1" />
-        {!readOnly && (
+      {/* Toolbar: botones iguales que llenan el ancho (a 390px cinco acciones
+          no caben como pildoras con texto). */}
+      <div className="no-print sticky top-0 z-10 bg-[#3a4252]/90 backdrop-blur-md border-b border-white/10 px-4 py-2.5"
+        style={{ paddingTop: 'calc(0.625rem + env(safe-area-inset-top))' }}>
+        <div className="max-w-3xl mx-auto flex items-stretch gap-1.5">
           <button
-            onClick={nota.aplicada ? handleDesaplicar : abrirAplicar}
-            disabled={savingAplicada}
-            className={`flex items-center gap-1.5 text-sm font-semibold px-3 py-2 rounded-xl transition-colors disabled:opacity-50 ${
-              nota.aplicada
-                ? 'bg-white/10 hover:bg-white/20 text-white/80'
-                : 'bg-green-600 hover:bg-green-700 text-white'
-            }`}
+            onClick={() => (window.history.length > 1 ? router.back() : router.push('/?tab=fact'))}
+            className={`${TAB_BTN} bg-white/10 border-white/15 text-white/80`}
           >
-            {savingAplicada ? 'Saving...' : nota.aplicada ? '↺ Unmark Applied' : '✓ Mark Applied'}
+            <Icon d={IC.back} />
+            <span className={TAB_LBL}>Back</span>
           </button>
-        )}
-        <button
-          onClick={handlePrint}
-          className="flex items-center gap-1.5 bg-[#4a6741] hover:bg-[#3d5636] text-white text-sm font-semibold px-3 py-2 rounded-xl transition-colors"
-        >
-          🖨️ Print / PDF
-        </button>
+          {!readOnly && (
+            <button
+              onClick={abrirEdit}
+              className={`${TAB_BTN} border-white/15 ${nota.aplicada ? 'bg-white/5 text-white/40' : 'bg-white/10 text-white/80'}`}
+            >
+              <Icon d={IC.edit} />
+              <span className={TAB_LBL}>Edit</span>
+            </button>
+          )}
+          {!readOnly && (
+            <button
+              onClick={nota.aplicada ? handleDesaplicar : abrirAplicar}
+              disabled={savingAplicada}
+              className={`${TAB_BTN} disabled:opacity-50 ${
+                nota.aplicada ? 'bg-white/10 border-white/15 text-white/80' : 'bg-green-600 border-green-600 text-white'
+              }`}
+            >
+              <Icon d={nota.aplicada ? IC.revert : IC.check} />
+              <span className={TAB_LBL}>{savingAplicada ? '...' : nota.aplicada ? 'Unmark' : 'Apply'}</span>
+            </button>
+          )}
+          <button onClick={handlePrint} className={`${TAB_BTN} bg-[#4a6741] border-[#4a6741] text-white`}>
+            <Icon d={IC.print} />
+            <span className={TAB_LBL}>Print</span>
+          </button>
+          {!readOnly && (
+            <button
+              onClick={handleDelete}
+              disabled={deleting}
+              className={`${TAB_BTN} bg-red-500/20 border-red-400/30 text-red-200 disabled:opacity-50`}
+            >
+              <Icon d={IC.trash} />
+              <span className={TAB_LBL}>{deleting ? '...' : 'Delete'}</span>
+            </button>
+          )}
+        </div>
       </div>
+
+      {/* Editar */}
+      {showEdit && !readOnly && (
+        <div className="no-print fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 backdrop-blur-sm px-4 pb-6">
+          <div className="bg-white rounded-3xl shadow-xl w-full max-w-sm p-5 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-base font-bold text-[#1a1a18]">Edit Credit Note #{nota.num}</h2>
+              <button onClick={() => setShowEdit(false)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Client</label>
+                <select
+                  value={editCli}
+                  onChange={(e) => setEditCli(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 bg-white text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                >
+                  <option value="">Select a client...</option>
+                  {clientesLista.map((c) => (
+                    <option key={c.id} value={c.nom}>
+                      {c.codigo_cliente ? `${c.codigo_cliente} — ${c.nom}` : c.nom}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Date</label>
+                <input
+                  type="date"
+                  value={editFecha}
+                  onChange={(e) => setEditFecha(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                />
+              </div>
+
+              {esProducto ? (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Products</label>
+                  <div className="space-y-2">
+                    {editLineas.map((l, i) => (
+                      <div key={i} className="border border-gray-200 rounded-xl p-2.5">
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-gray-800 uppercase break-words">{l.prodNom}</div>
+                            {l.sku && <div className="text-[10px] font-mono text-gray-400">{l.sku}</div>}
+                          </div>
+                          <button
+                            onClick={() => setEditLineas((prev) => prev.filter((_, x) => x !== i))}
+                            className="text-gray-300 hover:text-red-500 text-lg leading-none px-1 shrink-0"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Qty</label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={l.qty}
+                              onChange={(e) =>
+                                setEditLineas((prev) => prev.map((x, ix) => (ix === i ? { ...x, qty: parseInt(e.target.value) || 1 } : x)))
+                              }
+                              className="w-full mt-0.5 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Unit Price ($)</label>
+                            <MoneyInput
+                              value={l.precio}
+                              onChange={(n) => setEditLineas((prev) => prev.map((x, ix) => (ix === i ? { ...x, precio: n } : x)))}
+                              className="w-full mt-0.5 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                            />
+                          </div>
+                        </div>
+                        <div className="text-right text-xs font-bold text-[#4a6741] mt-1.5">{fmt(l.precio * l.qty)}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="relative mt-2">
+                    <input
+                      type="text"
+                      value={prodSearch}
+                      onChange={(e) => buscarProductos(e.target.value)}
+                      placeholder="+ Add product (name or SKU)..."
+                      autoComplete="off"
+                      className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                    />
+                    {prodResultados.length > 0 && (
+                      <div className="absolute left-0 top-full mt-1 z-20 bg-white border border-gray-200 rounded-xl shadow-lg overflow-hidden max-h-52 overflow-y-auto w-full">
+                        {prodResultados.map((p) => (
+                          <button
+                            key={p.id}
+                            onClick={() => {
+                              setEditLineas((prev) => [...prev, { prodNom: p.nom, sku: p.sku, qty: 1, precio: Number(p.precio) }])
+                              setProdSearch('')
+                              setProdResultados([])
+                            }}
+                            className="w-full text-left px-3 py-2.5 hover:bg-gray-50 border-b border-gray-100 last:border-0"
+                          >
+                            <span className="block text-xs font-bold text-gray-800 uppercase break-words">{p.nom}</span>
+                            <span className="text-[10px] font-mono text-gray-400">{p.sku || '—'} · {fmt(Number(p.precio))}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between bg-[#eaf0e6] rounded-xl px-4 py-2.5 mt-3">
+                    <span className="text-sm font-bold text-gray-700">Credit Total</span>
+                    <span className="text-base font-black text-[#4a6741]">{fmt(totalEdit)}</span>
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Amount ($)</label>
+                  <MoneyInput
+                    value={editMonto}
+                    onChange={setEditMonto}
+                    className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                  />
+                </div>
+              )}
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wide text-gray-500 mb-1 block">Reason / Notes</label>
+                <input
+                  type="text"
+                  value={editMotivo}
+                  onChange={(e) => setEditMotivo(e.target.value)}
+                  placeholder="Reason for credit..."
+                  className="w-full px-3 py-2.5 rounded-xl border border-gray-200 text-base outline-none focus:ring-2 focus:ring-[#4a6741]/40"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2.5 mt-5">
+              <button onClick={() => setShowEdit(false)} className="flex-1 py-2.5 rounded-xl text-sm font-semibold text-gray-500 bg-gray-100">Cancel</button>
+              <button
+                onClick={guardarEdit}
+                disabled={savingEdit || !editCli || totalEdit <= 0}
+                className="flex-1 py-2.5 rounded-xl text-sm font-bold text-white bg-[#4a6741] disabled:opacity-50"
+              >
+                {savingEdit ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: aplicar credito a una factura */}
       {showAplicar && !readOnly && (
