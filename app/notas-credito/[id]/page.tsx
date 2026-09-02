@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { BackButton } from '@/components/back-button'
 import { MoneyInput } from '@/components/ui/money-input'
+import { QtyInput } from '@/components/ui/qty-input'
 import { type Empresa, EMPRESA_DEFAULT } from '@/lib/empresa'
 
 interface LineaNC {
@@ -468,12 +469,10 @@ export default function NotaCreditoPage() {
                         <div className="grid grid-cols-2 gap-2">
                           <div>
                             <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Qty</label>
-                            <input
-                              type="number"
-                              min="1"
+                            <QtyInput
                               value={l.qty}
-                              onChange={(e) =>
-                                setEditLineas((prev) => prev.map((x, ix) => (ix === i ? { ...x, qty: parseInt(e.target.value) || 1 } : x)))
+                              onChange={(n) =>
+                                setEditLineas((prev) => prev.map((x, ix) => (ix === i ? { ...x, qty: n } : x)))
                               }
                               className="w-full mt-0.5 px-3 py-2 rounded-xl border border-gray-200 text-sm outline-none focus:ring-2 focus:ring-[#4a6741]/40"
                             />

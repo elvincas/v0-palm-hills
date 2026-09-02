@@ -11,6 +11,7 @@ import type { CropperProps } from "react-easy-crop";
 import { BottomNav, NAV_TABS, ALL_TAB_IDS, NAV_ICONS } from "@/components/bottom-nav";
 import { proximaFechaEntrega } from "@/lib/delivery";
 import { MoneyInput } from "@/components/ui/money-input";
+import { QtyInput } from "@/components/ui/qty-input";
 import { type Almacen, almacenInfo, almacenPrincipal } from "@/lib/almacenes";
 import { idbOpen, idbGetAll, idbPut, type FotoCache } from "@/lib/foto-cache";
 import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
@@ -4038,7 +4039,7 @@ const Facturas = () => {
                           <div className="grid grid-cols-2 gap-2">
                             <div>
                               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Qty</label>
-                              <input type="number" min="1" value={ln.qty} onChange={(e) => setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, qty: parseInt(e.target.value) || 1 } : l))} className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
+                              <QtyInput value={ln.qty} onChange={(n) => setNcLineas(prev => prev.map((l, i) => i === idx ? { ...l, qty: n } : l))} className="w-full mt-0.5 px-3 py-2 rounded-xl border border-input bg-card text-card-foreground text-sm outline-none focus:ring-2 focus:ring-ring" />
                             </div>
                             <div>
                               <label className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Unit Price ($)</label>
