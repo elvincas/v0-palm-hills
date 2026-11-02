@@ -8,6 +8,7 @@ import { BackButton } from '@/components/back-button'
 import { MoneyInput } from '@/components/ui/money-input'
 import { type Almacen, almacenInfo, almacenPrincipal } from '@/lib/almacenes'
 import { idbOpen, idbGetAll, idbPut, type FotoCache } from '@/lib/foto-cache'
+import { NotaOrden } from '@/components/nota-orden'
 
 interface Cliente {
   id: string
@@ -238,6 +239,22 @@ export default function NuevaOrdenPage() {
   const [showDraftModal, setShowDraftModal] = useState(false)
   const [pendingDraft, setPendingDraft] = useState<{ cantidades: Record<string, number>; descuentos: Record<string, number>; fecha: string } | null>(null)
 
+  // Como se arma la orden, se pregunta despues de elegir la fecha:
+  // '' = todavia no eligio · 'manual' = catalogo · 'nota' = pegar la nota de pedido.
+  const [modo, setModo] = useState<'' | 'manual' | 'nota'>('')
+  // Texto de la nota pegada: sobrevive cerrar la app hasta que se envia la orden.
+  const NOTA_KEY = `ph_nota_orden_${clienteId}`
+  const [notaTexto, setNotaTexto] = useState(() => {
+    if (typeof window === 'undefined') return ''
+    try { return localStorage.getItem(`ph_nota_orden_${clienteId}`) || '' } catch { return '' }
+  })
+  useEffect(() => {
+    try {
+      if (notaTexto.trim()) localStorage.setItem(NOTA_KEY, notaTexto)
+      else localStorage.removeItem(NOTA_KEY)
+    } catch {}
+  }, [notaTexto, NOTA_KEY])
+
   // Auto-save draft whenever order state changes (after initial load)
   // initialized is intentionally excluded from deps — we only want to run when
   // the user actually changes the order, not when initialization flips the flag.
@@ -263,6 +280,7 @@ export default function NuevaOrdenPage() {
       setCantidades(pendingDraft.cantidades)
       setDescuentos(pendingDraft.descuentos || {})
       if (pendingDraft.fecha) setFecha(pendingDraft.fecha)
+      setModo('manual')
     }
     setShowDraftModal(false)
     setPendingDraft(null)
@@ -629,6 +647,13 @@ export default function NuevaOrdenPage() {
     return salida
   }, [productos, historialCliente, prodPorId, vendidos90, almacenes, puedeVender, precioLiquidacion, precioBase])
 
+  // prodId -> veces que este cliente lo compro: el lector de notas desempata a su favor.
+  const favoritos = useMemo(() => {
+    const m = new Map<string, number>()
+    historialCliente.forEach((h, id) => m.set(id, h.veces))
+    return m
+  }, [historialCliente])
+
   const sugerenciasVisibles = useMemo(
     () => sugerencias.filter((s) => !cantidades[s.p.id]),
     [sugerencias, cantidades],
@@ -723,6 +748,35 @@ export default function NuevaOrdenPage() {
     setQty(s.p.id, (cantidades[s.p.id] || 0) + s.qtySugerida)
   }
 
+  // Lo confirmado en la pantalla de la nota entra a la orden en el MISMO orden
+  // que la nota (las claves nuevas de `cantidades` respetan el orden de
+  // insercion). Si el producto ya estaba en la orden, se suma.
+  const agregarDesdeNota = (items: { prodId: string; qty: number }[]) => {
+    const next = { ...cantidades }
+    const nuevos: string[] = []
+    for (const { prodId, qty } of items) {
+      if (!qty || qty <= 0) continue
+      if (!next[prodId]) nuevos.push(prodId)
+      next[prodId] = (next[prodId] || 0) + qty
+    }
+    setCantidades(next)
+    // Mismo criterio que setQty: el precio de liquidacion entra solo, sin
+    // pisar un ajuste manual.
+    setDescuentos((d) => {
+      const n = { ...d }
+      for (const id of nuevos) {
+        const p = prodPorId.get(id)
+        const pl = p ? precioLiquidacion(p) : null
+        if (pl != null && n[id] === undefined) n[id] = pl
+      }
+      return n
+    })
+    autoColapsado.current = true
+    setSugAbierto(false)
+    setModo('manual')
+    setReviewing(true)
+  }
+
   const seleccionados = useMemo(
     () =>
       Object.entries(cantidades)
@@ -799,6 +853,7 @@ export default function NuevaOrdenPage() {
       }
 
       localStorage.removeItem(DRAFT_KEY)
+      try { localStorage.removeItem(NOTA_KEY) } catch {}
       alert(`Order #${num} created. It's pending in Orders.`)
       router.push(`/clientes/${clienteId}`)
     } catch (error) {
@@ -858,6 +913,71 @@ export default function NuevaOrdenPage() {
     )
   }
 
+  const volverAlCalendario = () => { setFechaTemp(fecha); setFecha('') }
+
+  if (modo === 'nota') {
+    return (
+      <NotaOrden
+        productos={productos}
+        almacenes={almacenes}
+        almacenDefault={almacenPrincipal(almacenes)}
+        favoritos={favoritos}
+        clienteNom={cliente?.nom}
+        fechaLabel={fechaLabel}
+        texto={notaTexto}
+        onTextoChange={setNotaTexto}
+        precioDe={(p) => {
+          const pr = prodPorId.get(p.id)
+          return pr ? descuentos[pr.id] ?? precioLiquidacion(pr) ?? precioBase(pr) : 0
+        }}
+        disponibleDe={(p) => {
+          const pr = prodPorId.get(p.id)
+          if (!pr) return null
+          return almacenInfo(almacenes, pr.almacen || almacenPrincipal(almacenes)).lleva_stock ? disponible(pr) : null
+        }}
+        // Desde el catalogo (ya habia productos) vuelve al catalogo; si no, a la pregunta.
+        onBack={() => setModo(Object.keys(cantidades).length ? 'manual' : '')}
+        onConfirm={agregarDesdeNota}
+      />
+    )
+  }
+
+  // Paso nuevo despues de la fecha: como armar la orden. Se salta si ya hay
+  // productos (draft retomado, o volvio a cambiar la fecha a mitad del pedido).
+  if (!modo && !showDraftModal && Object.keys(cantidades).length === 0) {
+    const opcion = 'w-full text-left bg-card border border-border rounded-3xl p-5 flex items-center gap-4 active:scale-[0.98] transition-all shadow-sm'
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="max-w-2xl mx-auto p-4" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
+          <BackButton onClick={volverAlCalendario} className="mb-2" />
+          <h1 className="text-xl font-bold text-card-foreground">New Order</h1>
+          <p className="text-sm text-muted-foreground mb-5">
+            {cliente?.nom} · 🚚 {fechaLabel}
+          </p>
+          <p className="text-sm font-semibold text-card-foreground mb-3">How do you want to create it?</p>
+          <div className="space-y-3">
+            <button onClick={() => setModo('manual')} className={opcion}>
+              <span className="w-12 h-12 rounded-full bg-secondary flex items-center justify-center text-2xl shrink-0">🛒</span>
+              <span className="min-w-0">
+                <span className="block text-base font-bold text-card-foreground">Manually</span>
+                <span className="block text-xs text-muted-foreground">Pick products from the catalog, one by one.</span>
+              </span>
+            </button>
+            <button onClick={() => setModo('nota')} className={opcion}>
+              <span className="w-12 h-12 rounded-full bg-[#f5eee2] flex items-center justify-center text-2xl shrink-0">📋</span>
+              <span className="min-w-0">
+                <span className="block text-base font-bold text-card-foreground">From a note</span>
+                <span className="block text-xs text-muted-foreground">
+                  Paste your order list. The app finds each product and quantity, and you check it line by line.
+                </span>
+              </span>
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   const MOTIVO_ESTILO: Record<MotivoSug, { label: string; clase: string }> = {
     usual: { label: 'Usual', clase: 'bg-[#e4efe0] text-[#3d6132]' },
     clearance: { label: 'Clearance', clase: 'bg-[#f5eee2] text-[#a3814e]' },
@@ -901,6 +1021,15 @@ export default function NuevaOrdenPage() {
                 </p>
               )}
             </div>
+            <div className="shrink-0 flex items-center gap-1.5">
+            <button
+              onClick={() => setModo('nota')}
+              aria-label="Add from a note"
+              title="Add from a note"
+              className="w-8 h-8 flex items-center justify-center bg-secondary border border-primary/20 rounded-full text-sm"
+            >
+              📋
+            </button>
             <button
               onClick={() => { setFechaTemp(fecha); setFecha(''); }}
               className="shrink-0 flex items-center gap-1.5 bg-secondary border border-primary/20 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary-foreground"
@@ -908,6 +1037,7 @@ export default function NuevaOrdenPage() {
               🚚 {fechaLabel}
               <span className="text-muted-foreground font-normal">· Change</span>
             </button>
+            </div>
           </div>
 
           <div className="mt-3 flex flex-col gap-2">

@@ -63,7 +63,7 @@ const maxDistFor = (len: number) => (len <= 3 ? 0 : len <= 6 ? 1 : 2);
 // Score de match de un token contra una sola palabra del producto.
 // Retorna null si no hay match.
 // Score 0 = exacto o prefix (mejor), 1-3 = fuzzy (peor).
-function tokenWordScore(token: string, word: string): number | null {
+export function tokenWordScore(token: string, word: string): number | null {
   if (!word) return null;
 
   // Coincidencia exacta → mejor score
