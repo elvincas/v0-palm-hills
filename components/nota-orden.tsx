@@ -95,8 +95,9 @@ export function NotaOrden(props: Props) {
     // Lo que se sumo con el buscador no esta en la nota: sobrevive a releerla.
     setFilas((prev) => {
       const base: Fila[] = res.map((l) => ({ ...l, quitada: false, confirmada: false }))
-      const tope = base.reduce((m, f) => Math.max(m, f.num), 0)
-      const extras = prev.filter((f) => f.agregada).map((f, i) => ({ ...f, num: tope + 1 + i }))
+      const topeNum = base.reduce((m, f) => Math.max(m, f.num), 0)
+      const topeId = base.reduce((m, f) => Math.max(m, f.id), 0)
+      const extras = prev.filter((f) => f.agregada).map((f, i) => ({ ...f, num: topeNum + 1 + i, id: topeId + 1 + i }))
       return [...base, ...extras]
     })
     setAgregar('')
@@ -115,20 +116,20 @@ export function NotaOrden(props: Props) {
     }
   }
 
-  const cambiar = (num: number, cambio: Partial<Fila>) =>
-    setFilas((prev) => prev.map((f) => (f.num === num ? { ...f, ...cambio } : f)))
+  const cambiar = (id: number, cambio: Partial<Fila>) =>
+    setFilas((prev) => prev.map((f) => (f.id === id ? { ...f, ...cambio } : f)))
 
   const abrirEditor = (f: Fila) => {
-    if (editando === f.num) return setEditando(null)
-    setEditando(f.num)
+    if (editando === f.id) return setEditando(null)
+    setEditando(f.id)
     setBusqueda(f.consulta)
   }
 
   // Lleva la vista a una fila y la marca un momento.
-  const irA = (num: number) => {
-    setResaltada(num)
-    setTimeout(() => document.getElementById(`nota-fila-${num}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
-    setTimeout(() => setResaltada((r) => (r === num ? null : r)), 2000)
+  const irA = (id: number) => {
+    setResaltada(id)
+    setTimeout(() => document.getElementById(`nota-fila-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60)
+    setTimeout(() => setResaltada((r) => (r === id ? null : r)), 2000)
   }
 
   // Buscador de la revision: suma un producto que no estaba en la nota. Si ya
@@ -138,11 +139,13 @@ export function NotaOrden(props: Props) {
     setSoloRevisar(false)
     setEditando(null)
     const ya = filas.find((f) => f.tipo === 'producto' && !f.quitada && f.elegido === p.id)
-    if (ya) return irA(ya.num)
+    if (ya) return irA(ya.id)
     const num = filas.reduce((m, f) => Math.max(m, f.num), 0) + 1
+    const id = filas.reduce((m, f) => Math.max(m, f.id), 0) + 1
     setFilas((prev) => [
       ...prev,
       {
+        id,
         num,
         texto: 'Added by search',
         tipo: 'producto',
@@ -158,7 +161,7 @@ export function NotaOrden(props: Props) {
         agregada: true,
       },
     ])
-    irA(num)
+    irA(id)
   }
 
   // ── Resumen ──
@@ -169,8 +172,11 @@ export function NotaOrden(props: Props) {
   const nSinProducto = activas.filter((f) => !f.elegido).length
 
   // Un mismo producto en dos lineas: se suma al confirmar, y se avisa en la fila.
-  const primeraLinea = new Map<string, number>()
-  for (const f of activas) if (f.elegido && !primeraLinea.has(f.elegido)) primeraLinea.set(f.elegido, f.num)
+  const primeraLinea = new Map<string, { id: number; num: number }>()
+  for (const f of activas) if (f.elegido && !primeraLinea.has(f.elegido)) primeraLinea.set(f.elegido, { id: f.id, num: f.num })
+  // Filas que salieron de una misma linea "c/u": para mostrar "2 of 7".
+  const cadaUnoDe = new Map<number, number[]>()
+  for (const f of filas) if (f.cadaUno) cadaUnoDe.set(f.num, [...(cadaUnoDe.get(f.num) || []), f.id])
 
   const total = reconocidas.reduce((acc, f) => {
     const p = prodPorId.get(f.elegido!)
@@ -218,6 +224,13 @@ export function NotaOrden(props: Props) {
               <li>• One product per line — name, part of the name, or just the code (SKU).</li>
               <li>• Quantity anywhere on the line: <span className="font-mono">12 shampoo</span>, <span className="font-mono">shampoo x12</span>, <span className="font-mono">shampoo - 12</span>, <span className="font-mono">2 dz</span>.</li>
               <li>
+                • A family name with <span className="font-mono">:</span> and then just the shades: <span className="font-mono">Nutrisse Tintes:</span> ·{' '}
+                <span className="font-mono">10 - 6</span> · <span className="font-mono">51U - 4</span>.
+              </li>
+              <li>
+                • <span className="font-mono">Rompe Pecho (3 c/u)</span> adds 3 of each product with that name.
+              </li>
+              <li>
                 • A line with just the warehouse name (
                 {almacenes.filter((a) => a.activo).map((a) => a.nombre.toUpperCase()).join(', ')}
                 ) tells the app where the next products are.
@@ -245,10 +258,10 @@ export function NotaOrden(props: Props) {
   }
 
   // ───────────────────────── Fase 2: revisar ─────────────────────────
-  const visibles = soloRevisar ? filas.filter((f) => f.tipo === 'header' || porRevisar(f)) : filas
+  const visibles = soloRevisar ? filas.filter((f) => f.tipo !== 'producto' || porRevisar(f)) : filas
 
   const resultadosAgregar = agregar.trim() ? buscarEnCatalogo(cat, agregar, { favoritos, limite: 8 }) : []
-  const primeraAgregada = filas.find((f) => f.agregada)?.num
+  const primeraAgregada = filas.find((f) => f.agregada)?.id
 
   const resultadosEditor = (f: Fila): Candidato[] =>
     busqueda.trim() === f.consulta.trim() && f.candidatos.length
@@ -343,10 +356,20 @@ export function NotaOrden(props: Props) {
 
       <div className="max-w-2xl mx-auto p-4 pb-40 space-y-2">
         {visibles.map((f) => {
+          if (f.tipo === 'grupo') {
+            // Familia: las lineas cortas que siguen ("10 - 6") se leyeron como parte de ella.
+            return (
+              <div key={f.id} className="flex items-center gap-2 pt-3 pb-1">
+                <span className="text-[11px] font-mono text-muted-foreground w-6 text-right">{f.num}</span>
+                <span className="text-sm font-bold text-card-foreground uppercase break-words">📂 {f.consulta}</span>
+                <span className="flex-1 border-t border-dashed border-border" />
+              </div>
+            )
+          }
           if (f.tipo === 'header') {
             const info = almacenInfo(almacenes, f.almacen || almacenDefault)
             return (
-              <div key={f.num} className="flex items-center gap-2 pt-3 pb-1">
+              <div key={f.id} className="flex items-center gap-2 pt-3 pb-1">
                 <span className="text-[11px] font-mono text-muted-foreground w-6 text-right">{f.num}</span>
                 <span className="text-sm font-bold text-card-foreground">{info.icono} {info.nombre}</span>
                 <span className="flex-1 border-t border-border" />
@@ -358,13 +381,15 @@ export function NotaOrden(props: Props) {
           const est = ESTADO[estadoDe(f)]
           const disp = p ? disponibleDe(p) : null
           const excede = disp != null && f.qty > disp
-          const repetida = f.elegido && primeraLinea.get(f.elegido) !== f.num ? primeraLinea.get(f.elegido) : null
+          const primera = f.elegido ? primeraLinea.get(f.elegido) : undefined
+          const repetida = primera && primera.id !== f.id ? primera.num : null
+          const hermanas = f.cadaUno ? cadaUnoDe.get(f.num) || [] : []
           const fuera = p && f.almacen && (p.almacen || almacenDefault) !== f.almacen
           const almP = p ? almacenInfo(almacenes, p.almacen || almacenDefault) : null
 
           return (
-            <Fragment key={f.num}>
-            {f.num === primeraAgregada && (
+            <Fragment key={f.id}>
+            {f.id === primeraAgregada && (
               <div className="flex items-center gap-2 pt-3 pb-1">
                 <span className="text-[11px] font-mono text-muted-foreground w-6 text-right">＋</span>
                 <span className="text-sm font-bold text-card-foreground">Added by search</span>
@@ -372,13 +397,20 @@ export function NotaOrden(props: Props) {
               </div>
             )}
             <div
-              id={`nota-fila-${f.num}`}
-              className={`bg-card border rounded-2xl p-3 transition-shadow ${resaltada === f.num ? 'ring-2 ring-primary ' : ''}${f.quitada ? 'opacity-45 border-border' : porRevisar(f) ? 'border-[#e6c98f]' : 'border-border'}`}
+              id={`nota-fila-${f.id}`}
+              className={`bg-card border rounded-2xl p-3 transition-shadow ${resaltada === f.id ? 'ring-2 ring-primary ' : ''}${f.quitada ? 'opacity-45 border-border' : porRevisar(f) ? 'border-[#e6c98f]' : 'border-border'}`}
             >
               {/* Lo que dice la nota */}
               <div className="flex items-start gap-2">
                 <span className="text-[11px] font-mono text-muted-foreground w-6 text-right pt-0.5 shrink-0">{f.agregada ? '＋' : f.num}</span>
-                <p className={`flex-1 min-w-0 text-xs font-mono text-muted-foreground break-words ${f.quitada ? 'line-through' : ''}`}>{f.texto}</p>
+                <p className={`flex-1 min-w-0 text-xs font-mono text-muted-foreground break-words ${f.quitada ? 'line-through' : ''}`}>
+                  {f.texto}
+                  {hermanas.length > 1 && (
+                    <span className="ml-1.5 not-italic font-sans font-semibold text-[#8a6420]">
+                      · each {hermanas.indexOf(f.id) + 1} of {hermanas.length}
+                    </span>
+                  )}
+                </p>
                 <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${f.quitada ? 'bg-muted text-muted-foreground' : est.clase}`}>
                   {f.quitada ? 'Removed' : est.label}
                 </span>
@@ -404,14 +436,14 @@ export function NotaOrden(props: Props) {
                       ) : (
                         <p className="text-[13px] font-semibold text-destructive">Tap to choose a product</p>
                       )}
-                      <p className="text-[11px] text-primary font-semibold">{editando === f.num ? 'Close ⌃' : 'Change ⌄'}</p>
+                      <p className="text-[11px] text-primary font-semibold">{editando === f.id ? 'Close ⌃' : 'Change ⌄'}</p>
                     </div>
                   </button>
 
                   {/* Cantidad */}
                   <div className="shrink-0 flex flex-col items-center">
                     <div className="flex items-center bg-secondary rounded-full">
-                      <button onClick={() => cambiar(f.num, { qty: Math.max(1, f.qty - 1), qtyDetectada: true })} className="w-8 h-8 text-lg font-bold text-secondary-foreground">−</button>
+                      <button onClick={() => cambiar(f.id, { qty: Math.max(1, f.qty - 1), qtyDetectada: true })} className="w-8 h-8 text-lg font-bold text-secondary-foreground">−</button>
                       <input
                         type="text"
                         inputMode="numeric"
@@ -419,12 +451,12 @@ export function NotaOrden(props: Props) {
                         onFocus={(e) => e.target.select()}
                         onChange={(e) => {
                           const n = parseInt(e.target.value.replace(/\D/g, ''), 10)
-                          cambiar(f.num, { qty: Number.isFinite(n) ? n : 0, qtyDetectada: true })
+                          cambiar(f.id, { qty: Number.isFinite(n) ? n : 0, qtyDetectada: true })
                         }}
-                        onBlur={() => f.qty < 1 && cambiar(f.num, { qty: 1 })}
+                        onBlur={() => f.qty < 1 && cambiar(f.id, { qty: 1 })}
                         className={`w-10 text-center bg-transparent text-base font-bold ${f.qtyDetectada ? 'text-card-foreground' : 'text-[#8a6420]'}`}
                       />
-                      <button onClick={() => cambiar(f.num, { qty: f.qty + 1, qtyDetectada: true })} className="w-8 h-8 text-lg font-bold text-secondary-foreground">+</button>
+                      <button onClick={() => cambiar(f.id, { qty: f.qty + 1, qtyDetectada: true })} className="w-8 h-8 text-lg font-bold text-secondary-foreground">+</button>
                     </div>
                     {!f.qtyDetectada && <span className="text-[10px] text-[#8a6420] mt-0.5">no qty in note</span>}
                   </div>
@@ -440,7 +472,7 @@ export function NotaOrden(props: Props) {
               )}
 
               {/* Editor: elegir otro producto */}
-              {!f.quitada && editando === f.num && (
+              {!f.quitada && editando === f.id && (
                 <div className="mt-3 pl-8">
                   <input
                     type="text"
@@ -463,7 +495,7 @@ export function NotaOrden(props: Props) {
                         <button
                           key={c.id}
                           onClick={() => {
-                            cambiar(f.num, { elegido: c.id, confirmada: true })
+                            cambiar(f.id, { elegido: c.id, confirmada: true })
                             setEditando(null)
                           }}
                           className={`w-full flex items-center gap-2 text-left px-2 py-1.5 rounded-xl border ${actual ? 'border-primary bg-secondary' : 'border-border bg-background'}`}
@@ -490,12 +522,12 @@ export function NotaOrden(props: Props) {
 
               <div className="pl-8 mt-2 flex justify-end gap-3">
                 {!f.quitada && porRevisar(f) && f.elegido && (
-                  <button onClick={() => cambiar(f.num, { confirmada: true })} className="text-[11px] font-semibold text-primary">
+                  <button onClick={() => cambiar(f.id, { confirmada: true })} className="text-[11px] font-semibold text-primary">
                     ✓ It's correct
                   </button>
                 )}
                 <button
-                  onClick={() => { cambiar(f.num, { quitada: !f.quitada }); if (editando === f.num) setEditando(null) }}
+                  onClick={() => { cambiar(f.id, { quitada: !f.quitada }); if (editando === f.id) setEditando(null) }}
                   className={`text-[11px] font-semibold ${f.quitada ? 'text-primary' : 'text-destructive'}`}
                 >
                   {f.quitada ? '↺ Restore line' : '✕ Remove line'}

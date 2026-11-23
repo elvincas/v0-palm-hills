@@ -73,4 +73,38 @@ if (vacias) {
   ok = -1
 }
 console.log(`\n${ok}/${total} correctas · ${ms} ms para ${res.length} lineas sobre ${productos.length} productos`)
-process.exit(ok === total ? 0 : 1)
+
+// ── Familias ("Nutrisse Tintes:" + "10 - 6") y "(3 c/u)" ──
+const nota2 = `Nutrisse Tintes:
+
+10 - 6
+6660 - 6
+51U - 4
+
+Rompe Pecho (3 c/u)
+hapl18 x6`
+const res2 = parsearNota(nota2, cat, almacenes)
+const prods2 = res2.filter((l) => l.tipo === "producto").map((l) => ({ l, p: l.elegido ? porId.get(l.elegido) : undefined }))
+const chequeos: [string, boolean][] = [
+  ["'Nutrisse Tintes:' es encabezado de familia", res2[0]?.tipo === "grupo"],
+  ["10 - 6 -> 6 × Nutrisse Tinte 10 (US-008)", prods2[0]?.p?.sku === "US-008" && prods2[0].l.qty === 6],
+  ["6660 - 6 -> 6 × Tinte 6660 (US-012)", prods2[1]?.p?.sku === "US-012" && prods2[1].l.qty === 6],
+  ["51U - 4 -> 4 × Ultra Cobertura 51u (US-036), no 51 unidades", prods2[2]?.p?.sku === "US-036" && prods2[2].l.qty === 4],
+  [
+    "Rompe Pecho (3 c/u) -> los 7 Rompe Pecho × 3, sin el Pechito",
+    (() => {
+      const cu = prods2.filter((x) => x.l.cadaUno)
+      return cu.length === 7 && cu.every((x) => x.l.qty === 3 && /rompe pecho /i.test(x.p?.nom || ""))
+    })(),
+  ],
+  ["la familia termina en la linea con palabras", prods2.filter((x) => x.l.cadaUno).every((x) => !x.l.grupo)],
+  ["hapl18 x6 sigue normal", prods2[prods2.length - 1]?.p?.sku === "HAPL0018" && prods2[prods2.length - 1].l.qty === 6],
+  ["ids unicos", new Set(res2.map((l) => l.id)).size === res2.length],
+]
+let ok2 = 0
+for (const [nombre, bien] of chequeos) {
+  if (bien) ok2++
+  console.log(`${bien ? "OK " : "XX "} ${nombre}`)
+}
+console.log(`${ok2}/${chequeos.length} familias / c/u`)
+process.exit(ok === total && ok2 === chequeos.length ? 0 : 1)

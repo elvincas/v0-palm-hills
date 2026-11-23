@@ -46,10 +46,24 @@ export interface Candidato {
 }
 
 export interface LineaNota {
+  /**
+   * Identidad unica de la fila. NO es el numero de linea: una linea "3 c/u"
+   * se abre en varias filas que comparten `num`.
+   */
+  id: number
   /** Numero de linea en la nota (1-based), para cotejar con el papel. */
   num: number
   texto: string
-  tipo: "producto" | "header"
+  /**
+   * header = nombre de almacen. grupo = encabezado de familia ("Nutrisse
+   * Tintes:"): las lineas cortas que siguen ("10 - 6") se leen como
+   * "Nutrisse Tintes 10", cantidad 6.
+   */
+  tipo: "producto" | "header" | "grupo"
+  /** Fila salida de una linea "(3 c/u)": uno de cada producto que coincide. */
+  cadaUno?: boolean
+  /** Familia bajo la que se leyo la linea ("Nutrisse Tintes"). */
+  grupo?: string | null
   /** Almacen del header vigente (null = antes de cualquier header). */
   almacen: string | null
   /** Texto que se uso para buscar (la linea sin la cantidad). */
@@ -337,20 +351,35 @@ interface Interpretacion {
   qty: number
   detectada: boolean
   resto: string
+  /** "(3 c/u)": esa cantidad de CADA producto que coincida, no de uno. */
+  cadaUno?: boolean
 }
+
+// "(3 c/u)", "3 c/u", "3c/u", "3 c.u.", "3 de cada uno", "3 cada una", "3 each".
+const RE_CADA_UNO =
+  /\(?\s*(\d{1,4})\s*(?:de\s+)?(?:c\s*\/\s*u|c\.\s*u\.?|cada\s+un[oa]|cada|each)\.?\s*\)?(?=\s|$|[.,;])/i
 
 function interpretaciones(linea: string): Interpretacion[] {
   const out: Interpretacion[] = []
   const limpiar = (s: string) => s.replace(/\s+/g, " ").trim()
 
-  // Marcas explicitas: la cantidad no admite duda.
+  const cada = linea.match(RE_CADA_UNO)
+  if (cada && cada.index !== undefined) {
+    const resto = linea.slice(0, cada.index) + " " + linea.slice(cada.index + cada[0].length)
+    out.push({ qty: parseInt(cada[1], 10), detectada: true, resto: limpiar(resto), cadaUno: true })
+    return out
+  }
+
+  // Marcas explicitas: la cantidad no admite duda. Las de FINAL de linea van
+  // primero: en "51U - 4" la cantidad es el 4, el "51U" es un tono (si no, el
+  // "u" de unidades se llevaba el 51).
   const explicitas: [RegExp, number][] = [
-    [/(?:^|\s)(?:x|qty|cant(?:idad)?|cnt)\s*[:=]?\s*(\d{1,4})(?=\s|$|[.,;])/i, 1],
-    [/(?:^|\s)(\d{1,4})\s*(?:dz|dzn|doc|docena|docenas)(?=\s|$|[.,;])/i, 12],
-    [/(?:^|\s)(\d{1,4})\s*(?:x|pcs?|pzs?|pz|piezas?|unid(?:ades)?|unds?|uds?|u|units?|ea|cajas?|cjs?|cj|bx|box(?:es)?)(?=\s|$|[.,;])/i, 1],
     [/[:=]\s*(\d{1,4})\s*$/, 1],
     [/\(\s*(\d{1,4})\s*\)\s*$/, 1],
     [/\s[-–—]\s*(\d{1,4})\s*$/, 1],
+    [/(?:^|\s)(?:x|qty|cant(?:idad)?|cnt)\s*[:=]?\s*(\d{1,4})(?=\s|$|[.,;])/i, 1],
+    [/(?:^|\s)(\d{1,4})\s*(?:dz|dzn|doc|docena|docenas)(?=\s|$|[.,;])/i, 12],
+    [/(?:^|\s)(\d{1,4})\s*(?:x|pcs?|pzs?|pz|piezas?|unid(?:ades)?|unds?|uds?|u|units?|ea|cajas?|cjs?|cj|bx|box(?:es)?)(?=\s|$|[.,;])/i, 1],
   ]
   for (const [re, mult] of explicitas) {
     const m = linea.match(re)
@@ -395,7 +424,72 @@ function headerDe(linea: string, almacenes: AlmacenNota[]): string | null {
   return null
 }
 
+// ── Familias y "c/u" ─────────────────────────────────────────────────────
+
+// Linea "corta": un tono o numero con su cantidad ("10 - 6", "51U - 4"), sin
+// ninguna palabra de verdad. Bajo una familia se lee como parte de ella.
+const esCorta = (linea: string) => /\d/.test(linea) && !/[a-zñáéíóú]{3,}/i.test(linea)
+
+// Todos los productos que contienen TODAS las palabras de la linea ("Rompe
+// Pecho" -> los 7 Rompe Pecho). Exige coincidencia completa por palabra (con
+// tolerancia a acentos/plurales), no aproximada: "pecho" no trae "Pechito".
+function todosLosQueCoinciden(cat: CatalogoNota, texto: string, almacen: string | null): ProdIdx[] {
+  const q = tokens(texto).filter((t) => !STOP.has(t.v) && !UNIDADES.has(t.v))
+  if (!q.length) return []
+  const cumple = (it: ProdIdx) => q.every((t) => matchTok(t, it.palabras) >= 0.99)
+  const enAlmacen = almacen ? cat.items.filter((it) => it.almacen === almacen && cumple(it)) : []
+  const res = enAlmacen.length ? enAlmacen : cat.items.filter(cumple)
+  return res.sort((a, b) => a.p.nom.localeCompare(b.p.nom))
+}
+
 // ── Parser principal ─────────────────────────────────────────────────────
+
+interface Resuelta {
+  int: Interpretacion
+  cand: Candidato[]
+  valor: number
+  codigo: boolean
+  consulta: string
+}
+
+function resolverLinea(
+  linea: string,
+  cat: CatalogoNota,
+  almacen: string | null,
+  favoritos: Map<string, number> | undefined,
+  prefijo: string | null,
+): Resuelta {
+  // La familia es contexto, no requisito: "Nutrisse Tintes" + "51U" tiene que
+  // encontrar "Nutrisse Ultra Cobertura 51u", que no dice "tinte". Se prueba la
+  // familia completa y recortada por el final ("Nutrisse") y gana la mejor.
+  const palabrasFam = (prefijo || "").split(/\s+/).filter(Boolean)
+  const prefijos = palabrasFam.length ? palabrasFam.map((_, i) => palabrasFam.slice(0, palabrasFam.length - i).join(" ")) : [""]
+  const consultaDe = (pre: string, resto: string) => `${pre} ${resto}`.trim()
+  let mejor: Resuelta | null = null
+  for (const int of interpretaciones(linea)) {
+    for (const pre of prefijos) {
+      const consulta = consultaDe(pre, int.resto)
+      const cand = buscarEnCatalogo(cat, consulta, { almacen, favoritos, siempre: true })
+      const codigo = cand.length > 0 && cand[0].score === 1 && esCodigoEn(consulta, cat)
+      let valor = cand[0]?.score ?? 0
+      if (int.qty > 200) valor -= 0.1 // un pedido de 280 unidades es mas probable un tono/tamaño
+      if (int.detectada) valor += 0.01 // casi toda linea trae cantidad
+      if (!mejor || valor > mejor.valor) mejor = { int, cand, valor, codigo, consulta }
+    }
+  }
+  let m = mejor!
+  // Si el producto es solo una suposicion (nada coincidio bien), el numero
+  // de la nota casi seguro es la cantidad: no se lo regala a un "4 oz".
+  if ((m.cand[0]?.score ?? 0) < 0.4 && !m.int.detectada) {
+    const conQty = interpretaciones(linea).find((x) => x.detectada)
+    if (conQty) {
+      const consulta = consultaDe(prefijos[0], conQty.resto)
+      const cand = buscarEnCatalogo(cat, consulta, { almacen, favoritos, siempre: true })
+      m = { int: conQty, cand, valor: cand[0]?.score ?? 0, codigo: false, consulta }
+    }
+  }
+  return m
+}
 
 export function parsearNota(
   texto: string,
@@ -405,20 +499,46 @@ export function parsearNota(
 ): LineaNota[] {
   const out: LineaNota[] = []
   let actual: string | null = null
-  const lineas = String(texto || "").split(/\r?\n/)
+  // Familia vigente ("Nutrisse Tintes"): se apaga con un almacen, otra
+  // familia, o una linea que se entiende mejor sola.
+  let familia: string | null = null
+  let id = 0
 
-  lineas.forEach((original, i) => {
-    // Viñetas y enumeracion de listas ("- ", "• ", "3) ", "3. ")
-    let linea = original.replace(/^[\s\-*•·>◦▪–—]+/, "").replace(/\s+$/, "")
-    if (!/[a-z0-9]/i.test(linea)) return
+  // Viñetas y enumeracion de listas ("- ", "• ", "3) ", "3. ")
+  const limpias = String(texto || "")
+    .split(/\r?\n/)
+    .map((original, i) => ({ original, num: i + 1, linea: original.replace(/^[\s\-*•·>◦▪–—]+/, "").replace(/\s+$/, "") }))
+    .filter((l) => /[a-z0-9]/i.test(l.linea))
+
+  limpias.forEach(({ original, num, linea }, idx) => {
+    const fila = (resto: Omit<LineaNota, "id" | "num" | "texto">): LineaNota => ({ id: ++id, num, texto: original.trim(), ...resto })
 
     const h = headerDe(linea, almacenes)
     if (h) {
       actual = h
-      out.push({
-        num: i + 1, texto: original.trim(), tipo: "header", almacen: h, consulta: "",
+      familia = null
+      out.push(fila({
+        tipo: "header", almacen: h, consulta: "",
         qty: 0, qtyDetectada: false, candidatos: [], elegido: null, confianza: "ninguna",
-      })
+      }))
+      return
+    }
+
+    // Encabezado de familia: "Nutrisse Tintes:" (con dos puntos), o una linea
+    // sin numeros seguida de al menos dos lineas cortas ("10 - 6").
+    const sinPuntos = linea.replace(/:\s*$/, "").trim()
+    const conDosPuntos = /:\s*$/.test(linea) && /[a-z]{2,}/i.test(sinPuntos) && !RE_CADA_UNO.test(linea)
+    const siguen = limpias.slice(idx + 1, idx + 3)
+    const sinDosPuntos =
+      !/\d/.test(linea) &&
+      siguen.length === 2 &&
+      siguen.every((s) => esCorta(s.linea) && !esCodigoEn(s.linea, cat) && !headerDe(s.linea, almacenes))
+    if (conDosPuntos || sinDosPuntos) {
+      familia = sinPuntos
+      out.push(fila({
+        tipo: "grupo", almacen: actual, consulta: familia, grupo: familia,
+        qty: 0, qtyDetectada: false, candidatos: [], elegido: null, confianza: "ninguna",
+      }))
       return
     }
 
@@ -430,37 +550,58 @@ export function parsearNota(
       else linea = linea.replace(/^(\d{1,3})[.)]/, "$1")
     }
 
-    let mejor: { int: Interpretacion; cand: Candidato[]; valor: number; codigo: boolean } | null = null
-    for (const int of interpretaciones(linea)) {
-      const cand = buscarEnCatalogo(cat, int.resto, { almacen: actual, favoritos, siempre: true })
-      const codigo = cand.length > 0 && cand[0].score === 1 && esCodigoEn(int.resto, cat)
-      let valor = cand[0]?.score ?? 0
-      if (int.qty > 200) valor -= 0.1 // un pedido de 280 unidades es mas probable un tono/tamaño
-      if (int.detectada) valor += 0.01 // casi toda linea trae cantidad
-      if (!mejor || valor > mejor.valor) mejor = { int, cand, valor, codigo }
-    }
-    let m = mejor!
-    // Si el producto es solo una suposicion (nada coincidio bien), el numero
-    // de la nota casi seguro es la cantidad: no se lo regala a un "4 oz".
-    if ((m.cand[0]?.score ?? 0) < 0.4 && !m.int.detectada) {
-      const conQty = interpretaciones(linea).find((x) => x.detectada)
-      if (conQty) {
-        const cand = buscarEnCatalogo(cat, conQty.resto, { almacen: actual, favoritos, siempre: true })
-        m = { int: conQty, cand, valor: cand[0]?.score ?? 0, codigo: false }
+    // "Rompe Pecho (3 c/u)": una fila por cada producto que coincida.
+    const primera = interpretaciones(linea)[0]
+    if (primera.cadaUno) {
+      // Bajo una familia, "(2 c/u)" sin palabras propias = toda la familia; con
+      // palabras propias ("Rompe Pecho (3 c/u)") la familia termino.
+      const sinPalabras = !/[a-zñáéíóú]{3,}/i.test(primera.resto)
+      if (!sinPalabras) familia = null
+      const consulta = familia ? `${familia} ${primera.resto}`.trim() : primera.resto
+      const todos = todosLosQueCoinciden(cat, consulta, actual)
+      if (todos.length) {
+        const candidatos = todos.map((it) => ({ id: it.p.id, score: 1 }))
+        for (const it of todos) {
+          out.push(fila({
+            tipo: "producto", almacen: actual, consulta, cadaUno: true, grupo: familia,
+            qty: Math.max(1, primera.qty), qtyDetectada: true,
+            candidatos, elegido: it.p.id, confianza: "alta",
+          }))
+        }
+        return
       }
+      // Nada coincide con todas las palabras: se lee como una linea normal.
     }
-    out.push({
-      num: i + 1,
-      texto: original.trim(),
+
+    let m: Resuelta
+    if (familia && esCorta(linea)) {
+      m = resolverLinea(linea, cat, actual, favoritos, familia)
+    } else if (familia) {
+      // Una linea con palabras bajo una familia: se queda en la familia solo
+      // si asi se entiende claramente mejor ("rubio 7 - 3"); si no, la familia
+      // termino.
+      const sola = resolverLinea(linea, cat, actual, favoritos, null)
+      const conFamilia = resolverLinea(linea, cat, actual, favoritos, familia)
+      if (conFamilia.valor > sola.valor + 0.02) m = conFamilia
+      else {
+        m = sola
+        familia = null
+      }
+    } else {
+      m = resolverLinea(linea, cat, actual, favoritos, null)
+    }
+
+    out.push(fila({
       tipo: "producto",
       almacen: actual,
-      consulta: m.int.resto,
+      consulta: m.consulta,
+      grupo: familia,
       qty: Math.max(1, m.int.qty),
       qtyDetectada: m.int.detectada,
       candidatos: m.cand,
       elegido: m.cand[0]?.id ?? null,
       confianza: confianzaDe(m.cand, m.codigo),
-    })
+    }))
   })
   return out
 }
