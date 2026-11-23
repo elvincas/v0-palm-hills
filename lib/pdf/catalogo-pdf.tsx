@@ -46,7 +46,6 @@ export interface DatosCatalogo {
   assets?: string;
 }
 
-const OTROS = "Other Products";
 
 // ── Paleta ──
 const G = "#4a6741"; // verde de la marca
@@ -143,7 +142,7 @@ export async function renderCatalogoPdf(d: DatosCatalogo): Promise<Buffer> {
     title: { position: "absolute", top: 352, left: 0, right: 0, textAlign: "center", fontSize: 58, color: IVORY, fontFamily: F.serifItalic, ...(conFuentes ? { fontStyle: "italic", fontWeight: 500 } : {}) },
     rule: { position: "absolute", top: 444, left: 274, width: 64, height: 0.75, backgroundColor: GOLD },
     sub: { position: "absolute", top: 460, left: 40, right: 40, textAlign: "center", fontSize: 9.5, letterSpacing: 1.3, color: "#d9d6cc", fontFamily: F.sans, ...w(500) },
-    stats: { position: "absolute", top: 560, left: 90, right: 90, flexDirection: "row", borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: "#7e7253" },
+    stats: { position: "absolute", top: 560, left: 156, right: 156, flexDirection: "row", borderTopWidth: 0.5, borderBottomWidth: 0.5, borderColor: "#7e7253" },
     stat: { flex: 1, alignItems: "center", paddingVertical: 14 },
     statSep: { borderLeftWidth: 0.5, borderColor: "#7e7253" },
     statNum: { fontSize: 30, color: IVORY, fontFamily: F.serif, ...w(500) },
@@ -188,7 +187,6 @@ export async function renderCatalogoPdf(d: DatosCatalogo): Promise<Buffer> {
 
   const nombre = d.empresaNombre || "Palm Hills";
   const total = d.grupos.reduce((a, g) => a + g.productos.length, 0);
-  const marcas = d.grupos.filter((g) => g.marca !== OTROS).length;
   const anio = d.fechaGeneracion.split("/")[2] || "";
   const logoSrc = d.logo ? { data: Buffer.from(d.logo), format: "png" as const } : null;
 
@@ -237,10 +235,8 @@ export async function renderCatalogoPdf(d: DatosCatalogo): Promise<Buffer> {
             <Text style={s.statNum}>{total}</Text>
             <Text style={s.statLbl}>PRODUCTS</Text>
           </View>
-          <View style={[s.stat, s.statSep]}>
-            <Text style={s.statNum}>{marcas}</Text>
-            <Text style={s.statLbl}>BRANDS</Text>
-          </View>
+          {/* Sin "Brands": la marca (fabricante) aun no esta cargada en todos
+              los productos, la cifra no seria real. */}
           <View style={[s.stat, s.statSep]}>
             <Text style={s.statNum}>{anio}</Text>
             <Text style={s.statLbl}>EDITION</Text>
