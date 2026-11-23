@@ -87,13 +87,15 @@ export default function ReporteFacturasPendientesPage() {
           saldo: +(Number(f.total) - pagado).toFixed(2),
         };
       });
-      rows.sort((a, b) => b.dias - a.dias);
-      setFilas(rows);
+      // Sin saldo no hay nada que cobrar, diga lo que diga el estado.
+      const conSaldo = rows.filter((r) => r.saldo > 0.005);
+      conSaldo.sort((a, b) => b.dias - a.dias);
+      setFilas(conSaldo);
       setLoading(false);
 
       // Notas de credito no aplicadas: solo importan aqui las de clientes que
       // aparecen en esta cartera (si ya no debe nada, la NC no es relevante).
-      const clientesConSaldo = new Set(rows.map((r) => r.cliNom));
+      const clientesConSaldo = new Set(conSaldo.map((r) => r.cliNom));
       if (clientesConSaldo.size) {
         const { data: ncData } = await supabase
           .from("notas_credito")

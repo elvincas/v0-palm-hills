@@ -38,6 +38,8 @@ export async function GET(request: NextRequest) {
   }
 
   type FacturaRow = { num: number; cli: string; fecha: string; total: number; pagos: { monto: number }[] | null };
+  // Sin saldo no hay nada que cobrar, diga lo que diga el estado (mismo filtro
+  // que la pantalla del reporte).
   const filas: FilaReporteCartera[] = ((facturas || []) as FacturaRow[]).map((f) => {
     const pagado = (f.pagos || []).reduce((a, p) => a + Number(p.monto || 0), 0);
     return {
@@ -47,7 +49,7 @@ export async function GET(request: NextRequest) {
       dias: diasDesde(f.fecha),
       saldo: +(Number(f.total) - pagado).toFixed(2),
     };
-  });
+  }).filter((f) => f.saldo > 0.005);
   filas.sort((a, b) => b.dias - a.dias);
 
   const totalBruto = filas.reduce((a, f) => a + f.saldo, 0);

@@ -386,6 +386,8 @@ El pago ya se registraba dentro de `facturas.pagos`; esto agrega el **documento*
 ### Aging Report (2026-07-20)
 Botón junto al buscador de Invoices → `/reportes/facturas-pendientes`: lista facturas Pending/Partially Paid ordenadas por antigüedad (+30 días resaltadas en rojo), con toggle "By age" (plano) / "By client" (agrupado, clientes con la factura pendiente más vieja primero). PDF vía `/api/reportes/facturas-pendientes/pdf?groupBy=flat|client` (mismo patrón @react-pdf; al ser tabla que fluye no necesita la paginación manual de facturas/estimates). Test: `npx tsx scripts/test-reporte-cartera.ts`.
 
+**Facturas en $0 (2026-11-23):** una factura con total $0.00 (producto a precio cero: muestra, reposición sin cargo) nacía `Pending` y se quedaba así para siempre — nadie le registra un pago — saliendo en $0.00 en el Aging Report. Ahora `addFactura` la crea directamente `Paid` si `total < 0.005`, y el reporte (pantalla + PDF) descarta cualquier fila sin saldo aunque su `estado` diga otra cosa. Las 4 que existían (#1137, #1143, #1183, #1251) se pasaron a `Paid` por SQL.
+
 ### P&L Report (2026-07-21, separado en dos reportes 2026-07-22)
 Tab "P&L" (componente `PLReport` en page.tsx). Selector de periodo (presets This Month/Last Month/This Quarter/This Year + rango custom `desde`/`hasta`). El usuario pidió explícitamente separar el reporte mezclado original en dos vistas puras (toggle `vista: "income" | "cash"`) porque las compras de inventario no se veían reflejadas en ningún lado — no sabe de contabilidad y pidió que se optimizara esa parte como lo haría un experto:
 

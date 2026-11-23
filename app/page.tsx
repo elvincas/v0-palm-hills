@@ -1253,6 +1253,10 @@ const DataProvider = ({ children }: { children: ReactNode }) => {
   // --- Facturas ---
   const addFactura = async (factura: Omit<Factura, "id" | "num">) => {
     const num = await nextNumDb("facturas", 1001);
+    // Una factura en $0 (muestra, reposicion sin cargo) no tiene nada que cobrar:
+    // nace Paid. Si naciera Pending se quedaria asi para siempre — nadie le va
+    // a registrar un pago — y saldria en $0.00 en el Aging Report.
+    if (Number(factura.total) < 0.005) factura = { ...factura, estado: "Paid" };
     let { data, error } = await supabase.from("facturas").insert({ ...factura, num }).select().single();
     // Si la columna orden_id aun no existe en la base (migracion pendiente),
     // reintentar sin ella para no bloquear la facturacion.
