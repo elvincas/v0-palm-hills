@@ -1,18 +1,19 @@
-// Test local del PDF de catalogo: usa productos reales de la DB (con y sin
-// fotos) para verificar que ambos layouts (grid con fotos / tabla sin fotos)
-// generen correctamente, agrupados por marca.
+// Test local del PDF de catalogo (portada Atelier + hojas Vitrina) con
+// productos REALES de Palm Hills: los que tienen foto y los que no (estos
+// salen con su emoji). Agrupado por marca igual que CatalogoModal.generar.
 //
-// El test de grid usa las fotos A TAMAÑO COMPLETO (24 productos = ~6.4MB) a
-// proposito: demuestra por que la app real reduce cada foto (~320px, canvas)
-// en el navegador ANTES de mandarla a este renderer — @react-pdf embeda los
-// bytes de la imagen tal cual, sin recomprimir. Con miniaturas reales
-// (~15-25KB c/u) un catalogo de miles de productos pesa decenas de MB, no
-// cientos.
+// Las fotos se mandan tal cual estan en la base (algunas pesan ~1MB), asi que
+// el PDF de prueba pesa mas que el real: la app las reduce a ~320px en el
+// navegador antes de mandarlas.
+//
+// Correr: npx tsx scripts/test-catalogo.ts
+// Escribe scripts/test-catalogo-grid.pdf y scripts/test-catalogo-lista.pdf
 import { readFileSync, writeFileSync } from "fs";
 import { join } from "path";
-import { renderCatalogoPdf, ProductoCatalogo, GrupoCatalogo } from "../lib/pdf/catalogo-pdf";
+import { renderCatalogoPdf, emojiDeProducto, ProductoCatalogo, GrupoCatalogo } from "../lib/pdf/catalogo-pdf";
 
 const ROOT = join(__dirname, "..");
+const ASSETS = join(ROOT, "public", "catalogo");
 
 async function sql(query: string) {
   const env = readFileSync(join(ROOT, ".env.local"), "utf8");
@@ -27,8 +28,7 @@ async function sql(query: string) {
   return res.json();
 }
 
-// Mismo agrupado que CatalogoModal.generar en app/page.tsx: por `fabricante`,
-// sin marca cae en "Other Products" al final.
+// Mismo agrupado que CatalogoModal.generar en app/page.tsx.
 function agrupar(items: (ProductoCatalogo & { fabricante?: string })[]): GrupoCatalogo[] {
   const porMarca = new Map<string, ProductoCatalogo[]>();
   for (const { fabricante, ...resto } of items) {
@@ -36,84 +36,60 @@ function agrupar(items: (ProductoCatalogo & { fabricante?: string })[]): GrupoCa
     if (!porMarca.has(marca)) porMarca.set(marca, []);
     porMarca.get(marca)!.push(resto);
   }
-  const marcasOrdenadas = Array.from(porMarca.keys()).sort((a, b) => {
+  const marcas = Array.from(porMarca.keys()).sort((a, b) => {
     if (a === "Other Products") return b === "Other Products" ? 0 : 1;
     if (b === "Other Products") return -1;
     return a.localeCompare(b, "en");
   });
-  return marcasOrdenadas.map((marca) => ({ marca, productos: porMarca.get(marca)! }));
+  return marcas.map((marca) => ({ marca, productos: porMarca.get(marca)! }));
 }
 
 async function main() {
-  const [empresaRow] = await sql("SELECT nombre, logo, telefono, email FROM empresa WHERE id = 1");
-  const logo: Buffer | undefined = empresaRow?.logo
-    ? Buffer.from(String(empresaRow.logo).split(",")[1] || "", "base64")
-    : undefined;
-  const empresaContacto = [empresaRow?.telefono, empresaRow?.email].filter(Boolean).join("  ·  ") || undefined;
-  const empresaNombre = empresaRow?.nombre || "Palm Hills";
-
-  // Tabla sin fotos: 40 productos random para verificar el layout de tabla rapido
-  const sinFotos = await sql(
-    "SELECT nom, sku, precio, fabricante, almacen FROM productos ORDER BY sku LIMIT 40"
-  );
-  console.log(`Productos (sin fotos): ${sinFotos.length}`);
-  const gruposTabla = agrupar(
-    sinFotos.map((p: { nom: string; sku: string; precio: string; fabricante?: string }) => ({
-      nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined,
-    }))
-  );
-  console.log(`Marcas (tabla): ${gruposTabla.map((g) => `${g.marca} (${g.productos.length})`).join(", ")}`);
-  const bufTabla = await renderCatalogoPdf({
-    fechaGeneracion: "07/24/2026",
-    almacenLabel: "Both Warehouses",
-    conPrecio: true,
-    conFotos: false,
-    grupos: gruposTabla,
-    empresaNombre,
-    empresaContacto,
+  const [emp] = await sql("SELECT nombre, eslogan, logo, telefono, email FROM empresa WHERE id = 1");
+  const logo = emp?.logo ? Buffer.from(String(emp.logo).split(",")[1] || "", "base64") : undefined;
+  const base = {
+    fechaGeneracion: "11/23/2026",
+    almacenLabel: "Palm Hills",
+    empresaNombre: emp?.nombre || "Palm Hills",
+    empresaEslogan: emp?.eslogan || undefined,
+    empresaContacto: [emp?.telefono, emp?.email].filter(Boolean).join("  ·  ") || undefined,
     logo,
-  });
-  writeFileSync(join(__dirname, "test-catalogo-tabla.pdf"), bufTabla);
-  console.log(`Tabla PDF: ${(bufTabla.length / 1024).toFixed(0)} KB`);
+    assets: ASSETS,
+  };
 
-  // Grid con fotos: solo productos que SI tienen foto, limitado a 24 para que
-  // el test corra rapido (la app real puede generar miles).
-  const conFotosRows = await sql(
-    "SELECT nom, sku, precio, fabricante, foto FROM productos WHERE foto IS NOT NULL ORDER BY sku LIMIT 24"
+  // Fotos chicas (< 130 KB) para que el test corra rapido + todos los sin foto.
+  const filas = await sql(
+    "SELECT nom, sku, precio, fabricante, CASE WHEN length(foto) < 130000 THEN foto END AS foto FROM productos " +
+      "WHERE almacen = 'palmhills' AND precio > 0 AND (foto IS NULL OR foto = '' OR length(foto) < 130000) ORDER BY nom",
   );
-  console.log(`Productos (con fotos): ${conFotosRows.length}`);
-  if (conFotosRows.length === 0) {
-    console.log("(ningun producto con foto encontrado, se omite el test de grid)");
-  } else {
-    const gruposGrid = agrupar(
-      conFotosRows.map((p: { nom: string; sku: string; precio: string; fabricante?: string; foto: string }) => ({
-        nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto: p.foto,
-      }))
-    );
-    console.log(`Marcas (grid): ${gruposGrid.map((g) => `${g.marca} (${g.productos.length})`).join(", ")}`);
-    const bufGrid = await renderCatalogoPdf({
-      fechaGeneracion: "07/24/2026",
-      almacenLabel: "Palm Hills",
-      conPrecio: true,
-      conFotos: true,
-      grupos: gruposGrid,
-      empresaNombre,
-      empresaContacto,
-      logo,
-    });
-    writeFileSync(join(__dirname, "test-catalogo-grid.pdf"), bufGrid);
-    console.log(`Grid PDF: ${(bufGrid.length / 1024).toFixed(0)} KB`);
-  }
+  const items = filas.map((p: { nom: string; sku: string; precio: string; fabricante?: string; foto?: string }) => ({
+    nom: p.nom, sku: p.sku, precio: Number(p.precio), fabricante: p.fabricante || undefined, foto: p.foto || null,
+  }));
+  const grupos = agrupar(items);
+  const sinFoto = items.filter((p: ProductoCatalogo) => !p.foto);
+  console.log(`${items.length} productos · ${grupos.length} grupos · ${sinFoto.length} sin foto`);
+  for (const p of sinFoto) console.log(`  ${emojiDeProducto(p.nom).label.padEnd(18)} ${p.nom}`);
 
-  // Verificacion basica con pdf-parse
+  const grid = await renderCatalogoPdf({ ...base, conPrecio: true, conFotos: true, grupos });
+  writeFileSync(join(__dirname, "test-catalogo-grid.pdf"), grid);
+  console.log(`Grid PDF: ${(grid.length / 1024).toFixed(0)} KB`);
+
+  // Muestra corta (portada + pocas hojas) para revisar el diseño a ojo.
+  const muestra = grupos.filter((g) => ["Karseell", "Carotone", "Other Products"].includes(g.marca));
+  const bufMuestra = await renderCatalogoPdf({ ...base, conPrecio: true, conFotos: true, grupos: muestra });
+  writeFileSync(join(__dirname, "test-catalogo-muestra.pdf"), bufMuestra);
+  console.log(`Muestra PDF: ${(bufMuestra.length / 1024).toFixed(0)} KB`);
+
+  const lista = await renderCatalogoPdf({ ...base, conPrecio: true, conFotos: false, grupos });
+  writeFileSync(join(__dirname, "test-catalogo-lista.pdf"), lista);
+  console.log(`Lista PDF: ${(lista.length / 1024).toFixed(0)} KB`);
+
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { PDFParse } = require("pdf-parse");
-  const parser = new PDFParse({ data: new Uint8Array(bufTabla) });
-  const text = (await parser.getText()).text.toUpperCase();
-  const ok = text.includes("PRODUCT CATALOG") && text.includes(empresaNombre.toUpperCase());
-  console.log(`\nPortada + tabla OK: ${ok}`);
-  if (!ok) { console.error("\n❌ FALLO"); process.exit(1); }
-  console.log("✅ Catalogo OK");
+  const texto = (await new PDFParse({ data: new Uint8Array(grid) }).getText()).text;
+  const ok = texto.includes("The Collection") && texto.includes("HAIR PLUS") && /Page 1 of \d+/.test(texto);
+  console.log(ok ? "✅ Catalogo OK" : "❌ FALLO: falta portada, productos o numeracion");
+  if (!ok) process.exit(1);
 }
 
 main().catch((err) => {
