@@ -200,7 +200,14 @@ export default function NuevaOrdenPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
 
-  const [fecha, setFecha] = useState('')
+  // Back order sin dia de entrega (no se sabe cuando llega la mercancia).
+  // Entrando desde el tab Back Orders (?bo=1) se salta el calendario. La
+  // columna `ordenes.fecha` es NOT NULL: mientras tanto guarda la fecha de hoy
+  // como relleno, y el dia real se elige al soltarla con Release.
+  const [sinFecha, setSinFecha] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bo') === '1',
+  )
+  const [fecha, setFecha] = useState(() => (sinFecha ? today() : ''))
   // Fecha tocada en el calendario, pendiente de confirmar con "Accept"
   const [fechaTemp, setFechaTemp] = useState('')
   const [fechasEntrega, setFechasEntrega] = useState<string[]>([])
@@ -245,7 +252,7 @@ export default function NuevaOrdenPage() {
   const DRAFT_KEY = `ph_draft_orden_${clienteId}`
   const [initialized, setInitialized] = useState(false)
   const [showDraftModal, setShowDraftModal] = useState(false)
-  const [pendingDraft, setPendingDraft] = useState<{ cantidades: Record<string, number>; descuentos: Record<string, number>; fecha: string } | null>(null)
+  const [pendingDraft, setPendingDraft] = useState<{ cantidades: Record<string, number>; descuentos: Record<string, number>; fecha: string; sinFecha?: boolean } | null>(null)
 
   // Como se arma la orden, se pregunta despues de elegir la fecha:
   // '' = todavia no eligio · 'manual' = catalogo · 'nota' = pegar la nota de pedido.
@@ -271,10 +278,10 @@ export default function NuevaOrdenPage() {
     if (Object.keys(cantidades).length === 0) {
       localStorage.removeItem(DRAFT_KEY)
     } else {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify({ cantidades, descuentos, fecha }))
+      localStorage.setItem(DRAFT_KEY, JSON.stringify({ cantidades, descuentos, fecha, sinFecha }))
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cantidades, descuentos, fecha])
+  }, [cantidades, descuentos, fecha, sinFecha])
 
   // Retardo del buscador: filtrar en cada tecla sobre todo el catalogo trababa
   // la escritura en el telefono.
@@ -287,7 +294,14 @@ export default function NuevaOrdenPage() {
     if (pendingDraft) {
       setCantidades(pendingDraft.cantidades)
       setDescuentos(pendingDraft.descuentos || {})
-      if (pendingDraft.fecha) setFecha(pendingDraft.fecha)
+      if (pendingDraft.sinFecha) {
+        setSinFecha(true)
+        setBackOrder(true)
+        setFecha(today())
+      } else if (pendingDraft.fecha) {
+        setSinFecha(false)
+        setFecha(pendingDraft.fecha)
+      }
       setModo('manual')
     }
     setShowDraftModal(false)
@@ -804,7 +818,7 @@ export default function NuevaOrdenPage() {
       alert('Add at least one product')
       return
     }
-    if (!fecha) {
+    if (!fecha || (sinFecha && !backOrder)) {
       alert('Select a delivery date')
       return
     }
@@ -893,7 +907,11 @@ export default function NuevaOrdenPage() {
     )
   }
 
-  const fechaLabel = fecha ? fdate(fecha) : ''
+  // Entrega tal como se muestra en los encabezados (con su icono).
+  const fechaLabel = sinFecha ? '⏳ Back order · no date yet' : fecha ? `🚚 ${fdate(fecha)}` : ''
+
+  // Volver al calendario: un back order sin fecha arranca sin dia marcado.
+  const volverAlCalendario = () => { setFechaTemp(sinFecha ? '' : fecha); setFecha('') }
 
   // Sin fecha confirmada: pantalla de seleccion de fecha (sin productos).
   // La fecha tocada queda en fechaTemp y solo se confirma con el boton Accept.
@@ -909,7 +927,11 @@ export default function NuevaOrdenPage() {
             <>
               <DeliveryCalendar fechas={fechasEntrega} value={fechaTemp} onChange={setFechaTemp} />
               <button
-                onClick={() => fechaTemp && setFecha(fechaTemp)}
+                onClick={() => {
+                  if (!fechaTemp) return
+                  setSinFecha(false)
+                  setFecha(fechaTemp)
+                }}
                 disabled={!fechaTemp}
                 className="w-full mt-4 py-3.5 rounded-2xl bg-primary text-primary-foreground font-bold text-base shadow-md disabled:opacity-40 active:scale-[0.98] transition-all"
               >
@@ -921,12 +943,25 @@ export default function NuevaOrdenPage() {
               No delivery days available. Add delivery dates in the Calendar.
             </p>
           )}
+          {/* Back order: no se sabe cuando llega la mercancia, el dia se
+              elige despues, al soltar la orden. */}
+          <button
+            onClick={() => {
+              setSinFecha(true)
+              setBackOrder(true)
+              setFecha(today())
+            }}
+            className="w-full mt-3 py-3.5 rounded-2xl bg-card border border-[#e6c98f] text-[#8a6420] font-bold text-base active:scale-[0.98] transition-all"
+          >
+            ⏳ Back order — no date yet
+          </button>
+          <p className="mt-1.5 text-[11px] text-muted-foreground text-center">
+            Waiting for a product. You choose the delivery day when you release it.
+          </p>
         </div>
       </div>
     )
   }
-
-  const volverAlCalendario = () => { setFechaTemp(fecha); setFecha('') }
 
   if (modo === 'nota') {
     return (
@@ -965,7 +1000,7 @@ export default function NuevaOrdenPage() {
           <BackButton onClick={volverAlCalendario} className="mb-2" />
           <h1 className="text-xl font-bold text-card-foreground">New Order</h1>
           <p className="text-sm text-muted-foreground mb-5">
-            {cliente?.nom} · 🚚 {fechaLabel}
+            {cliente?.nom} · {fechaLabel}
           </p>
           <p className="text-sm font-semibold text-card-foreground mb-3">How do you want to create it?</p>
           <div className="space-y-3">
@@ -1023,7 +1058,7 @@ export default function NuevaOrdenPage() {
         <div className="max-w-2xl mx-auto p-4" style={{ paddingTop: "calc(1rem + env(safe-area-inset-top))" }}>
           {/* Back con fecha ya confirmada: vuelve al paso del calendario de
               fechas (pantalla anterior del flujo), no al perfil del cliente. */}
-          <BackButton onClick={() => { setFechaTemp(fecha); setFecha(''); }} className="mb-2" />
+          <BackButton onClick={volverAlCalendario} className="mb-2" />
           <div className="flex items-center justify-between gap-2">
             <div className="min-w-0">
               <h1 className="text-xl font-bold text-card-foreground leading-tight">New Order</h1>
@@ -1044,10 +1079,10 @@ export default function NuevaOrdenPage() {
               📋
             </button>
             <button
-              onClick={() => { setFechaTemp(fecha); setFecha(''); }}
+              onClick={volverAlCalendario}
               className="shrink-0 flex items-center gap-1.5 bg-secondary border border-primary/20 rounded-full px-3 py-1.5 text-xs font-semibold text-secondary-foreground"
             >
-              🚚 {fechaLabel}
+              {sinFecha ? '⏳ No date' : fechaLabel}
               <span className="text-muted-foreground font-normal">· Change</span>
             </button>
             </div>
@@ -1561,7 +1596,14 @@ export default function NuevaOrdenPage() {
               <p className="text-sm text-muted-foreground mb-1">
                 Client: <span className="font-medium text-card-foreground">{cliente?.nom}</span>
               </p>
-              <p className="text-sm text-muted-foreground mb-4">Date: {fdate(fecha)}</p>
+              <p className="text-sm text-muted-foreground mb-4">
+                Delivery:{' '}
+                {sinFecha ? (
+                  <span className="font-medium text-[#8a6420]">when the product arrives</span>
+                ) : (
+                  fdate(fecha)
+                )}
+              </p>
 
               <div className="space-y-2 mb-4">
                 {seleccionados.map(({ p, qty }) => {
@@ -1607,7 +1649,19 @@ export default function NuevaOrdenPage() {
                   type="button"
                   role="switch"
                   aria-checked={backOrder}
-                  onClick={() => setBackOrder((v) => !v)}
+                  onClick={() => {
+                    // Apagarlo en una orden que no tenia dia: ahora si hace
+                    // falta uno, se vuelve al calendario (el carrito se queda).
+                    if (backOrder && sinFecha) {
+                      setBackOrder(false)
+                      setSinFecha(false)
+                      setReviewing(false)
+                      setFechaTemp('')
+                      setFecha('')
+                      return
+                    }
+                    setBackOrder((v) => !v)
+                  }}
                   className="w-full flex items-center justify-between gap-3 text-left"
                 >
                   <div className="min-w-0">

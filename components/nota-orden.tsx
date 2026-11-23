@@ -191,7 +191,7 @@ export function NotaOrden(props: Props) {
           <BackButton onClick={props.onBack} className="mb-2" />
           <h1 className="text-xl font-bold text-card-foreground leading-tight">Order from a note</h1>
           <p className="text-sm text-muted-foreground mb-4">
-            {props.clienteNom} · 🚚 {props.fechaLabel}
+            {props.clienteNom} · {props.fechaLabel}
           </p>
 
           <div className="bg-card border border-border rounded-3xl p-4">

@@ -254,6 +254,7 @@ interface Orden {
   // Back order: productos que se estan esperando para sacar la orden (null =
   // orden normal). Ver lib/back-order.ts.
   back_order?: BackOrderItem[] | null;
+  created_at?: string;
 }
 
 interface Mejora {
@@ -454,6 +455,13 @@ const fdate = (s: string) => {
   if (!s) return "";
   const [y, m, d] = s.split("-");
   return `${m}/${d}/${y}`;
+};
+
+// MM/DD/YYYY de un timestamp (created_at) en la hora LOCAL del telefono: cortar
+// el ISO a 10 caracteres daria el dia UTC, que de noche ya es manana.
+const fechaLocal = (ts: string) => {
+  const d = new Date(ts);
+  return `${String(d.getMonth() + 1).padStart(2, "0")}/${String(d.getDate()).padStart(2, "0")}/${d.getFullYear()}`;
 };
 
 // Estilos de botones tipo "vidrio" (glassmorphism), reutilizables en toda la app
@@ -3256,7 +3264,8 @@ const Calendario = () => {
   const ordenesPorFecha = useMemo(() => {
     const map: Record<string, Orden[]> = {};
     ordenes.forEach((o) => {
-      if (!o.fecha) return;
+      // Un back order no tiene dia de entrega real (su `fecha` es relleno).
+      if (!o.fecha || esBackOrder(o)) return;
       if (!map[o.fecha]) map[o.fecha] = [];
       map[o.fecha].push(o);
     });
@@ -9600,18 +9609,27 @@ const Ordenes = () => {
     }
   };
 
-  // Soltar la orden: vuelve al tab Orders lista para el pick.
-  const liberarBackOrder = async (o: Orden) => {
-    const enOrden = new Set((o.lineas || []).map((l) => l.prodId));
-    const fuera = (o.back_order || []).filter((b) => !enOrden.has(b.prodId));
-    const aviso = fuera.length
-      ? `\n\nNot in the order yet: ${fuera.map((b) => `${b.prodNom.toUpperCase()} × ${b.qty}`).join(", ")}. Add it with Edit after releasing.`
-      : "";
-    if (!confirm(`Release Order #${o.num} to Orders? It will be ready to pick.${aviso}`)) return;
+  // Soltar la orden: llego la mercancia, se elige el dia de entrega (un back
+  // order no tiene uno real) y vuelve al tab Orders lista para el pick.
+  const [liberando, setLiberando] = useState<Orden | null>(null);
+  const [liberarFecha, setLiberarFecha] = useState("");
+  const [liberarSaving, setLiberarSaving] = useState(false);
+
+  const abrirLiberar = (o: Orden) => {
+    setLiberarFecha(proximasFechasEntrega[0] || "");
+    setLiberando(o);
+  };
+
+  const confirmarLiberar = async () => {
+    if (!liberando || !liberarFecha || liberarSaving) return;
+    setLiberarSaving(true);
     try {
-      await updateOrden(o.id, { ...o, back_order: null });
+      await updateOrden(liberando.id, { ...liberando, back_order: null, fecha: liberarFecha });
+      setLiberando(null);
     } catch (err) {
       alert(`Could not release: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setLiberarSaving(false);
     }
   };
 
@@ -9747,6 +9765,52 @@ const Ordenes = () => {
           </div>
         </Modal>
       )}
+      {liberando && (() => {
+        const enOrden = new Set((liberando.lineas || []).map((l) => l.prodId));
+        const fuera = (liberando.back_order || []).filter((b) => !enOrden.has(b.prodId));
+        return (
+          <Modal title={`Release Order #${liberando.num}`} onClose={() => setLiberando(null)}>
+            <p className="text-sm text-muted-foreground mb-3">
+              The merchandise arrived? Choose the delivery day. The order goes back to Orders, ready to pick.
+            </p>
+            <Field label="Delivery date">
+              {proximasFechasEntrega.length ? (
+                <select
+                  value={liberarFecha}
+                  onChange={(e) => setLiberarFecha(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl border border-input bg-card text-card-foreground text-base outline-none focus:ring-2 focus:ring-ring"
+                >
+                  {proximasFechasEntrega.map((f) => (
+                    <option key={f} value={f}>
+                      {fdate(f)}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <p className="text-xs text-muted-foreground">No delivery days marked — add one from the Calendar first.</p>
+              )}
+            </Field>
+            {fuera.length > 0 && (
+              <div className="mt-3 rounded-xl bg-[#fdf0dc] text-[#8a6420] text-xs px-3 py-2.5">
+                <span className="font-bold">Not in the order yet:</span>{" "}
+                <span className="uppercase">{fuera.map((b) => `${b.prodNom} × ${b.qty}`).join(", ")}</span>. Add it with Edit after releasing.
+              </div>
+            )}
+            <div className="mt-4 flex gap-2">
+              <button onClick={() => setLiberando(null)} className="flex-1 px-4 py-3 rounded-xl bg-secondary text-secondary-foreground font-bold">
+                Cancel
+              </button>
+              <button
+                onClick={confirmarLiberar}
+                disabled={!liberarFecha || liberarSaving}
+                className="flex-1 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
+              >
+                {liberarSaving ? "Saving..." : "Release"}
+              </button>
+            </div>
+          </Modal>
+        );
+      })()}
       {boFoto && (
         <div
           className="fixed inset-0 z-40 bg-black/95 flex flex-col"
@@ -9783,8 +9847,10 @@ const Ordenes = () => {
                       <div className="text-sm font-semibold uppercase text-card-foreground break-words">{cInfo ? cInfo.nom : o.cli}</div>
                       <div className="text-xs text-muted-foreground">
                         {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
-                        Order #{o.num} - {fdate(o.fecha)}
+                        Order #{o.num}
+                        {o.created_at ? ` · since ${fechaLocal(o.created_at)}` : ""}
                       </div>
+                      <div className="text-[11px] text-[#8a6420] font-semibold">⏳ No delivery date yet</div>
                     </div>
                     <div className="text-right shrink-0">
                       <div className="text-sm font-bold mb-0.5 text-card-foreground">
@@ -9865,7 +9931,7 @@ const Ordenes = () => {
                         </button>
                         <button
                           className="flex-1 py-2 rounded-xl bg-primary border border-primary text-primary-foreground text-xs font-bold"
-                          onClick={() => liberarBackOrder(o)}
+                          onClick={() => abrirLiberar(o)}
                         >
                           ✓ Release
                         </button>
