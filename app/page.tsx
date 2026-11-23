@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useLang } from "@/lib/i18n";
 import { BackOrderPicker } from "@/components/back-order-picker";
-import { type BackOrderItem, esBackOrder, estadoEspera } from "@/lib/back-order";
+import { type BackOrderItem, esBackOrder } from "@/lib/back-order";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -9829,122 +9829,163 @@ const Ordenes = () => {
         </div>
       )}
       {vistaOrdenes === "backorders" ? (
-        <div className="bg-card rounded-3xl p-3.5 border border-border">
-          {backOrders.length ? (
-            backOrders.map((o) => {
-              const cInfo = clienteFor(o.cli);
-              const qtyLinea = new Map((o.lineas || []).map((l) => [l.prodId, l.qty]));
-              const items = (o.back_order || []).map((b) => ({
-                b,
-                enOrden: qtyLinea.get(b.prodId) || 0,
-                est: estadoEspera(b, prodPorIdBO.get(b.prodId), almacenes, qtyLinea.get(b.prodId) || 0),
-              }));
-              const todoListo = items.length > 0 && items.every((i) => i.est?.listo);
-              return (
-                <div key={o.id} className="py-3 border-b border-border last:border-b-0">
-                  <div className="flex items-start justify-between gap-2.5">
+        backOrders.length ? (
+          <div className="space-y-3">
+            {/* Agrupadas por el producto que esperan: cuando llega un producto
+                se ven de una vez todos los clientes que lo querian. Una orden
+                que espera dos productos sale en los dos grupos. */}
+            {(() => {
+              type FilaBO = { o: Orden; b: BackOrderItem; enOrden: number };
+              const porProducto = new Map<string, FilaBO[]>();
+              for (const o of backOrders) {
+                const qtyLinea = new Map((o.lineas || []).map((l) => [l.prodId, l.qty]));
+                for (const b of o.back_order || []) {
+                  if (!porProducto.has(b.prodId)) porProducto.set(b.prodId, []);
+                  porProducto.get(b.prodId)!.push({ o, b, enOrden: qtyLinea.get(b.prodId) || 0 });
+                }
+              }
+              const grupos = Array.from(porProducto.entries()).map(([prodId, filas]) => {
+                const pb = prodPorIdBO.get(prodId);
+                const nom = pb?.nom || filas[0].b.prodNom;
+                const sku = pb?.sku || filas[0].b.sku || "";
+                // Las unidades que ya son linea de una de estas ordenes estan
+                // dentro de `reservado`: cuentan como disponibles para el grupo.
+                const quieren = filas.reduce((a, f) => a + (f.enOrden || f.b.qty), 0);
+                const yaReservado = filas.reduce((a, f) => a + f.enOrden, 0);
+                const llevaStock = !!pb && almacenInfo(almacenes, pb.almacen || almacenPrincipal(almacenes)).lleva_stock;
+                const hay = pb ? Number(pb.stock || 0) - Number(pb.reservado || 0) + yaReservado : 0;
+                const estado = !llevaStock
+                  ? null
+                  : hay >= quieren
+                    ? { listo: true, label: "✓ In stock" }
+                    : { listo: false, label: hay > 0 ? `Only ${hay} in stock` : "Out of stock" };
+                // Primero en llegar, primero en servir.
+                filas.sort((a, b) => (a.o.created_at || "").localeCompare(b.o.created_at || "") || a.o.num - b.o.num);
+                return { prodId, pb, nom, sku, filas, quieren, estado };
+              });
+              // Lo que ya llego arriba (es lo que hay que despachar); despues
+              // los productos con mas clientes esperando.
+              grupos.sort(
+                (a, b) =>
+                  Number(!!b.estado?.listo) - Number(!!a.estado?.listo) ||
+                  b.filas.length - a.filas.length ||
+                  a.nom.localeCompare(b.nom),
+              );
+              return grupos.map((g) => (
+                <div
+                  key={g.prodId}
+                  className={`bg-card rounded-3xl border overflow-hidden ${g.estado?.listo ? "border-[#9cc48f]" : "border-border"}`}
+                >
+                  {/* Encabezado del grupo: el producto esperado */}
+                  <div className={`flex items-center gap-3 p-3.5 ${g.estado?.listo ? "bg-[#e4efe0]/60" : "bg-[#fdf0dc]/40"}`}>
+                    <button
+                      type="button"
+                      onClick={() => g.pb?.foto && setBoFoto({ foto: g.pb.foto, nom: g.nom })}
+                      disabled={!g.pb?.foto}
+                      aria-label={`See photo of ${g.nom}`}
+                      className="w-16 h-16 rounded-xl bg-white border border-border flex items-center justify-center overflow-hidden shrink-0"
+                    >
+                      {g.pb?.foto ? (
+                        <img src={g.pb.foto} alt="" className="w-full h-full object-contain" />
+                      ) : (
+                        <span className="text-2xl">{g.pb?.icon || "📦"}</span>
+                      )}
+                    </button>
                     <div className="flex-1 min-w-0">
-                      <div className="text-sm font-semibold uppercase text-card-foreground break-words">{cInfo ? cInfo.nom : o.cli}</div>
-                      <div className="text-xs text-muted-foreground">
-                        {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
-                        Order #{o.num}
-                        {o.created_at ? ` · since ${fechaLocal(o.created_at)}` : ""}
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-[#8a6420]">⏳ Waiting for</div>
+                      <div className="text-sm font-bold uppercase text-card-foreground leading-snug break-words">{g.nom}</div>
+                      <div className="text-[11px] text-muted-foreground">
+                        <span className="font-mono">{g.sku || "—"}</span> · {g.filas.length} {g.filas.length === 1 ? "client" : "clients"} · {g.quieren} units
                       </div>
-                      <div className="text-[11px] text-[#8a6420] font-semibold">⏳ No delivery date yet</div>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-bold mb-0.5 text-card-foreground">
-                        {fmt(o.lineas?.length ? o.lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0) : o.total)}
-                      </div>
-                      <span className="pl-2 pr-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 bg-[#fdf0dc] text-[#8a6420]">
-                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 shrink-0" aria-hidden="true" />
-                        Back order
-                      </span>
-                    </div>
-                  </div>
-
-                  {/* Que se esta esperando para sacar esta orden */}
-                  <div className="mt-2.5 rounded-2xl border border-[#e6c98f] bg-[#fdf0dc]/40 px-3 py-2.5">
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#8a6420]">⏳ Waiting for</span>
-                      {!readOnly && (
-                        <button onClick={() => abrirBackOrder(o)} className="text-[11px] font-semibold text-primary">
-                          Change ›
-                        </button>
+                      {g.estado && (
+                        <span
+                          className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${g.estado.listo ? "bg-[#e4efe0] text-[#3d6132]" : "bg-destructive/10 text-destructive"}`}
+                        >
+                          {g.estado.label}
+                        </span>
                       )}
                     </div>
-                    <div className="space-y-2">
-                      {items.map(({ b, enOrden, est }) => {
-                        const pb = prodPorIdBO.get(b.prodId);
-                        const nom = pb?.nom || b.prodNom;
-                        return (
-                          <div key={b.prodId} className="flex items-center gap-3">
-                            {/* Foto del producto esperado; tap = pantalla completa */}
-                            <button
-                              type="button"
-                              onClick={() => pb?.foto && setBoFoto({ foto: pb.foto, nom })}
-                              disabled={!pb?.foto}
-                              aria-label={`See photo of ${nom}`}
-                              className="w-16 h-16 rounded-xl bg-white border border-border flex items-center justify-center overflow-hidden shrink-0"
-                            >
-                              {pb?.foto ? (
-                                <img src={pb.foto} alt="" className="w-full h-full object-contain" />
-                              ) : (
-                                <span className="text-2xl">{pb?.icon || "📦"}</span>
-                              )}
-                            </button>
+                  </div>
+                  {g.estado?.listo && (
+                    <div className="px-3.5 py-2 text-[11px] font-semibold text-[#3d6132] border-t border-[#9cc48f]/50">
+                      ✓ It arrived — these orders can be released.
+                    </div>
+                  )}
+
+                  {/* Las ordenes que lo esperan */}
+                  <div className="px-3.5">
+                    {g.filas.map(({ o, b, enOrden }) => {
+                      const cInfo = clienteFor(o.cli);
+                      const otros = (o.back_order || []).filter((x) => x.prodId !== b.prodId);
+                      return (
+                        <div key={o.id} className="py-3 border-t border-border">
+                          <div className="flex items-start justify-between gap-2.5">
                             <div className="flex-1 min-w-0">
-                              <div className="text-[13px] font-semibold uppercase text-card-foreground leading-snug break-words">{nom}</div>
-                              <div className="text-[11px] text-muted-foreground">
-                                <span className="font-mono">{b.sku || "—"}</span> · × {enOrden || b.qty}
+                              <div className="text-sm font-semibold uppercase text-card-foreground break-words">{cInfo ? cInfo.nom : o.cli}</div>
+                              <div className="text-xs text-muted-foreground">
+                                {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
+                                Order #{o.num}
+                                {o.created_at ? ` · since ${fechaLocal(o.created_at)}` : ""}
+                              </div>
+                              <div className="text-[11px] text-[#8a6420] font-semibold">
+                                Wants × {enOrden || b.qty}
                                 {enOrden === 0 && " · not in the order yet"}
                               </div>
-                              {est && (
-                                <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${est.listo ? "bg-[#e4efe0] text-[#3d6132]" : "bg-destructive/10 text-destructive"}`}>
-                                  {est.label}
-                                </span>
+                              {otros.length > 0 && (
+                                <div className="text-[11px] text-muted-foreground">
+                                  Also waiting for:{" "}
+                                  <span className="uppercase">{otros.map((x) => prodPorIdBO.get(x.prodId)?.nom || x.prodNom).join(", ")}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="text-right shrink-0">
+                              <div className="text-sm font-bold text-card-foreground">
+                                {fmt(o.lineas?.length ? o.lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0) : o.total)}
+                              </div>
+                              {!readOnly && (
+                                <button onClick={() => abrirBackOrder(o)} className="mt-0.5 text-[11px] font-semibold text-primary">
+                                  Change ›
+                                </button>
                               )}
                             </div>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                  {todoListo && (
-                    <div className="mt-2 text-[11px] font-semibold text-[#3d6132]">✓ Everything it was waiting for is in stock — ready to release.</div>
-                  )}
-
-                  <div className="mt-2.5 flex gap-2">
-                    <button
-                      className="flex-1 py-2 rounded-xl bg-card border border-border text-primary text-xs font-bold"
-                      onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
-                    >
-                      📋 Estimate
-                    </button>
-                    {!readOnly && (
-                      <>
-                        <button
-                          className="flex-1 py-2 rounded-xl bg-card border border-border text-card-foreground text-xs font-bold"
-                          onClick={() => startEdit(o)}
-                        >
-                          ✏️ Edit
-                        </button>
-                        <button
-                          className="flex-1 py-2 rounded-xl bg-primary border border-primary text-primary-foreground text-xs font-bold"
-                          onClick={() => abrirLiberar(o)}
-                        >
-                          ✓ Release
-                        </button>
-                      </>
-                    )}
+                          <div className="mt-2 flex gap-2">
+                            <button
+                              className="flex-1 py-2 rounded-xl bg-card border border-border text-primary text-xs font-bold"
+                              onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
+                            >
+                              📋 Estimate
+                            </button>
+                            {!readOnly && (
+                              <>
+                                <button
+                                  className="flex-1 py-2 rounded-xl bg-card border border-border text-card-foreground text-xs font-bold"
+                                  onClick={() => startEdit(o)}
+                                >
+                                  ✏️ Edit
+                                </button>
+                                <button
+                                  className="flex-1 py-2 rounded-xl bg-primary border border-primary text-primary-foreground text-xs font-bold"
+                                  onClick={() => abrirLiberar(o)}
+                                >
+                                  ✓ Release
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
-              );
-            })
-          ) : (
+              ));
+            })()}
+          </div>
+        ) : (
+          <div className="bg-card rounded-3xl p-3.5 border border-border">
             <Empty text="No back orders. Tap + to create one, or use the pencil on an order to put it on hold." />
-          )}
-        </div>
+          </div>
+        )
       ) : (
       <>
       <button
