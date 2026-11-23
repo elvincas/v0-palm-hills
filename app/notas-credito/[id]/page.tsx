@@ -7,6 +7,7 @@ import { BackButton } from '@/components/back-button'
 import { MoneyInput } from '@/components/ui/money-input'
 import { QtyInput } from '@/components/ui/qty-input'
 import { type Empresa, EMPRESA_DEFAULT } from '@/lib/empresa'
+import { compartirPdf } from '@/lib/compartir-pdf'
 
 interface LineaNC {
   prodNom: string
@@ -92,8 +93,14 @@ export default function NotaCreditoPage() {
     load()
   }, [id])
 
-  const handlePrint = () => {
-    window.print()
+  // PDF del servidor + share sheet (Print / Save to Files): window.print() no
+  // abre nada en Safari de iPhone.
+  const [generandoPdf, setGenerandoPdf] = useState(false)
+  const handlePrint = async () => {
+    if (generandoPdf || !nota) return
+    setGenerandoPdf(true)
+    await compartirPdf(`/api/notas-credito/${nota.id}/pdf`, `CreditNote-${String(nota.num).padStart(3, '0')}.pdf`)
+    setGenerandoPdf(false)
   }
 
   const today = () => new Date().toISOString().split('T')[0]
@@ -395,9 +402,9 @@ export default function NotaCreditoPage() {
               <span className={TAB_LBL}>{savingAplicada ? '...' : nota.aplicada ? 'Unmark' : 'Apply'}</span>
             </button>
           )}
-          <button onClick={handlePrint} className={`${TAB_BTN} bg-[#4a6741] border-[#4a6741] text-white`}>
+          <button onClick={handlePrint} disabled={generandoPdf} className={`${TAB_BTN} bg-[#4a6741] border-[#4a6741] text-white disabled:opacity-50`}>
             <Icon d={IC.print} />
-            <span className={TAB_LBL}>Print</span>
+            <span className={TAB_LBL}>{generandoPdf ? '...' : 'Print'}</span>
           </button>
           {!readOnly && (
             <button

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { printOrShare } from "@/lib/print";
+import { compartirPdf } from "@/lib/compartir-pdf";
 import { BackButton } from "@/components/back-button";
 import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 
@@ -61,6 +61,19 @@ export default function EstadoCuentaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_DEFAULT);
+  const [generandoPdf, setGenerandoPdf] = useState(false);
+
+  // PDF del servidor + share sheet (Print / Save to Files): window.print() no
+  // abre nada en Safari de iPhone. La fecha de hoy la manda el telefono porque
+  // el servidor corre en UTC.
+  const abrirPdf = async () => {
+    if (generandoPdf || !cliente) return;
+    setGenerandoPdf(true);
+    const d = new Date();
+    const fecha = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    await compartirPdf(`/api/clientes/${clienteId}/estado-cuenta/pdf?fecha=${fecha}`, `Statement-${cliente.nom.replace(/[^\w-]+/g, "_")}.pdf`);
+    setGenerandoPdf(false);
+  };
 
   useEffect(() => {
     supabase.from("empresa").select("*").eq("id", 1).maybeSingle().then(({ data }) => { if (data) setEmpresa(data as Empresa); });
@@ -127,10 +140,11 @@ export default function EstadoCuentaPage() {
         <div className="max-w-3xl mx-auto px-4 py-3.5 flex items-center justify-between" style={{ paddingTop: "calc(0.875rem + env(safe-area-inset-top))" }}>
           <BackButton fallback={`/clientes/${clienteId}`} />
           <button
-            onClick={printOrShare}
-            className="px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
+            onClick={abrirPdf}
+            disabled={generandoPdf}
+            className="disabled:opacity-60 px-5 py-2 rounded-full backdrop-blur-md bg-[#4a6741]/85 border border-white/30 shadow-md hover:bg-[#4a6741]/95 active:scale-[0.97] transition-all text-white text-sm font-bold"
           >
-            🖨️ Print / Save PDF
+            {generandoPdf ? "Generating…" : "🖨️ Print / Save PDF"}
           </button>
         </div>
       </div>
