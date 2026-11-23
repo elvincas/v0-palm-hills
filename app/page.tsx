@@ -9187,6 +9187,8 @@ const Ordenes = () => {
   const [boOrden, setBoOrden] = useState<Orden | null>(null);
   const [boItems, setBoItems] = useState<BackOrderItem[]>([]);
   const [boSaving, setBoSaving] = useState(false);
+  // Foto a pantalla completa del producto esperado (tap en la miniatura).
+  const [boFoto, setBoFoto] = useState<{ foto: string; nom: string } | null>(null);
   const [showNuevaCotizacion, setShowNuevaCotizacion] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
@@ -9745,6 +9747,23 @@ const Ordenes = () => {
           </div>
         </Modal>
       )}
+      {boFoto && (
+        <div
+          className="fixed inset-0 z-40 bg-black/95 flex flex-col"
+          style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
+          onClick={() => setBoFoto(null)}
+        >
+          <div className="flex justify-end p-4">
+            <button onClick={() => setBoFoto(null)} aria-label="Close" className="w-9 h-9 rounded-full bg-white/15 text-white text-lg leading-none">
+              ✕
+            </button>
+          </div>
+          <div className="flex-1 mx-4 rounded-3xl bg-white flex items-center justify-center overflow-hidden">
+            <img src={boFoto.foto} alt={boFoto.nom} className="w-full h-full object-contain p-4" />
+          </div>
+          <p className="px-6 pt-4 pb-6 text-center text-white text-base font-bold uppercase leading-snug break-words">{boFoto.nom}</p>
+        </div>
+      )}
       {vistaOrdenes === "backorders" ? (
         <div className="bg-card rounded-3xl p-3.5 border border-border">
           {backOrders.length ? (
@@ -9788,25 +9807,41 @@ const Ordenes = () => {
                         </button>
                       )}
                     </div>
-                    <div className="space-y-1.5">
-                      {items.map(({ b, enOrden, est }) => (
-                        <div key={b.prodId} className="flex items-start justify-between gap-2.5">
-                          <div className="flex-1 min-w-0">
-                            <div className="text-[13px] font-semibold uppercase text-card-foreground leading-snug break-words">
-                              {prodPorIdBO.get(b.prodId)?.nom || b.prodNom}
-                            </div>
-                            <div className="text-[11px] text-muted-foreground">
-                              <span className="font-mono">{b.sku || "—"}</span> · × {enOrden || b.qty}
-                              {enOrden === 0 && " · not in the order yet"}
+                    <div className="space-y-2">
+                      {items.map(({ b, enOrden, est }) => {
+                        const pb = prodPorIdBO.get(b.prodId);
+                        const nom = pb?.nom || b.prodNom;
+                        return (
+                          <div key={b.prodId} className="flex items-center gap-3">
+                            {/* Foto del producto esperado; tap = pantalla completa */}
+                            <button
+                              type="button"
+                              onClick={() => pb?.foto && setBoFoto({ foto: pb.foto, nom })}
+                              disabled={!pb?.foto}
+                              aria-label={`See photo of ${nom}`}
+                              className="w-16 h-16 rounded-xl bg-white border border-border flex items-center justify-center overflow-hidden shrink-0"
+                            >
+                              {pb?.foto ? (
+                                <img src={pb.foto} alt="" className="w-full h-full object-contain" />
+                              ) : (
+                                <span className="text-2xl">{pb?.icon || "📦"}</span>
+                              )}
+                            </button>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-[13px] font-semibold uppercase text-card-foreground leading-snug break-words">{nom}</div>
+                              <div className="text-[11px] text-muted-foreground">
+                                <span className="font-mono">{b.sku || "—"}</span> · × {enOrden || b.qty}
+                                {enOrden === 0 && " · not in the order yet"}
+                              </div>
+                              {est && (
+                                <span className={`inline-block mt-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${est.listo ? "bg-[#e4efe0] text-[#3d6132]" : "bg-destructive/10 text-destructive"}`}>
+                                  {est.label}
+                                </span>
+                              )}
                             </div>
                           </div>
-                          {est && (
-                            <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${est.listo ? "bg-[#e4efe0] text-[#3d6132]" : "bg-destructive/10 text-destructive"}`}>
-                              {est.label}
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                   {todoListo && (
