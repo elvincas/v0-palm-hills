@@ -18,6 +18,8 @@ import { type Empresa, EMPRESA_DEFAULT } from "@/lib/empresa";
 import { Switch } from "@/components/ui/switch";
 import { useTheme, type Theme } from "@/hooks/use-theme";
 import { useLang } from "@/lib/i18n";
+import { BackOrderPicker } from "@/components/back-order-picker";
+import { type BackOrderItem, esBackOrder, estadoEspera } from "@/lib/back-order";
 
 const Cropper = dynamic(() => import("react-easy-crop"), { ssr: false }) as ComponentType<
   Partial<CropperProps>
@@ -249,6 +251,9 @@ interface Orden {
   estado: string;
   total: number;
   lineas?: LineaOrden[];
+  // Back order: productos que se estan esperando para sacar la orden (null =
+  // orden normal). Ver lib/back-order.ts.
+  back_order?: BackOrderItem[] | null;
 }
 
 interface Mejora {
@@ -9176,7 +9181,12 @@ const Ordenes = () => {
   }, [ordenes.length > 0]);
   const [showClientPicker, setShowClientPicker] = useState(false);
   const [showFaltantes, setShowFaltantes] = useState(false);
-  const [vistaOrdenes, setVistaOrdenes] = useState<"ordenes" | "cotizaciones">("ordenes");
+  const [vistaOrdenes, setVistaOrdenes] = useState<"ordenes" | "backorders" | "cotizaciones">("ordenes");
+  // Modal "que estamos esperando": marcar una orden como back order o cambiar
+  // los productos que espera.
+  const [boOrden, setBoOrden] = useState<Orden | null>(null);
+  const [boItems, setBoItems] = useState<BackOrderItem[]>([]);
+  const [boSaving, setBoSaving] = useState(false);
   const [showNuevaCotizacion, setShowNuevaCotizacion] = useState(false);
   const [pickerSearch, setPickerSearch] = useState("");
   const [picking, setPicking] = useState<Orden | null>(null);
@@ -9560,7 +9570,50 @@ const Ordenes = () => {
     }
   };
 
-  const ordenesOrdenadas = [...ordenes].sort((a, b) => {
+  // Las retenidas viven en su propio tab: mezcladas con las demas no se
+  // distinguia cual estaba en back order ni por que.
+  const backOrders = ordenes.filter(esBackOrder).sort((a, b) => b.num - a.num);
+  const prodPorIdBO = useMemo(() => new Map(productos.map((p) => [p.id, p])), [productos]);
+
+  const abrirBackOrder = (o: Orden) => {
+    setMenuOpenId(null);
+    setBoItems(o.back_order || []);
+    setBoOrden(o);
+  };
+
+  const guardarBackOrder = async () => {
+    if (!boOrden || boSaving) return;
+    if (boItems.length === 0) {
+      alert("Choose the product this back order is waiting for");
+      return;
+    }
+    setBoSaving(true);
+    try {
+      await updateOrden(boOrden.id, { ...boOrden, back_order: boItems });
+      setBoOrden(null);
+    } catch (err) {
+      alert(`Could not save: ${err instanceof Error ? err.message : String(err)}`);
+    } finally {
+      setBoSaving(false);
+    }
+  };
+
+  // Soltar la orden: vuelve al tab Orders lista para el pick.
+  const liberarBackOrder = async (o: Orden) => {
+    const enOrden = new Set((o.lineas || []).map((l) => l.prodId));
+    const fuera = (o.back_order || []).filter((b) => !enOrden.has(b.prodId));
+    const aviso = fuera.length
+      ? `\n\nNot in the order yet: ${fuera.map((b) => `${b.prodNom.toUpperCase()} × ${b.qty}`).join(", ")}. Add it with Edit after releasing.`
+      : "";
+    if (!confirm(`Release Order #${o.num} to Orders? It will be ready to pick.${aviso}`)) return;
+    try {
+      await updateOrden(o.id, { ...o, back_order: null });
+    } catch (err) {
+      alert(`Could not release: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
+
+  const ordenesOrdenadas = ordenes.filter((o) => !esBackOrder(o)).sort((a, b) => {
     const aDone = a.estado === "Completed" ? 1 : 0;
     const bDone = b.estado === "Completed" ? 1 : 0;
     return aDone - bDone;
@@ -9611,6 +9664,9 @@ const Ordenes = () => {
       <div className="inline-flex bg-white/40 border border-white/60 rounded-full p-1 shadow-sm gap-0.5 mb-3">
         <button onClick={() => setVistaOrdenes("ordenes")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vistaOrdenes === "ordenes" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
           Orders
+        </button>
+        <button onClick={() => setVistaOrdenes("backorders")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vistaOrdenes === "backorders" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
+          Back Orders{backOrders.length ? ` (${backOrders.length})` : ""}
         </button>
         <button onClick={() => setVistaOrdenes("cotizaciones")} className={`px-4 py-1.5 rounded-full text-xs font-bold transition-all ${vistaOrdenes === "cotizaciones" ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground"}`}>
           Quotations
@@ -9663,6 +9719,133 @@ const Ordenes = () => {
       ) : (
       <>
       {!readOnly && <AddPillButton className={ADD_PILL_POS} aria-label="New order" onClick={() => { setShowClientPicker(true); setPickerSearch(""); }} />}
+      {boOrden && (
+        <Modal title={`Back order — Order #${boOrden.num}`} onClose={() => setBoOrden(null)}>
+          <p className="text-xs text-muted-foreground mb-3">
+            Choose the product this order is waiting for. It moves to the Back Orders tab until you release it.
+          </p>
+          <BackOrderPicker
+            productos={productos}
+            almacenes={almacenes}
+            lineas={(boOrden.lineas || []).map((l) => ({ prodId: l.prodId, qty: l.qty }))}
+            value={boItems}
+            onChange={setBoItems}
+          />
+          <div className="mt-4 flex gap-2">
+            <button onClick={() => setBoOrden(null)} className="flex-1 px-4 py-3 rounded-xl bg-secondary text-secondary-foreground font-bold">
+              Cancel
+            </button>
+            <button
+              onClick={guardarBackOrder}
+              disabled={boSaving || boItems.length === 0}
+              className="flex-1 px-4 py-3 rounded-xl bg-primary text-primary-foreground font-bold disabled:opacity-50"
+            >
+              {boSaving ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </Modal>
+      )}
+      {vistaOrdenes === "backorders" ? (
+        <div className="bg-card rounded-3xl p-3.5 border border-border">
+          {backOrders.length ? (
+            backOrders.map((o) => {
+              const cInfo = clienteFor(o.cli);
+              const qtyLinea = new Map((o.lineas || []).map((l) => [l.prodId, l.qty]));
+              const items = (o.back_order || []).map((b) => ({
+                b,
+                enOrden: qtyLinea.get(b.prodId) || 0,
+                est: estadoEspera(b, prodPorIdBO.get(b.prodId), almacenes, qtyLinea.get(b.prodId) || 0),
+              }));
+              const todoListo = items.length > 0 && items.every((i) => i.est?.listo);
+              return (
+                <div key={o.id} className="py-3 border-b border-border last:border-b-0">
+                  <div className="flex items-start justify-between gap-2.5">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold uppercase text-card-foreground break-words">{cInfo ? cInfo.nom : o.cli}</div>
+                      <div className="text-xs text-muted-foreground">
+                        {cInfo?.codigo_cliente ? `#${cInfo.codigo_cliente} · ` : ""}
+                        Order #{o.num} - {fdate(o.fecha)}
+                      </div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-bold mb-0.5 text-card-foreground">
+                        {fmt(o.lineas?.length ? o.lineas.reduce((acc, l) => acc + l.qty * (l.precioFinal ?? l.precio), 0) : o.total)}
+                      </div>
+                      <span className="pl-2 pr-2.5 py-0.5 rounded-full text-xs font-bold inline-flex items-center gap-1.5 bg-[#fdf0dc] text-[#8a6420]">
+                        <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70 shrink-0" aria-hidden="true" />
+                        Back order
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Que se esta esperando para sacar esta orden */}
+                  <div className="mt-2.5 rounded-2xl border border-[#e6c98f] bg-[#fdf0dc]/40 px-3 py-2.5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-[#8a6420]">⏳ Waiting for</span>
+                      {!readOnly && (
+                        <button onClick={() => abrirBackOrder(o)} className="text-[11px] font-semibold text-primary">
+                          Change ›
+                        </button>
+                      )}
+                    </div>
+                    <div className="space-y-1.5">
+                      {items.map(({ b, enOrden, est }) => (
+                        <div key={b.prodId} className="flex items-start justify-between gap-2.5">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-[13px] font-semibold uppercase text-card-foreground leading-snug break-words">
+                              {prodPorIdBO.get(b.prodId)?.nom || b.prodNom}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground">
+                              <span className="font-mono">{b.sku || "—"}</span> · × {enOrden || b.qty}
+                              {enOrden === 0 && " · not in the order yet"}
+                            </div>
+                          </div>
+                          {est && (
+                            <span className={`shrink-0 text-[10px] font-bold px-2 py-0.5 rounded-full ${est.listo ? "bg-[#e4efe0] text-[#3d6132]" : "bg-destructive/10 text-destructive"}`}>
+                              {est.label}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                  {todoListo && (
+                    <div className="mt-2 text-[11px] font-semibold text-[#3d6132]">✓ Everything it was waiting for is in stock — ready to release.</div>
+                  )}
+
+                  <div className="mt-2.5 flex gap-2">
+                    <button
+                      className="flex-1 py-2 rounded-xl bg-card border border-border text-primary text-xs font-bold"
+                      onClick={() => router.push(`/ordenes/${o.id}/estimado`)}
+                    >
+                      📋 Estimate
+                    </button>
+                    {!readOnly && (
+                      <>
+                        <button
+                          className="flex-1 py-2 rounded-xl bg-card border border-border text-card-foreground text-xs font-bold"
+                          onClick={() => startEdit(o)}
+                        >
+                          ✏️ Edit
+                        </button>
+                        <button
+                          className="flex-1 py-2 rounded-xl bg-primary border border-primary text-primary-foreground text-xs font-bold"
+                          onClick={() => liberarBackOrder(o)}
+                        >
+                          ✓ Release
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <Empty text="No back orders. Tap + to create one, or use the pencil on an order to put it on hold." />
+          )}
+        </div>
+      ) : (
+      <>
       <button
         onClick={() => setShowFaltantes(true)}
         className="w-full mb-3 py-2.5 rounded-xl border border-border bg-card text-sm font-bold text-primary flex items-center justify-center gap-1.5"
@@ -9721,12 +9904,21 @@ const Ordenes = () => {
                                   Can't be edited: the invoice has already been generated.
                                 </div>
                               ) : (
-                                <button
-                                  onClick={() => startEdit(o)}
-                                  className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
-                                >
-                                  ✏️ Edit
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => startEdit(o)}
+                                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
+                                  >
+                                    ✏️ Edit
+                                  </button>
+                                  <div className="h-px bg-border mx-2" />
+                                  <button
+                                    onClick={() => abrirBackOrder(o)}
+                                    className="w-full flex items-center gap-2 px-3.5 py-2.5 text-sm text-card-foreground hover:bg-muted text-left"
+                                  >
+                                    ⏳ Back order
+                                  </button>
+                                </>
                               )}
                               <div className="h-px bg-border mx-2" />
                               <button
@@ -9788,6 +9980,8 @@ const Ordenes = () => {
         )}
       </div>
       <LoadMoreButton hasMore={ordenesHasMore} remaining={ordenesRemaining} onClick={ordenesLoadMore} />
+      </>
+      )}
 
       {showClientPicker && !readOnly && (
         <Modal title="New Order — Select Client" onClose={() => setShowClientPicker(false)}>
@@ -9808,7 +10002,7 @@ const Ordenes = () => {
               .map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => { setShowClientPicker(false); router.push(`/clientes/${c.id}/nueva-orden`); }}
+                  onClick={() => { setShowClientPicker(false); router.push(`/clientes/${c.id}/nueva-orden${vistaOrdenes === "backorders" ? "?bo=1" : ""}`); }}
                   className="w-full text-left px-3 py-2.5 rounded-xl hover:bg-muted"
                 >
                   {c.codigo_cliente && <span className="block text-[11px] font-black font-mono text-primary leading-tight">{c.codigo_cliente}</span>}

@@ -340,6 +340,17 @@ Después de aceptar la fecha de entrega, New Order pregunta **"How do you want t
 - El texto pegado se guarda en `localStorage` (`ph_nota_orden_<clienteId>`) hasta que la orden se envía.
 - Test con el catálogo real: `npx tsx scripts/test-nota-orden.ts <productos.json>` (dump de `select id, nom, sku, barcode, fabricante, almacen from productos`).
 
+### Back Orders (2026-11-23)
+Órdenes retenidas porque falta mercancía. Pedido del usuario: mezcladas con las demás no distinguía cuál estaba en back order ni por qué (ej. Viva Pharmacy espera Bronquina en cajita).
+
+- **Dato**: columna `ordenes.back_order` (jsonb, null = orden normal) con la lista de productos esperados `[{prodId, prodNom, sku, qty}]` — tipo y helpers en `lib/back-order.ts` (`esBackOrder`, `estadoEspera`). Va aparte de `lineas` a propósito: el producto que falta normalmente NO es una línea de la orden (sin stock no se pudo agregar), aunque también puede serlo. Migración: `migrations/2026-11-23_ordenes_back_order.sql`.
+- **Tab**: tercer sub-tab **Back Orders (N)** en Orders (`vistaOrdenes: "backorders"`). Las retenidas salen SOLO ahí — `ordenesOrdenadas` las excluye. Cada tarjeta tiene el cuadro ámbar **Waiting for** con cada producto, su cantidad y un chip de stock en vivo (`✓ In stock` / `Only N in stock` / `Out of stock`); cuando llegó todo avisa "ready to release". Acciones: Estimate · Edit · **Release** (pone `back_order: null`, la orden vuelve a Orders lista para el pick; si el producto esperado no es línea de la orden, el confirm recuerda agregarlo con Edit — no se agrega solo). Sin botón PICK: hay que soltarla primero.
+- **Crear**: en el Review Order de New Order hay un interruptor **⏳ Back order** + selector del producto esperado (obligatorio al menos uno). El "+" del tab Back Orders abre New Order con `?bo=1`, que trae el interruptor encendido.
+- **Órdenes existentes**: menú del lápiz → **⏳ Back order** abre la misma modal (`boOrden`).
+- **Selector** (`components/back-order-picker.tsx`, compartido): líneas de la orden como acceso rápido + buscador de TODO el catálogo (incluye lo que no tiene stock) con `buscarEnCatalogo` de `lib/nota-orden.ts`.
+- `estadoEspera`: si el producto es línea de la orden, sus unidades ya cuentan dentro de `reservado`, así que basta con que `stock − reservado ≥ 0`; si no lo es, hace falta `stock − reservado ≥ qty`. Devuelve null en almacenes sin `lleva_stock`.
+- **No hecho**: badge de back order en el perfil del cliente y en el Home (Briefing/Route siguen tratándola como orden abierta).
+
 ### Hoja de conteo físico (2026-07-29)
 `ConteoModal` en Inventory Tools (🛠️ → **📋 Count**) genera un PDF para imprimir, llenar a mano caminando el almacén y después pasar los números a la app. Layout aprobado por mockup (opción A: agrupada por ubicación). **La pantalla de captura del conteo NO está hecha a propósito** — el usuario la difirió ("no la hagas aún") porque todavía no sabe las unidades por caja de la mayoría de sus productos; la hoja impresa es justamente lo que le sirve para averiguarlas. No arrancarla sin que la pida.
 

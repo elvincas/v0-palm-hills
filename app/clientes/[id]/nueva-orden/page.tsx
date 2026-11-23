@@ -9,6 +9,8 @@ import { MoneyInput } from '@/components/ui/money-input'
 import { type Almacen, almacenInfo, almacenPrincipal } from '@/lib/almacenes'
 import { idbOpen, idbGetAll, idbPut, type FotoCache } from '@/lib/foto-cache'
 import { NotaOrden } from '@/components/nota-orden'
+import { BackOrderPicker } from '@/components/back-order-picker'
+import { type BackOrderItem } from '@/lib/back-order'
 
 interface Cliente {
   id: string
@@ -216,6 +218,12 @@ export default function NuevaOrdenPage() {
   const [listaNombre, setListaNombre] = useState('')
   const [editandoDescuento, setEditandoDescuento] = useState<string | null>(null)
   const [reviewing, setReviewing] = useState(false)
+  // Back order: la orden se retiene hasta que llegue un producto. Entrando
+  // desde el tab Back Orders (?bo=1) el interruptor ya viene encendido.
+  const [backOrder, setBackOrder] = useState(
+    () => typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('bo') === '1',
+  )
+  const [esperando, setEsperando] = useState<BackOrderItem[]>([])
   const [vista, setVista] = useState<'2' | '3' | 'list'>(() => {
     if (typeof window === 'undefined') return '2'
     const v = localStorage.getItem('ph_columnas_orden')
@@ -800,6 +808,10 @@ export default function NuevaOrdenPage() {
       alert('Select a delivery date')
       return
     }
+    if (backOrder && esperando.length === 0) {
+      alert('Choose the product this back order is waiting for')
+      return
+    }
     setSaving(true)
     try {
       const supabase = createClient()
@@ -839,6 +851,7 @@ export default function NuevaOrdenPage() {
           total: +total.toFixed(2),
           lineas: lineasDetalle,
           num,
+          back_order: backOrder ? esperando : null,
         })
         .select()
         .single()
@@ -854,7 +867,7 @@ export default function NuevaOrdenPage() {
 
       localStorage.removeItem(DRAFT_KEY)
       try { localStorage.removeItem(NOTA_KEY) } catch {}
-      alert(`Order #${num} created. It's pending in Orders.`)
+      alert(backOrder ? `Order #${num} created. It's on hold in Back Orders.` : `Order #${num} created. It's pending in Orders.`)
       router.push(`/clientes/${clienteId}`)
     } catch (error) {
       console.log('[v0] Error creating order:', error)
@@ -1586,6 +1599,37 @@ export default function NuevaOrdenPage() {
               <div className="flex justify-between items-center mb-4 pt-3 border-t border-border">
                 <span className="text-sm text-muted-foreground">Total ({totalUnidades} units)</span>
                 <span className="text-xl font-bold text-primary">{fmt(total)}</span>
+              </div>
+
+              {/* Back order: retener la orden hasta que llegue un producto */}
+              <div className={`mb-4 rounded-2xl border p-3 ${backOrder ? 'border-[#e6c98f] bg-[#fdf0dc]/40' : 'border-border bg-background'}`}>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={backOrder}
+                  onClick={() => setBackOrder((v) => !v)}
+                  className="w-full flex items-center justify-between gap-3 text-left"
+                >
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-card-foreground">⏳ Back order</p>
+                    <p className="text-[11px] text-muted-foreground">Hold this order until a product arrives.</p>
+                  </div>
+                  <span className={`shrink-0 w-11 h-6 rounded-full p-0.5 transition-colors ${backOrder ? 'bg-primary' : 'bg-muted-foreground/30'}`}>
+                    <span className={`block w-5 h-5 rounded-full bg-white shadow transition-transform ${backOrder ? 'translate-x-5' : ''}`} />
+                  </span>
+                </button>
+                {backOrder && (
+                  <div className="mt-3">
+                    <p className="text-[11px] font-bold uppercase tracking-wider text-[#8a6420] mb-1.5">Waiting for</p>
+                    <BackOrderPicker
+                      productos={productos}
+                      almacenes={almacenes}
+                      lineas={seleccionados.map(({ p, qty }) => ({ prodId: p.id, qty }))}
+                      value={esperando}
+                      onChange={setEsperando}
+                    />
+                  </div>
+                )}
               </div>
 
               <div className="flex gap-2">
