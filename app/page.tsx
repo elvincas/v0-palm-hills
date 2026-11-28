@@ -3211,6 +3211,7 @@ const EVENTO_INFO: Record<TipoEvento, { icon: string; label: string }> = {
 
 const Calendario = () => {
   const { ordenes, clientes, facturas, eventosCalendario, addEvento, updateEvento, deleteEvento, updateOrden, readOnly } = useData();
+  const router = useRouter();
   const [mesActual, setMesActual] = useState(() => {
     const d = new Date();
     return { year: d.getFullYear(), month: d.getMonth() };
@@ -3283,6 +3284,10 @@ const Calendario = () => {
 
   const clienteFor = (cli: string) =>
     clientes.find((c) => c.id === cli) || clientes.find((c) => c.nom === cli);
+  // Lo que debe el cliente (facturas no pagadas) — se muestra en cada visita
+  // del dia para saber cuanto cobrar antes de entrar a su perfil.
+  const saldoCliente = (nom: string) =>
+    facturas.filter((f) => f.cli === nom && f.estado !== "Paid").reduce((a, f) => a + saldoDeFactura(f), 0);
 
   const primerDia = new Date(mesActual.year, mesActual.month, 1);
   const diasEnMes = new Date(mesActual.year, mesActual.month + 1, 0).getDate();
@@ -3503,33 +3508,45 @@ const Calendario = () => {
               {eventosDelDia.map((ev) => {
                 const infos = ev.tipos.map((t) => EVENTO_INFO[t]);
                 const cInfo = ev.cliente_id ? clienteFor(ev.cliente_id) : null;
+                const saldo = cInfo ? saldoCliente(cInfo.nom) : 0;
+                // Con cliente: tocar la fila abre su perfil (lo que debe,
+                // facturas, ordenes); editar el evento queda en el lapiz.
+                const abrir = () => (cInfo ? router.push(`/clientes/${cInfo.id}`) : abrirEditarEvento(ev));
                 return (
-                  <button
-                    key={ev.id}
-                    onClick={() => abrirEditarEvento(ev)}
-                    className="w-full flex items-center justify-between gap-2 py-2 border-b border-border last:border-b-0 text-left"
-                  >
-                    <div className="min-w-0 flex items-center gap-2">
+                  <div key={ev.id} className="flex items-center gap-2 py-2 border-b border-border last:border-b-0">
+                    <button onClick={abrir} className="flex-1 min-w-0 flex items-center gap-2 text-left">
                       <span className="text-base shrink-0" aria-hidden="true">{infos.map((i) => i.icon).join("")}</span>
-                      <div className="min-w-0">
+                      <div className="flex-1 min-w-0">
                         <div className="text-sm font-semibold uppercase text-card-foreground break-words">
                           {cInfo ? cInfo.nom : infos.map((i) => i.label).join(" + ")}
                         </div>
-                        <div className="text-xs text-muted-foreground">{infos.map((i) => i.label).join(" + ")}</div>
+                        <div className="text-xs text-muted-foreground">
+                          {infos.map((i) => i.label).join(" + ")}
+                          {saldo > 0.005 && <span className="font-bold text-destructive"> · Owes {fmt(saldo)}</span>}
+                        </div>
                         {ev.nota && <div className="text-xs text-muted-foreground italic mt-0.5 break-words">"{ev.nota}"</div>}
                       </div>
-                    </div>
+                      {cInfo && <span className="text-lg leading-none text-muted-foreground shrink-0" aria-hidden="true">›</span>}
+                    </button>
+                    {!readOnly && cInfo && (
+                      <button
+                        onClick={() => abrirEditarEvento(ev)}
+                        aria-label="Edit"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-card-foreground text-sm shrink-0"
+                      >
+                        ✎
+                      </button>
+                    )}
                     {!readOnly && (
-                      <span
-                        onClick={(e) => { e.stopPropagation(); handleDeleteEvento(ev); }}
-                        role="button"
+                      <button
+                        onClick={() => handleDeleteEvento(ev)}
                         aria-label="Remove"
-                        className="w-6 h-6 flex items-center justify-center rounded-full text-muted-foreground hover:text-destructive hover:bg-red-50 shrink-0"
+                        className="w-7 h-7 flex items-center justify-center rounded-lg border border-border text-muted-foreground hover:text-destructive text-sm shrink-0"
                       >
                         ×
-                      </span>
+                      </button>
                     )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -3543,14 +3560,18 @@ const Calendario = () => {
               const fact = facturaPorOrden.get(o.id);
               return (
                 <div key={o.id} className="flex items-center justify-between gap-2 py-2 border-b border-border last:border-b-0">
-                  <div className="min-w-0">
-                    <div className="text-sm font-semibold uppercase text-card-foreground truncate">
+                  <button
+                    onClick={() => cInfo && router.push(`/clientes/${cInfo.id}`)}
+                    disabled={!cInfo}
+                    className="min-w-0 flex-1 text-left"
+                  >
+                    <div className="text-sm font-semibold uppercase text-card-foreground break-words">
                       {cInfo ? cInfo.nom : o.cli}
                     </div>
                     <div className="text-xs text-muted-foreground">
                       Order #{o.num}{fact ? ` · Invoice #${fact.num}` : ""}
                     </div>
-                  </div>
+                  </button>
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="text-right">
                       <div className="text-sm font-bold text-card-foreground">{fmt(fact ? fact.total : o.total)}</div>
